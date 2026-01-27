@@ -1,0 +1,11 @@
+# Compiled executable
+BatteryWidget.exe
+
+# Runtime config (user-specific position data)
+BatteryWidget.config.json
+
+# Debug scripts
+debug_dpi.ps1
+
+# Claude plans
+.claude/
