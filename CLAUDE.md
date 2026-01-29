@@ -20,7 +20,7 @@
 
 ### Floating Pill Bar
 - Uses Region-based clipping with `GraphicsPath` for rounded corners (no `TransparencyKey` = no purple fringe).
-- `AutoScaleMode = None` set **before** `Size`, plus `MinimumSize`/`MaximumSize` constraints (90x28) to prevent WinForms DPI auto-scaling.
+- `AutoScaleMode = None` set **before** `Size`, plus `MinimumSize`/`MaximumSize` constraints (108x34) to prevent WinForms DPI auto-scaling.
 - Custom `Paint` handler draws gradient battery fill, glass highlight, centered text, and border using GDI+.
 - Double-buffered via reflection for flicker-free rendering.
 - Event handlers use `$script:floatingBar` (not local variables) to avoid PowerShell scriptblock scoping issues.
@@ -33,7 +33,7 @@
 ### Display
 - Pill shows time remaining (e.g., "3h 8m") instead of percentage.
 - Green accent fill (left-to-right gradient, semi-transparent) conveys charge level.
-- Font: Segoe UI Semibold 8.5pt Bold.
+- Font: Segoe UI Semibold 10.2pt Bold.
 
 ### Detail Popup
 - Click the pill to show: percent, capacity, charge/discharge rate, time remaining with ETA, elapsed time, full runtime estimate, battery wear.
@@ -65,6 +65,11 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 ```
 
 ## Changelog
+
+### 2026-01-28 — Popup Improvements & Larger Pill
+- Capacity line now shows current charge / full charge (e.g., `36,099 / 74,263 mWh`) instead of full/design
+- Wear line now includes design capacity (e.g., `0.3% of 74,496 mWh`)
+- Enlarged floating pill 20%: 90×28 → 108×34 px, font 8.5pt → 10.2pt
 
 ### 2026-01-27 — BatteryPill Branding & Splash Page
 - Created splash page at docs/index.html (GitHub Pages)
