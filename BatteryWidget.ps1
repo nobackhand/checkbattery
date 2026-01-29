@@ -385,9 +385,9 @@ function New-FloatingBar {
     $form = New-Object System.Windows.Forms.Form
     $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
-    $form.Size = New-Object System.Drawing.Size(90, 28)
-    $form.MinimumSize = New-Object System.Drawing.Size(90, 28)
-    $form.MaximumSize = New-Object System.Drawing.Size(90, 28)
+    $form.Size = New-Object System.Drawing.Size(108, 34)
+    $form.MinimumSize = New-Object System.Drawing.Size(108, 34)
+    $form.MaximumSize = New-Object System.Drawing.Size(108, 34)
     $form.TopMost = $true
     $form.ShowInTaskbar = $false
     $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
@@ -398,9 +398,9 @@ function New-FloatingBar {
     $regionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
     $rd = 16
     $regionPath.AddArc(0, 0, $rd, $rd, 180, 90)
-    $regionPath.AddArc(90 - $rd - 1, 0, $rd, $rd, 270, 90)
-    $regionPath.AddArc(90 - $rd - 1, 28 - $rd - 1, $rd, $rd, 0, 90)
-    $regionPath.AddArc(0, 28 - $rd - 1, $rd, $rd, 90, 90)
+    $regionPath.AddArc(108 - $rd - 1, 0, $rd, $rd, 270, 90)
+    $regionPath.AddArc(108 - $rd - 1, 34 - $rd - 1, $rd, $rd, 0, 90)
+    $regionPath.AddArc(0, 34 - $rd - 1, $rd, $rd, 90, 90)
     $regionPath.CloseFigure()
     $form.Region = New-Object System.Drawing.Region($regionPath)
     $regionPath.Dispose()
@@ -462,7 +462,7 @@ function New-FloatingBar {
         $highlightPen.Dispose()
 
         # --- Time text (centered in full pill) ---
-        $textFont = New-Object System.Drawing.Font("Segoe UI Semibold", 8.5, [System.Drawing.FontStyle]::Bold)
+        $textFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10.2, [System.Drawing.FontStyle]::Bold)
         $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(245, 245, 250))
         $textRect = New-Object System.Drawing.RectangleF(0, 0, $w, $h)
         $sf = New-Object System.Drawing.StringFormat
@@ -683,9 +683,10 @@ function Show-BatteryPopup {
     Add-PopupRow -Form $popup -Y $y -Label "Percent:" -Value $pctText -LabelFont $labelFont -ValueFont $valueFont -DimColor $dimGray -ValueColor $statusColor -Lx $lx -Vx $vx -Lw $lw -Vw $vw
     $y += $rh
 
-    # Row 2: Capacity
-    if ($BatteryInfo.FullChargeCapacity -gt 0 -and $BatteryInfo.DesignCapacity -gt 0) {
-        $capText = "{0:N0} / {1:N0} mWh" -f $BatteryInfo.FullChargeCapacity, $BatteryInfo.DesignCapacity
+    # Row 2: Capacity (current charge / full charge capacity)
+    if ($BatteryInfo.FullChargeCapacity -gt 0 -and $BatteryInfo.PercentExact -ge 0) {
+        $currentCharge = [math]::Round($BatteryInfo.FullChargeCapacity * ($BatteryInfo.PercentExact / 100))
+        $capText = "{0:N0} / {1:N0} mWh" -f $currentCharge, $BatteryInfo.FullChargeCapacity
     } elseif ($BatteryInfo.FullChargeCapacity -gt 0) {
         $capText = "{0:N0} mWh" -f $BatteryInfo.FullChargeCapacity
     } else {
@@ -743,9 +744,9 @@ function Show-BatteryPopup {
     Add-PopupRow -Form $popup -Y $y -Label "Full Runtime:" -Value $fullRtText -LabelFont $labelFont -ValueFont $valueFont -DimColor $dimGray -ValueColor $lightGray -Lx $lx -Vx $vx -Lw $lw -Vw $vw
     $y += $rh
 
-    # Row 7: Battery Wear
+    # Row 7: Battery Wear (with design capacity)
     if ($BatteryInfo.BatteryWearPercent -ge 0 -and $BatteryInfo.DesignCapacity -gt 0) {
-        $wearText = "{0:N1}%" -f $BatteryInfo.BatteryWearPercent
+        $wearText = "{0:N1}% of {1:N0} mWh" -f $BatteryInfo.BatteryWearPercent, $BatteryInfo.DesignCapacity
     } else {
         $wearText = "N/A"
     }
