@@ -1546,18 +1546,18 @@ function Show-HoverPopup {
 
     # Separator line under title
     $sepLabel = New-Object System.Windows.Forms.Label
-    $sepLabel.Location = New-Object System.Drawing.Point(20, 34)
+    $sepLabel.Location = New-Object System.Drawing.Point(20, 32)
     $sepLabel.Size = New-Object System.Drawing.Size(($popupW - 40), 1)
     $sepLabel.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
     $popup.Controls.Add($sepLabel)
 
     # --- Row layout (DPI-aware) ---
-    $rh = [int](22 * $dpiScale)
+    $rh = [int](19 * $dpiScale)
     $lx = 20
-    $vx = [int](100 * $dpiScale)
-    $lw = [int](90 * $dpiScale)
+    $vx = [int](82 * $dpiScale)
+    $lw = [int](72 * $dpiScale)
     $vw = $popupW - $vx - 20
-    $y = [int](42 * $dpiScale)
+    $y = [int](38 * $dpiScale)
 
     # Helper function to add a row
     function Add-PopupRow {
@@ -1657,14 +1657,14 @@ function Show-HoverPopup {
     $y += $rh
 
     # Spacer
-    $y += [int](6 * $dpiScale)
+    $y += [int](4 * $dpiScale)
 
     # Battery history sparkline
     $sparkAccent = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
     $sparkPanel = New-SparklinePanel -Y $y -AccentColor $sparkAccent
     $sparkPanel.Size = New-Object System.Drawing.Size(($popupW - 40), 30)
     $popup.Controls.Add($sparkPanel)
-    $y += 36
+    $y += 32
 
     # Custom GDI+ progress bar
     $barPct = [math]::Max(0, [math]::Min(100, $BatteryInfo.Percent))
@@ -1725,7 +1725,7 @@ function Show-HoverPopup {
     })
     $popup.Controls.Add($progressPanel)
 
-    $y += 20
+    $y += 14
 
     # Power source
     $powerLabel = New-Object System.Windows.Forms.Label
@@ -1750,7 +1750,7 @@ function Show-HoverPopup {
     $popup.Controls.Add($hintLabel)
 
     # Resize form to fit content
-    $popup.ClientSize = New-Object System.Drawing.Size($popupW, ($y + 16))
+    $popup.ClientSize = New-Object System.Drawing.Size($popupW, ($y + 12))
 
     # Set rounded region to clip corners
     $popupRadius = 10
@@ -1901,18 +1901,18 @@ function Show-BatteryPopup {
 
     # Separator line under title
     $sepLabel = New-Object System.Windows.Forms.Label
-    $sepLabel.Location = New-Object System.Drawing.Point(20, 34)
+    $sepLabel.Location = New-Object System.Drawing.Point(20, 32)
     $sepLabel.Size = New-Object System.Drawing.Size(($popupW - 40), 1)
     $sepLabel.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
     $popup.Controls.Add($sepLabel)
 
     # --- Row layout (DPI-aware) ---
-    $rh = [int](22 * $dpiScale)
+    $rh = [int](19 * $dpiScale)
     $lx = 20
-    $vx = [int](100 * $dpiScale)
-    $lw = [int](90 * $dpiScale)
+    $vx = [int](82 * $dpiScale)
+    $lw = [int](72 * $dpiScale)
     $vw = $popupW - $vx - 20
-    $y = [int](42 * $dpiScale)
+    $y = [int](38 * $dpiScale)
 
     # Helper function (not scriptblock) to add a row
     function Add-PopupRow {
@@ -2012,14 +2012,14 @@ function Show-BatteryPopup {
     $y += $rh
 
     # Spacer
-    $y += [int](6 * $dpiScale)
+    $y += [int](4 * $dpiScale)
 
     # Battery history sparkline
     $sparkAccent2 = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
     $sparkPanel2 = New-SparklinePanel -Y $y -AccentColor $sparkAccent2
     $sparkPanel2.Size = New-Object System.Drawing.Size(($popupW - 40), 30)
     $popup.Controls.Add($sparkPanel2)
-    $y += 36
+    $y += 32
 
     # Custom GDI+ progress bar
     $barPct = [math]::Max(0, [math]::Min(100, $BatteryInfo.Percent))
@@ -2080,7 +2080,7 @@ function Show-BatteryPopup {
     })
     $popup.Controls.Add($progressPanel)
 
-    $y += 20
+    $y += 14
 
     # Power source
     $powerLabel = New-Object System.Windows.Forms.Label
@@ -2105,7 +2105,7 @@ function Show-BatteryPopup {
     $popup.Controls.Add($hintLabel)
 
     # Resize form to fit content
-    $popup.ClientSize = New-Object System.Drawing.Size($popupW, ($y + 16))
+    $popup.ClientSize = New-Object System.Drawing.Size($popupW, ($y + 12))
 
     # Set rounded region to clip corners
     $popupRadius = 10
