@@ -496,25 +496,46 @@ function Get-ConfigPath {
     return Join-Path $dir "BatteryWidget.config.json"
 }
 
-function Load-BarPosition {
+function Load-Config {
     $configPath = Get-ConfigPath
-    $default = @{ X = -1; Y = -1 }
+    $default = @{
+        X = -1
+        Y = -1
+        Opacity = 0.85
+        RefreshInterval = 3000
+        PositionLocked = $false
+    }
     if (Test-Path $configPath) {
         try {
             $json = Get-Content $configPath -Raw | ConvertFrom-Json
             if ($null -ne $json.X -and $null -ne $json.Y) {
-                return @{ X = [int]$json.X; Y = [int]$json.Y }
+                $default.X = [int]$json.X
+                $default.Y = [int]$json.Y
+            }
+            if ($null -ne $json.Opacity) {
+                $default.Opacity = [math]::Max(0.3, [math]::Min(1.0, [double]$json.Opacity))
+            }
+            if ($null -ne $json.RefreshInterval) {
+                $default.RefreshInterval = [int]$json.RefreshInterval
+            }
+            if ($null -ne $json.PositionLocked) {
+                $default.PositionLocked = [bool]$json.PositionLocked
             }
         } catch {}
     }
     return $default
 }
 
-function Save-BarPosition {
-    param([int]$X, [int]$Y)
+function Save-Config {
     $configPath = Get-ConfigPath
     try {
-        @{ X = $X; Y = $Y } | ConvertTo-Json | Set-Content $configPath -Force
+        @{
+            X = $script:config.X
+            Y = $script:config.Y
+            Opacity = $script:config.Opacity
+            RefreshInterval = $script:config.RefreshInterval
+            PositionLocked = $script:config.PositionLocked
+        } | ConvertTo-Json | Set-Content $configPath -Force
     } catch {}
 }
 
@@ -587,6 +608,17 @@ function Set-AutoStart {
 }
 
 # ============================================================
+# HELPER — DOUBLE BUFFERING
+# ============================================================
+
+function Enable-DoubleBuffering {
+    param([System.Windows.Forms.Form]$Form)
+    $Form.GetType().GetProperty("DoubleBuffered",
+        [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+    ).SetValue($Form, $true, $null)
+}
+
+# ============================================================
 # FLOATING BAR — FORM
 # ============================================================
 
@@ -600,6 +632,13 @@ function New-FloatingBar {
     # Pulse animation state for charging effect
     $script:pulseAlpha = 100
     $script:pulseDirection = 1  # 1 = increasing, -1 = decreasing
+    $script:wasChargingLastUpdate = $false
+
+    # Cached GDI objects for paint handler (avoid per-frame allocation)
+    $script:pillFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10.2, [System.Drawing.FontStyle]::Bold)
+    $script:pillStringFormat = New-Object System.Drawing.StringFormat
+    $script:pillStringFormat.Alignment = [System.Drawing.StringAlignment]::Center
+    $script:pillStringFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
 
     # Hover popup state
     $script:hoverPopup = $null
@@ -614,7 +653,7 @@ function New-FloatingBar {
     $form.TopMost = $true
     $form.ShowInTaskbar = $false
     $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
-    $form.Opacity = 0.85
+    $form.Opacity = $script:config.Opacity
 
     # Region-based clipping for rounded corners (no TransparencyKey = no purple fringe)
     $form.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
@@ -629,9 +668,7 @@ function New-FloatingBar {
     $regionPath.Dispose()
 
     # Enable double-buffering to reduce flicker
-    $form.GetType().GetProperty("DoubleBuffered",
-        [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
-    ).SetValue($form, $true, $null)
+    Enable-DoubleBuffering -Form $form
 
     # Custom paint — the entire pill is the battery: fill level + text
     $form.Add_Paint({
@@ -687,16 +724,10 @@ function New-FloatingBar {
         $highlightPen.Dispose()
 
         # --- Time text (centered in full pill) ---
-        $textFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10.2, [System.Drawing.FontStyle]::Bold)
         $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(245, 245, 250))
         $textRect = New-Object System.Drawing.RectangleF(0, 0, $w, $h)
-        $sf = New-Object System.Drawing.StringFormat
-        $sf.Alignment = [System.Drawing.StringAlignment]::Center
-        $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-        $g.DrawString($script:barDisplayText, $textFont, $textBrush, $textRect, $sf)
-        $textFont.Dispose()
+        $g.DrawString($script:barDisplayText, $script:pillFont, $textBrush, $textRect, $script:pillStringFormat)
         $textBrush.Dispose()
-        $sf.Dispose()
 
         # --- Border ---
         $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50, 50, 56), 1)
@@ -720,7 +751,6 @@ function New-FloatingBar {
     $script:dismissTimer = New-Object System.Windows.Forms.Timer
     $script:dismissTimer.Interval = 100
     $script:dismissTimer.Add_Tick({
-        $script:dismissTimer.Stop()
         # Check if mouse is over pill or popup
         $mousePos = [System.Windows.Forms.Cursor]::Position
         $overPill = $false
@@ -737,6 +767,7 @@ function New-FloatingBar {
         }
 
         if (-not $overPill -and -not $overPopup) {
+            $script:dismissTimer.Stop()
             Close-HoverPopup
         }
     })
@@ -763,6 +794,7 @@ function New-FloatingBar {
 
     $dragDown = {
         param($sender, $e)
+        if ($script:positionLocked) { return }
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
             $script:isDragging = $true
             $script:didDrag = $false
@@ -787,7 +819,9 @@ function New-FloatingBar {
         if ($script:isDragging) {
             $script:isDragging = $false
             if ($script:didDrag) {
-                Save-BarPosition -X $script:floatingBar.Left -Y $script:floatingBar.Top
+                $script:config.X = $script:floatingBar.Left
+                $script:config.Y = $script:floatingBar.Top
+                Save-Config
             }
             # No click-to-popup — hover handles popup display
         }
@@ -798,10 +832,9 @@ function New-FloatingBar {
     $form.Add_MouseMove($dragMove)
     $form.Add_MouseUp($dragUp)
 
-    # Set position
-    $pos = Load-BarPosition
-    if ($pos.X -ge 0 -and $pos.Y -ge 0) {
-        $form.Location = New-Object System.Drawing.Point($pos.X, $pos.Y)
+    # Set position from config
+    if ($script:config.X -ge 0 -and $script:config.Y -ge 0) {
+        $form.Location = New-Object System.Drawing.Point($script:config.X, $script:config.Y)
     } else {
         $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
         $form.Location = New-Object System.Drawing.Point(
@@ -845,6 +878,13 @@ function Update-FloatingBar {
     $script:barDisplayPercent = $BatteryInfo.Percent
     $script:barIsCharging = $BatteryInfo.IsCharging
 
+    # Smooth pulse transition: reset alpha when charging starts
+    if ($BatteryInfo.IsCharging -and -not $script:wasChargingLastUpdate) {
+        $script:pulseAlpha = 100
+        $script:pulseDirection = 1
+    }
+    $script:wasChargingLastUpdate = $BatteryInfo.IsCharging
+
     # Accent color — color-coded by battery level
     $script:barAccentColor = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
 
@@ -853,18 +893,18 @@ function Update-FloatingBar {
         $tooltipText = if ($BatteryInfo.NoBattery) {
             "No battery detected"
         } elseif ($BatteryInfo.IsFullyCharged) {
-            "$($BatteryInfo.Percent)% • Fully charged"
+            "$($BatteryInfo.Percent)% $([char]0x2022) Fully charged"
         } elseif ($BatteryInfo.IsCharging) {
             if ($BatteryInfo.TimeMinutes -gt 0) {
-                "$($BatteryInfo.Percent)% • Charging ($($script:barDisplayText) to full)"
+                "$($BatteryInfo.Percent)% $([char]0x2022) Charging ($($script:barDisplayText) to full)"
             } else {
-                "$($BatteryInfo.Percent)% • Charging"
+                "$($BatteryInfo.Percent)% $([char]0x2022) Charging"
             }
         } else {
             if ($BatteryInfo.TimeMinutes -gt 0) {
-                "$($BatteryInfo.Percent)% • $($script:barDisplayText) remaining"
+                "$($BatteryInfo.Percent)% $([char]0x2022) $($script:barDisplayText) remaining"
             } else {
-                "$($BatteryInfo.Percent)% • Discharging"
+                "$($BatteryInfo.Percent)% $([char]0x2022) Discharging"
             }
         }
         $script:barTooltip.SetToolTip($script:floatingBar, $tooltipText)
@@ -903,9 +943,14 @@ function Show-HoverPopup {
     $popup.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
     $popup.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $popup.KeyPreview = $true
+    Enable-DoubleBuffering -Form $popup
 
-    # Position near the floating pill
-    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    # Position near the floating pill (use correct screen for multi-monitor)
+    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+        $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
+    } else {
+        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    }
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
         $barLoc = $script:floatingBar.Location
         $barSize = $script:floatingBar.Size
@@ -932,9 +977,20 @@ function Show-HoverPopup {
         param($sender, $e)
         $g = $e.Graphics
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $r = 10
+        $rd2 = $r * 2
+        $bw = $sender.Width - 1
+        $bh = $sender.Height - 1
+        $borderPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $borderPath.AddArc(0, 0, $rd2, $rd2, 180, 90)
+        $borderPath.AddArc($bw - $rd2, 0, $rd2, $rd2, 270, 90)
+        $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
+        $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
+        $borderPath.CloseFigure()
         $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(60, 60, 66), 1)
-        $g.DrawRectangle($borderPen, 0, 0, $sender.Width - 1, $sender.Height - 1)
+        $g.DrawPath($borderPen, $borderPath)
         $borderPen.Dispose()
+        $borderPath.Dispose()
     })
 
     $statusColor = Get-StatusColor -Status $BatteryInfo.StatusText
@@ -1105,6 +1161,20 @@ function Show-HoverPopup {
     # Resize form to fit content
     $popup.ClientSize = New-Object System.Drawing.Size(420, ($y + 24))
 
+    # Set rounded region to clip corners
+    $popupRadius = 10
+    $prd = $popupRadius * 2
+    $pw = $popup.ClientSize.Width
+    $ph = $popup.ClientSize.Height
+    $popupRegionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $popupRegionPath.AddArc(0, 0, $prd, $prd, 180, 90)
+    $popupRegionPath.AddArc($pw - $prd - 1, 0, $prd, $prd, 270, 90)
+    $popupRegionPath.AddArc($pw - $prd - 1, $ph - $prd - 1, $prd, $prd, 0, 90)
+    $popupRegionPath.AddArc(0, $ph - $prd - 1, $prd, $prd, 90, 90)
+    $popupRegionPath.CloseFigure()
+    $popup.Region = New-Object System.Drawing.Region($popupRegionPath)
+    $popupRegionPath.Dispose()
+
     # Mouse leave on popup - start dismiss check
     $popup.Add_MouseLeave({
         $script:dismissTimer.Start()
@@ -1145,9 +1215,14 @@ function Show-BatteryPopup {
     $popup.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
     $popup.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $popup.KeyPreview = $true
+    Enable-DoubleBuffering -Form $popup
 
-    # Position near the floating pill
-    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    # Position near the floating pill (use correct screen for multi-monitor)
+    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+        $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
+    } else {
+        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    }
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
         $barLoc = $script:floatingBar.Location
         $barSize = $script:floatingBar.Size
@@ -1174,9 +1249,20 @@ function Show-BatteryPopup {
         param($sender, $e)
         $g = $e.Graphics
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $r = 10
+        $rd2 = $r * 2
+        $bw = $sender.Width - 1
+        $bh = $sender.Height - 1
+        $borderPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $borderPath.AddArc(0, 0, $rd2, $rd2, 180, 90)
+        $borderPath.AddArc($bw - $rd2, 0, $rd2, $rd2, 270, 90)
+        $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
+        $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
+        $borderPath.CloseFigure()
         $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(60, 60, 66), 1)
-        $g.DrawRectangle($borderPen, 0, 0, $sender.Width - 1, $sender.Height - 1)
+        $g.DrawPath($borderPen, $borderPath)
         $borderPen.Dispose()
+        $borderPath.Dispose()
     })
 
     $statusColor = Get-StatusColor -Status $BatteryInfo.StatusText
@@ -1347,6 +1433,20 @@ function Show-BatteryPopup {
     # Resize form to fit content
     $popup.ClientSize = New-Object System.Drawing.Size(420, ($y + 24))
 
+    # Set rounded region to clip corners
+    $popupRadius = 10
+    $prd = $popupRadius * 2
+    $pw = $popup.ClientSize.Width
+    $ph = $popup.ClientSize.Height
+    $popupRegionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $popupRegionPath.AddArc(0, 0, $prd, $prd, 180, 90)
+    $popupRegionPath.AddArc($pw - $prd - 1, 0, $prd, $prd, 270, 90)
+    $popupRegionPath.AddArc($pw - $prd - 1, $ph - $prd - 1, $prd, $prd, 0, 90)
+    $popupRegionPath.AddArc(0, $ph - $prd - 1, $prd, $prd, 90, 90)
+    $popupRegionPath.CloseFigure()
+    $popup.Region = New-Object System.Drawing.Region($popupRegionPath)
+    $popupRegionPath.Dispose()
+
     # Close on deactivate
     $popup.Add_Deactivate({ $popup.Close() })
 
@@ -1366,9 +1466,14 @@ function Show-BatteryPopup {
 # ============================================================
 
 function Show-SettingsPanel {
+    # Manual DPI scaling — WinForms AutoScaleMode doesn't work reliably with SetProcessDPIAware()
+    $g = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $ds = $g.DpiX / 96.0
+    $g.Dispose()
+
     $settings = New-Object System.Windows.Forms.Form
     $settings.Text = "BatteryPill Settings"
-    $settings.Size = New-Object System.Drawing.Size(320, 220)
+    $settings.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $settings.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
     $settings.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
     $settings.MaximizeBox = $false
@@ -1378,32 +1483,36 @@ function Show-SettingsPanel {
     $settings.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
 
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
-    $y = 20
+    $m = [int](20 * $ds)
+    $cw = [int](280 * $ds)
+    $bh = [int](34 * $ds)
+    $y = $m
+
+    # --- Checkboxes section ---
 
     # Auto-start checkbox
     $autoStartCheck = New-Object System.Windows.Forms.CheckBox
     $autoStartCheck.Text = "Start with Windows"
     $autoStartCheck.Font = $labelFont
     $autoStartCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
-    $autoStartCheck.Location = New-Object System.Drawing.Point(20, $y)
+    $autoStartCheck.Location = New-Object System.Drawing.Point($m, $y)
     $autoStartCheck.AutoSize = $true
     $autoStartCheck.Checked = Get-AutoStartEnabled
     $autoStartCheck.Add_CheckedChanged({
         $result = Set-AutoStart -Enable $autoStartCheck.Checked
         if (-not $result) {
-            # Revert checkbox if failed
             $autoStartCheck.Checked = Get-AutoStartEnabled
         }
     })
     $settings.Controls.Add($autoStartCheck)
-    $y += 35
+    $y += [int](30 * $ds)
 
     # Show floating pill checkbox
     $showBarCheck = New-Object System.Windows.Forms.CheckBox
     $showBarCheck.Text = "Show floating pill"
     $showBarCheck.Font = $labelFont
     $showBarCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
-    $showBarCheck.Location = New-Object System.Drawing.Point(20, $y)
+    $showBarCheck.Location = New-Object System.Drawing.Point($m, $y)
     $showBarCheck.AutoSize = $true
     $showBarCheck.Checked = ($null -ne $script:floatingBar -and $script:floatingBar.Visible)
     $showBarCheck.Add_CheckedChanged({
@@ -1416,38 +1525,144 @@ function Show-SettingsPanel {
         }
     })
     $settings.Controls.Add($showBarCheck)
-    $y += 45
+    $y += [int](30 * $ds)
+
+    # Lock position checkbox
+    $lockPosCheck = New-Object System.Windows.Forms.CheckBox
+    $lockPosCheck.Text = "Lock pill position"
+    $lockPosCheck.Font = $labelFont
+    $lockPosCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $lockPosCheck.Location = New-Object System.Drawing.Point($m, $y)
+    $lockPosCheck.AutoSize = $true
+    $lockPosCheck.Checked = $script:positionLocked
+    $lockPosCheck.Add_CheckedChanged({
+        $script:positionLocked = $lockPosCheck.Checked
+        $script:config.PositionLocked = $lockPosCheck.Checked
+        Save-Config
+    })
+    $settings.Controls.Add($lockPosCheck)
+    $y += [int](46 * $ds)
+
+    # --- Opacity section ---
+
+    # Opacity label
+    $opacityLabel = New-Object System.Windows.Forms.Label
+    $opacityLabel.Text = "Opacity:"
+    $opacityLabel.Font = $labelFont
+    $opacityLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $opacityLabel.Location = New-Object System.Drawing.Point($m, $y)
+    $opacityLabel.AutoSize = $true
+    $settings.Controls.Add($opacityLabel)
+
+    # Opacity value label (right-aligned)
+    $opacityValueLabel = New-Object System.Windows.Forms.Label
+    $opacityValueLabel.Text = "{0}%" -f [int]($script:config.Opacity * 100)
+    $opacityValueLabel.Font = $labelFont
+    $opacityValueLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $opacityValueLabel.Location = New-Object System.Drawing.Point([int](260 * $ds), $y)
+    $opacityValueLabel.AutoSize = $true
+    $settings.Controls.Add($opacityValueLabel)
+    $y += [int](24 * $ds)
+
+    # Opacity slider (30-100 maps to 0.3-1.0)
+    $opacitySlider = New-Object System.Windows.Forms.TrackBar
+    $opacitySlider.Minimum = 30
+    $opacitySlider.Maximum = 100
+    $opacitySlider.Value = [int]($script:config.Opacity * 100)
+    $opacitySlider.TickFrequency = 10
+    $opacitySlider.Location = New-Object System.Drawing.Point($m, $y)
+    $opacitySlider.Size = New-Object System.Drawing.Size($cw, [int](30 * $ds))
+    $opacitySlider.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 36)
+    $opacitySlider.Add_ValueChanged({
+        $newOpacity = $opacitySlider.Value / 100.0
+        $script:floatingBar.Opacity = $newOpacity
+        $script:config.Opacity = $newOpacity
+        $opacityValueLabel.Text = "{0}%" -f $opacitySlider.Value
+        Save-Config
+    })
+    $settings.Controls.Add($opacitySlider)
+    $y += [int](67 * $ds)
+
+    # --- Refresh rate section ---
+
+    $refreshLabel = New-Object System.Windows.Forms.Label
+    $refreshLabel.Text = "Refresh rate:"
+    $refreshLabel.Font = $labelFont
+    $refreshLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $refreshLabel.Location = New-Object System.Drawing.Point($m, $y)
+    $refreshLabel.AutoSize = $true
+    $settings.Controls.Add($refreshLabel)
+    $y += [int](26 * $ds)
+
+    $refreshCombo = New-Object System.Windows.Forms.ComboBox
+    $refreshCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    $refreshCombo.Font = $labelFont
+    $refreshCombo.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
+    $refreshCombo.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $refreshCombo.Location = New-Object System.Drawing.Point($m, $y)
+    $refreshCombo.Size = New-Object System.Drawing.Size($cw, [int](28 * $ds))
+    $refreshCombo.Items.AddRange(@("1 second", "3 seconds", "5 seconds", "10 seconds"))
+    $selectedIndex = switch ($script:config.RefreshInterval) {
+        1000 { 0 }
+        3000 { 1 }
+        5000 { 2 }
+        10000 { 3 }
+        default { 1 }
+    }
+    $refreshCombo.SelectedIndex = $selectedIndex
+    $refreshCombo.Add_SelectedIndexChanged({
+        $intervalMap = @(1000, 3000, 5000, 10000)
+        $newInterval = $intervalMap[$refreshCombo.SelectedIndex]
+        $script:timer.Interval = $newInterval
+        $script:config.RefreshInterval = $newInterval
+        Save-Config
+    })
+    $settings.Controls.Add($refreshCombo)
+    $y += [int](54 * $ds)
+
+    # --- Buttons section ---
 
     # Reset position button
     $resetBtn = New-Object System.Windows.Forms.Button
     $resetBtn.Text = "Reset Pill Position"
     $resetBtn.Font = $labelFont
-    $resetBtn.Size = New-Object System.Drawing.Size(160, 32)
-    $resetBtn.Location = New-Object System.Drawing.Point(20, $y)
+    $resetBtn.Size = New-Object System.Drawing.Size($cw, $bh)
+    $resetBtn.Location = New-Object System.Drawing.Point($m, $y)
     $resetBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $resetBtn.FlatAppearance.BorderSize = 0
     $resetBtn.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
     $resetBtn.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
     $resetBtn.Add_Click({
-        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+        if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+            $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
+        } else {
+            $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+        }
         $newX = $screen.Right - $script:floatingBar.Width - 10
         $newY = $screen.Bottom - $script:floatingBar.Height - 10
         $script:floatingBar.Location = New-Object System.Drawing.Point($newX, $newY)
-        Save-BarPosition -X $newX -Y $newY
+        $script:config.X = $newX
+        $script:config.Y = $newY
+        Save-Config
     })
     $settings.Controls.Add($resetBtn)
-    $y += 50
+    $y += [int](38 * $ds)
 
-    # Close button
+    # Close button (accent green)
     $closeBtn = New-Object System.Windows.Forms.Button
     $closeBtn.Text = "Close"
     $closeBtn.Font = $labelFont
-    $closeBtn.Size = New-Object System.Drawing.Size(80, 32)
-    $closeBtn.Location = New-Object System.Drawing.Point(20, $y)
+    $closeBtn.Size = New-Object System.Drawing.Size($cw, $bh)
+    $closeBtn.Location = New-Object System.Drawing.Point($m, $y)
     $closeBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
-    $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $closeBtn.FlatAppearance.BorderSize = 0
+    $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(76, 175, 80)
+    $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(255, 255, 255)
     $closeBtn.Add_Click({ $settings.Close() })
     $settings.Controls.Add($closeBtn)
+
+    # Auto-size form to fit content
+    $settings.ClientSize = New-Object System.Drawing.Size(($cw + $m * 2), ($y + $bh + $m))
 
     $settings.ShowDialog() | Out-Null
     $settings.Dispose()
@@ -1460,15 +1675,26 @@ function Show-SettingsPanel {
 function Update-TrayIcon {
     $info = Get-BatteryInfo
 
-    # Destroy previous icon handle
-    if ($script:lastIconHandle) {
-        [Win32Icon]::DestroyIcon($script:lastIconHandle) | Out-Null
-        $script:lastIconHandle = $null
-    }
+    # Only regenerate icon when state actually changes
+    $needsNewIcon = ($info.Percent -ne $script:cachedIconPercent) -or
+                    ($info.IsCharging -ne $script:cachedIconCharging) -or
+                    ($info.IsFullyCharged -ne $script:cachedIconFullyCharged)
 
-    $iconResult = New-BatteryIcon -Percent $info.Percent -Status $info.StatusText
-    $script:lastIconHandle = $iconResult.Handle
-    $script:notifyIcon.Icon = $iconResult.Icon
+    if ($needsNewIcon) {
+        # Destroy previous icon handle
+        if ($script:lastIconHandle) {
+            [Win32Icon]::DestroyIcon($script:lastIconHandle) | Out-Null
+            $script:lastIconHandle = $null
+        }
+
+        $iconResult = New-BatteryIcon -Percent $info.Percent -Status $info.StatusText
+        $script:lastIconHandle = $iconResult.Handle
+        $script:notifyIcon.Icon = $iconResult.Icon
+
+        $script:cachedIconPercent = $info.Percent
+        $script:cachedIconCharging = $info.IsCharging
+        $script:cachedIconFullyCharged = $info.IsFullyCharged
+    }
 
     # Build tooltip (max 127 chars)
     if ($info.NoBattery) {
@@ -1478,7 +1704,7 @@ function Update-TrayIcon {
         if ($info.TimeString -and $info.TimeString -ne "N/A (plugged in)") {
             $tipText += " | $($info.TimeString)"
         }
-        if ($tipText.Length -gt 127) { $tipText = $tipText.Substring(0, 127) }
+        if ($tipText.Length -gt 127) { $tipText = $tipText.Substring(0, 124) + "..." }
         $script:notifyIcon.Text = $tipText
     }
 
@@ -1494,8 +1720,13 @@ function Update-TrayIcon {
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+$script:config = Load-Config
+$script:positionLocked = $script:config.PositionLocked
 $script:lastIconHandle = $null
 $script:lastBatteryInfo = $null
+$script:cachedIconPercent = -1
+$script:cachedIconCharging = $null
+$script:cachedIconFullyCharged = $null
 
 # Hidden main form (message pump owner)
 $script:mainForm = New-Object System.Windows.Forms.Form
@@ -1597,28 +1828,32 @@ $script:notifyIcon.Add_MouseClick({
 
 # Timer for periodic updates
 $script:timer = New-Object System.Windows.Forms.Timer
-$script:timer.Interval = 3000  # 3 seconds for responsive charging state detection
-$script:timer.Add_Tick({ Update-TrayIcon })
+$script:timer.Interval = $script:config.RefreshInterval
+$script:timer.Add_Tick({
+    try { Update-TrayIcon } catch {}
+})
 
 # Pulse timer for charging animation (smooth pulsing glow effect)
 $script:pulseTimer = New-Object System.Windows.Forms.Timer
 $script:pulseTimer.Interval = 50  # 50ms for smooth animation (~20 FPS)
 $script:pulseTimer.Add_Tick({
-    if ($script:barIsCharging) {
-        # Oscillate alpha between 80 and 180
-        $script:pulseAlpha += $script:pulseDirection * 4
-        if ($script:pulseAlpha -ge 180) {
-            $script:pulseAlpha = 180
-            $script:pulseDirection = -1
-        } elseif ($script:pulseAlpha -le 80) {
-            $script:pulseAlpha = 80
-            $script:pulseDirection = 1
+    try {
+        if ($script:barIsCharging) {
+            # Oscillate alpha between 80 and 180
+            $script:pulseAlpha += $script:pulseDirection * 4
+            if ($script:pulseAlpha -ge 180) {
+                $script:pulseAlpha = 180
+                $script:pulseDirection = -1
+            } elseif ($script:pulseAlpha -le 80) {
+                $script:pulseAlpha = 80
+                $script:pulseDirection = 1
+            }
+            # Trigger repaint
+            if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+                $script:floatingBar.Invalidate()
+            }
         }
-        # Trigger repaint
-        if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-            $script:floatingBar.Invalidate()
-        }
-    }
+    } catch {}
 })
 $script:pulseTimer.Start()
 
@@ -1648,6 +1883,9 @@ $script:mainForm.Add_FormClosing({
     if ($script:lastIconHandle) {
         [Win32Icon]::DestroyIcon($script:lastIconHandle) | Out-Null
     }
+    # Dispose cached GDI objects
+    if ($null -ne $script:pillFont) { $script:pillFont.Dispose() }
+    if ($null -ne $script:pillStringFormat) { $script:pillStringFormat.Dispose() }
     $script:mutex.ReleaseMutex()
     $script:mutex.Dispose()
 })
