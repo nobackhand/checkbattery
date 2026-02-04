@@ -9,7 +9,7 @@
 
 ## Architecture
 
-- **BatteryWidget.ps1** — Main widget (~1150 lines). Creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position.
+- **BatteryWidget.ps1** — Main widget (~2800 lines). Creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position. Supports dark/light/auto themes, configurable pill size and display mode, accent color presets, battery history sparkline, and fullscreen auto-hide.
 - **Build.ps1** — Compiles `BatteryWidget.ps1` to `BatteryWidget.exe` using `Invoke-PS2EXE`.
 - **CheckBattery.ps1** — Standalone CLI script for quick battery status checks.
 - **CheckBattery.bat** — Batch launcher for `CheckBattery.ps1`.
@@ -38,7 +38,7 @@
 ### Detail Popup
 - Hover over the pill (500ms delay) to show: percent, capacity, charge/discharge rate, time remaining with ETA, elapsed time, full runtime estimate, battery wear.
 - Non-modal popup stays open while mouse is over pill or popup, dismisses when mouse leaves both.
-- 420px wide, positioned near the pill, auto-sized height.
+- 360px wide (DPI-scaled), positioned near the pill, auto-sized height. Positioning is deferred until after content layout for accurate screen-edge clamping.
 - Tray icon left-click still uses modal popup (closes on deactivate or Escape).
 
 ### Single Instance
@@ -73,6 +73,27 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 ```
 
 ## Changelog
+
+### 2026-02-03 — Compact Popup & Positioning Fix
+- **Compact popup layout** — reduced popup height ~40%: width 440→360, fonts 9.5→8.5pt, title 11→10pt, row height 28→22, sparkline 40→30px, progress bar 16→12px, label column 130→100, tighter gaps
+- **Fixed popup clipping off-screen** — positioning was calculated using stale placeholder size (420×400) before content layout; moved positioning to after `ClientSize` is set so screen-edge clamping uses actual final dimensions
+- Both `Show-HoverPopup` and `Show-BatteryPopup` updated with identical changes
+
+### 2026-02-03 — Design Elevation (Visual, Motion, Personalization)
+- **Better glass effect** — replaced flat 1px highlight with convex glass: 6px top gradient band, 4px bottom shadow band, 3px accent glow at charge boundary
+- **Smooth color transitions** — accent color lerps 30% per tick instead of hard-snapping at thresholds (~15s convergence)
+- **Plug/unplug flash** — 750ms white flash overlay when AC state changes for instant visual confirmation
+- **Custom GDI+ progress bar** — replaced WinForms ProgressBar with dark-themed rounded rect bar, gradient fill, glass highlight (380x16)
+- **Popup fade in/out** — 150ms fade-in, 100ms fade-out using 16ms opacity timers
+- **Snap-to-edge dragging** — pill magnetically snaps to 8px from screen edge when dragged within 15px (multi-monitor aware)
+- **Low battery warnings** — 15%: pulsing red border (4.7s cycle); 10%: opacity oscillation + notification card; 5%: critical notification card (slides in, auto-dismiss 10s)
+- **Configurable display modes** — time-only (default), percent-only, or stacked (% + time); selectable in Settings
+- **Pill size variants** — Compact (80x28), Normal (108x34), Expanded (140x42); selectable in Settings
+- **Battery history sparkline** — 380x40 graph in popup showing last 2 hours of battery %, green bands for charging periods
+- **Accent color picker** — 8 preset colors (Green, Blue, Purple, Cyan, Pink, Teal, Orange, White) in Settings; warning colors stay fixed
+- **Theme system** — Dark (default), Light, Auto (follows Windows `AppsUseLightTheme` registry); pill/popup colors update via `$script:theme` refs
+- **Auto-hide in fullscreen** — P/Invoke `GetForegroundWindow`/`GetWindowRect` fullscreen detection, 1-second check, toggle in Settings
+- Config schema extended: `DisplayMode`, `PillSize`, `Theme`, `AccentColorIndex`, `AutoHideFullscreen`
 
 ### 2026-01-29 — Hover Popup & Faster Charging Detection
 - **Hover-to-show popup** — hover over pill for 500ms to show detail popup (non-modal)
