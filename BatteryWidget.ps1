@@ -97,6 +97,8 @@ $script:theme = @{
     TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
 }
 
+$script:appVersion = "1.0.0"
+
 function Get-SystemTheme {
     try {
         $regPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
@@ -2576,6 +2578,139 @@ function Show-SettingsPanel {
     $settings.Dispose()
 }
 
+function Show-AboutDialog {
+    $about = New-Object System.Windows.Forms.Form
+    $about.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $about.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+    $about.ShowInTaskbar = $false
+    $about.TopMost = $true
+    $about.BackColor = $script:theme.PopupBg
+    $about.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+    $about.KeyPreview = $true
+    Enable-DoubleBuffering -Form $about
+
+    # Drop shadow
+    $about.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($about.Handle) })
+
+    # Rounded border paint
+    $about.Add_Paint({
+        param($sender, $e)
+        $g = $e.Graphics
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $r = 10; $rd2 = $r * 2
+        $bw = $sender.Width - 1; $bh = $sender.Height - 1
+        $borderPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $borderPath.AddArc(0, 0, $rd2, $rd2, 180, 90)
+        $borderPath.AddArc($bw - $rd2, 0, $rd2, $rd2, 270, 90)
+        $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
+        $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
+        $borderPath.CloseFigure()
+        $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
+        $g.DrawPath($borderPen, $borderPath)
+        $borderPen.Dispose(); $borderPath.Dispose()
+    })
+
+    # DPI scale
+    $gDpi = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $ds = $gDpi.DpiX / 96.0
+    $gDpi.Dispose()
+
+    $fw = [int](320 * $ds)
+    $m = [int](30 * $ds)
+    $y = $m
+
+    # Title
+    $titleLabel = New-Object System.Windows.Forms.Label
+    $titleLabel.Text = "BatteryPill"
+    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI Semibold", (12 * $ds), [System.Drawing.FontStyle]::Bold)
+    $titleLabel.ForeColor = $script:theme.TextPrimary
+    $titleLabel.AutoSize = $true
+    $titleLabel.Location = New-Object System.Drawing.Point($m, $y)
+    $about.Controls.Add($titleLabel)
+    $y += [int](30 * $ds)
+
+    # Version
+    $versionLabel = New-Object System.Windows.Forms.Label
+    $versionLabel.Text = "Version $script:appVersion"
+    $versionLabel.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
+    $versionLabel.ForeColor = $script:theme.TextDim
+    $versionLabel.AutoSize = $true
+    $versionLabel.Location = New-Object System.Drawing.Point($m, $y)
+    $about.Controls.Add($versionLabel)
+    $y += [int](24 * $ds)
+
+    # Description
+    $descLabel = New-Object System.Windows.Forms.Label
+    $descLabel.Text = "Windows battery monitor with floating pill"
+    $descLabel.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
+    $descLabel.ForeColor = $script:theme.TextLight
+    $descLabel.AutoSize = $true
+    $descLabel.MaximumSize = New-Object System.Drawing.Size(($fw - $m * 2), 0)
+    $descLabel.Location = New-Object System.Drawing.Point($m, $y)
+    $about.Controls.Add($descLabel)
+    $y += [int](30 * $ds)
+
+    # Website link
+    $siteLink = New-Object System.Windows.Forms.LinkLabel
+    $siteLink.Text = "batterypill.com"
+    $siteLink.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
+    $siteLink.LinkColor = [System.Drawing.Color]::FromArgb(100, 149, 237)
+    $siteLink.ActiveLinkColor = [System.Drawing.Color]::FromArgb(130, 170, 255)
+    $siteLink.AutoSize = $true
+    $siteLink.Location = New-Object System.Drawing.Point($m, $y)
+    $siteLink.Add_LinkClicked({ Start-Process "https://batterypill.com" })
+    $about.Controls.Add($siteLink)
+    $y += [int](22 * $ds)
+
+    # Donate link
+    $donateLink = New-Object System.Windows.Forms.LinkLabel
+    $donateLink.Text = "Buy me a coffee"
+    $donateLink.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
+    $donateLink.LinkColor = [System.Drawing.Color]::FromArgb(255, 200, 60)
+    $donateLink.ActiveLinkColor = [System.Drawing.Color]::FromArgb(255, 220, 100)
+    $donateLink.AutoSize = $true
+    $donateLink.Location = New-Object System.Drawing.Point($m, $y)
+    $donateLink.Add_LinkClicked({ Start-Process "https://buymeacoffee.com/nobackhand" })
+    $about.Controls.Add($donateLink)
+    $y += [int](34 * $ds)
+
+    # Footer
+    $footerLabel = New-Object System.Windows.Forms.Label
+    $footerLabel.Text = "Built with PowerShell + WinForms"
+    $footerLabel.Font = New-Object System.Drawing.Font("Segoe UI", (7 * $ds))
+    $footerLabel.ForeColor = $script:theme.TextMuted
+    $footerLabel.AutoSize = $true
+    $footerLabel.Location = New-Object System.Drawing.Point($m, $y)
+    $about.Controls.Add($footerLabel)
+    $y += [int](20 * $ds)
+
+    # Set form size
+    $fh = $y + $m
+    $about.ClientSize = New-Object System.Drawing.Size($fw, $fh)
+
+    # Rounded region
+    $prd = 20; $pw = $about.ClientSize.Width; $ph = $about.ClientSize.Height
+    $regionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $regionPath.AddArc(0, 0, $prd, $prd, 180, 90)
+    $regionPath.AddArc($pw - $prd - 1, 0, $prd, $prd, 270, 90)
+    $regionPath.AddArc($pw - $prd - 1, $ph - $prd - 1, $prd, $prd, 0, 90)
+    $regionPath.AddArc(0, $ph - $prd - 1, $prd, $prd, 90, 90)
+    $regionPath.CloseFigure()
+    $about.Region = New-Object System.Drawing.Region($regionPath)
+
+    # Close on Escape
+    $about.Add_KeyDown({
+        param($sender, $e)
+        if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $about.Close() }
+    })
+
+    # Close on deactivate (click outside)
+    $about.Add_Deactivate({ $about.Close() })
+
+    $about.ShowDialog() | Out-Null
+    $about.Dispose()
+}
+
 # ============================================================
 # UPDATE FUNCTIONS
 # ============================================================
@@ -2718,6 +2853,11 @@ $pillSeparator1 = New-Object System.Windows.Forms.ToolStripSeparator
 $pillRefreshItem = New-Object System.Windows.Forms.ToolStripMenuItem("Refresh")
 $pillRefreshItem.Add_Click({ Update-TrayIcon })
 
+$pillAboutItem = New-Object System.Windows.Forms.ToolStripMenuItem("About")
+$pillAboutItem.Add_Click({ Show-AboutDialog })
+
+$pillSeparator2 = New-Object System.Windows.Forms.ToolStripSeparator
+
 $pillExitItem = New-Object System.Windows.Forms.ToolStripMenuItem("Exit")
 $pillExitItem.Add_Click({
     $script:timer.Stop()
@@ -2732,6 +2872,8 @@ $pillContextMenu.Items.Add($pillSettingsItem) | Out-Null
 $pillContextMenu.Items.Add($pillPowerItem) | Out-Null
 $pillContextMenu.Items.Add($pillSeparator1) | Out-Null
 $pillContextMenu.Items.Add($pillRefreshItem) | Out-Null
+$pillContextMenu.Items.Add($pillAboutItem) | Out-Null
+$pillContextMenu.Items.Add($pillSeparator2) | Out-Null
 $pillContextMenu.Items.Add($pillExitItem) | Out-Null
 
 $script:floatingBar.ContextMenuStrip = $pillContextMenu
@@ -2758,6 +2900,9 @@ $trayPowerItem = New-Object System.Windows.Forms.ToolStripMenuItem("Power Plan")
 $refreshItem = New-Object System.Windows.Forms.ToolStripMenuItem("Refresh")
 $refreshItem.Add_Click({ Update-TrayIcon })
 
+$aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem("About")
+$aboutItem.Add_Click({ Show-AboutDialog })
+
 $separatorItem = New-Object System.Windows.Forms.ToolStripSeparator
 
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem("Exit")
@@ -2777,6 +2922,7 @@ $contextMenu.Items.Add($toggleBarItem) | Out-Null
 $contextMenu.Items.Add($settingsItem) | Out-Null
 $contextMenu.Items.Add($trayPowerItem) | Out-Null
 $contextMenu.Items.Add($refreshItem) | Out-Null
+$contextMenu.Items.Add($aboutItem) | Out-Null
 $contextMenu.Items.Add($separatorItem) | Out-Null
 $contextMenu.Items.Add($exitItem) | Out-Null
 
