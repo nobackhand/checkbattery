@@ -97,7 +97,7 @@ $script:theme = @{
     TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
 }
 
-$script:appVersion = "1.0.0"
+$script:appVersion = "1.2.0"
 
 function Get-SystemTheme {
     try {
@@ -776,6 +776,7 @@ function Load-Config {
         Theme = "dark"
         AccentColorIndex = 0
         AutoHideFullscreen = $false
+        FirstRunShown = $false
         BatteryHistory = @()
         EmaRate = -1
         LastValidRate = -1
@@ -811,6 +812,9 @@ function Load-Config {
             }
             if ($null -ne $json.AutoHideFullscreen) {
                 $default.AutoHideFullscreen = [bool]$json.AutoHideFullscreen
+            }
+            if ($null -ne $json.FirstRunShown) {
+                $default.FirstRunShown = [bool]$json.FirstRunShown
             }
             # Load battery history from config
             if ($null -ne $json.BatteryHistory -and $json.BatteryHistory.Count -gt 0) {
@@ -868,12 +872,15 @@ function Save-Config {
             Theme = $script:config.Theme
             AccentColorIndex = $script:config.AccentColorIndex
             AutoHideFullscreen = $script:config.AutoHideFullscreen
+            FirstRunShown = $script:config.FirstRunShown
             BatteryHistory = $historyToSave
             EmaRate = $script:emaRate
             LastValidRate = $script:lastValidRate
             ConfigSavedAt = (Get-Date).ToString("o")
         } | ConvertTo-Json -Depth 3 | Set-Content $configPath -Force
-    } catch {}
+    } catch {
+        Show-BatteryNotification "Config Save Failed" "Settings may not persist"
+    }
 }
 
 # ============================================================
@@ -1024,6 +1031,17 @@ function Update-PillSize {
         $script:pillFont2 = New-Object System.Drawing.Font("Segoe UI", $dims.FontSize2, [System.Drawing.FontStyle]::Regular)
     }
     $script:floatingBar.Invalidate()
+}
+
+function Test-PositionOnScreen {
+    param([int]$X, [int]$Y, [int]$Width, [int]$Height)
+    # Check if the center of the pill falls within any connected screen's working area
+    $centerX = $X + [int]($Width / 2)
+    $centerY = $Y + [int]($Height / 2)
+    foreach ($scr in [System.Windows.Forms.Screen]::AllScreens) {
+        if ($scr.WorkingArea.Contains($centerX, $centerY)) { return $true }
+    }
+    return $false
 }
 
 function New-FloatingBar {
@@ -1290,6 +1308,7 @@ function New-FloatingBar {
             $script:isDragging = $true
             $script:didDrag = $false
             $script:dragOffset = $e.Location
+            $script:floatingBar.Cursor = [System.Windows.Forms.Cursors]::SizeAll
         }
     }
     $dragMove = {
@@ -1326,6 +1345,7 @@ function New-FloatingBar {
         param($sender, $e)
         if ($script:isDragging) {
             $script:isDragging = $false
+            $script:floatingBar.Cursor = [System.Windows.Forms.Cursors]::Default
             if ($script:didDrag) {
                 $script:config.X = $script:floatingBar.Left
                 $script:config.Y = $script:floatingBar.Top
@@ -1340,15 +1360,22 @@ function New-FloatingBar {
     $form.Add_MouseMove($dragMove)
     $form.Add_MouseUp($dragUp)
 
-    # Set position from config
+    # Set position from config (validate against current screens)
+    $useDefault = $true
     if ($script:config.X -ge 0 -and $script:config.Y -ge 0) {
-        $form.Location = New-Object System.Drawing.Point($script:config.X, $script:config.Y)
-    } else {
+        if (Test-PositionOnScreen -X $script:config.X -Y $script:config.Y -Width $form.Width -Height $form.Height) {
+            $form.Location = New-Object System.Drawing.Point($script:config.X, $script:config.Y)
+            $useDefault = $false
+        }
+    }
+    if ($useDefault) {
         $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
         $form.Location = New-Object System.Drawing.Point(
             ($screen.Right - $form.Width - 10),
             ($screen.Bottom - $form.Height - 10)
         )
+        $script:config.X = $form.Left
+        $script:config.Y = $form.Top
     }
 
     return $form
@@ -1651,7 +1678,16 @@ function Show-BatteryNotification {
     $notif.Opacity = 0
     Enable-DoubleBuffering -Form $notif
 
-    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    # 3C. Escape to dismiss
+    $notif.KeyPreview = $true
+    $notif.Add_KeyDown({ if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $script:notifPhase = "out" } })
+
+    # Position on same screen as pill (fallback to primary)
+    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+        $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
+    } else {
+        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    }
     $notif.Location = New-Object System.Drawing.Point(($screen.Right - $nW - 10), ($screen.Bottom - 10))
 
     # Rounded region (DPI-scaled)
@@ -1709,6 +1745,12 @@ function Show-BatteryNotification {
     $nSub.AutoSize = $true
     $nSub.MaximumSize = New-Object System.Drawing.Size(($nW - $nPad * 2), 0)
     $notif.Controls.Add($nSub)
+
+    # Click-to-dismiss on notification and its labels
+    $dismissClick = { $script:notifPhase = "out" }
+    $notif.Add_Click($dismissClick)
+    $nTitle.Add_Click($dismissClick)
+    $nSub.Add_Click($dismissClick)
 
     $notif.Show()
 
@@ -2142,6 +2184,125 @@ function Set-DarkComboBox {
     })
 }
 
+function Show-FirstRunTooltip {
+    if ($script:config.FirstRunShown) { return }
+    $script:config.FirstRunShown = $true
+    Save-Config
+
+    $g = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $ds = $g.DpiX / 96.0
+    $g.Dispose()
+    $ttW = [int](260 * $ds); $ttH = [int](110 * $ds)
+
+    $script:firstRunTip = New-Object System.Windows.Forms.Form
+    $script:firstRunTip.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $script:firstRunTip.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+    $script:firstRunTip.Size = New-Object System.Drawing.Size($ttW, $ttH)
+    $script:firstRunTip.TopMost = $true
+    $script:firstRunTip.ShowInTaskbar = $false
+    $script:firstRunTip.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 34)
+    $script:firstRunTip.Opacity = 0
+    Enable-DoubleBuffering -Form $script:firstRunTip
+
+    # Rounded region
+    $tr = 8; $td = $tr * 2
+    $tPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $tPath.AddArc(0, 0, $td, $td, 180, 90)
+    $tPath.AddArc($ttW - $td - 2, 0, $td, $td, 270, 90)
+    $tPath.AddArc($ttW - $td - 2, $ttH - $td - 2, $td, $td, 0, 90)
+    $tPath.AddArc(0, $ttH - $td - 2, $td, $td, 90, 90)
+    $tPath.CloseFigure()
+    $script:firstRunTip.Region = New-Object System.Drawing.Region($tPath)
+    $tPath.Dispose()
+
+    $script:firstRunTip.Add_Paint({
+        param($sender, $e)
+        $tg = $e.Graphics
+        $tg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $bPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $br = 8; $bd = $br * 2
+        $bPath.AddArc(0, 0, $bd, $bd, 180, 90)
+        $bPath.AddArc($sender.Width - $bd - 2, 0, $bd, $bd, 270, 90)
+        $bPath.AddArc($sender.Width - $bd - 2, $sender.Height - $bd - 2, $bd, $bd, 0, 90)
+        $bPath.AddArc(0, $sender.Height - $bd - 2, $bd, $bd, 90, 90)
+        $bPath.CloseFigure()
+        $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, 45, 212, 100), 1)
+        $tg.DrawPath($bPen, $bPath)
+        $bPen.Dispose(); $bPath.Dispose()
+        # Green accent bar on left
+        $acBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(45, 212, 100))
+        $tg.FillRectangle($acBrush, 0, 0, 3, $sender.Height)
+        $acBrush.Dispose()
+    })
+
+    $pad = [int](14 * $ds)
+    $tips = @(
+        "Hover over the pill for details"
+        "Drag to move, snaps to screen edges"
+        "Right-click for settings & options"
+    )
+    $script:firstRunFont = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Regular)
+    $ty = $pad
+    foreach ($text in $tips) {
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Text = "  $text"
+        $lbl.Font = $script:firstRunFont
+        $lbl.ForeColor = $script:theme.TextLight
+        $lbl.Location = New-Object System.Drawing.Point($pad, $ty)
+        $lbl.AutoSize = $true
+        $lbl.MaximumSize = New-Object System.Drawing.Size(($ttW - $pad * 2), 0)
+        $lbl.Add_Click({ $script:tipPhase = "out" })
+        $script:firstRunTip.Controls.Add($lbl)
+        $ty += [int](24 * $ds)
+    }
+
+    # Click to dismiss
+    $script:firstRunTip.Add_Click({ $script:tipPhase = "out" })
+
+    # Position near pill
+    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+        $barLoc = $script:floatingBar.Location
+        $barSize = $script:floatingBar.Size
+        $tipX = $barLoc.X + ($barSize.Width / 2) - ($ttW / 2)
+        $tipY = $barLoc.Y - $ttH - 8
+        $screen = [System.Windows.Forms.Screen]::FromPoint($barLoc).WorkingArea
+        if ($tipY -lt $screen.Top) { $tipY = $barLoc.Y + $barSize.Height + 8 }
+        $tipX = [math]::Max($screen.Left + 4, [math]::Min($tipX, $screen.Right - $ttW - 4))
+        $tipY = [math]::Max($screen.Top + 4, [math]::Min($tipY, $screen.Bottom - $ttH - 4))
+        $script:firstRunTip.Location = New-Object System.Drawing.Point([int]$tipX, [int]$tipY)
+    }
+
+    $script:firstRunTip.Show()
+
+    # Fade in then auto-dismiss after 8s
+    $script:tipPhase = "in"
+    $script:tipAnimStart = Get-Date
+    $script:tipHoldStart = $null
+    $script:firstRunTimer = New-Object System.Windows.Forms.Timer
+    $script:firstRunTimer.Interval = 16
+    $script:firstRunTimer.Add_Tick({
+        if ($null -eq $script:firstRunTip -or $script:firstRunTip.IsDisposed) {
+            $script:firstRunTimer.Stop(); $script:firstRunTimer.Dispose(); return
+        }
+        if ($script:tipPhase -eq "in") {
+            $elapsed = ((Get-Date) - $script:tipAnimStart).TotalMilliseconds
+            $t = [math]::Min(1.0, $elapsed / 200)
+            $script:firstRunTip.Opacity = $t
+            if ($t -ge 1.0) { $script:tipPhase = "hold"; $script:tipHoldStart = Get-Date }
+        } elseif ($script:tipPhase -eq "hold") {
+            if (((Get-Date) - $script:tipHoldStart).TotalSeconds -ge 8) { $script:tipPhase = "out" }
+        } elseif ($script:tipPhase -eq "out") {
+            $script:firstRunTip.Opacity -= 0.08
+            if ($script:firstRunTip.Opacity -le 0) {
+                $script:firstRunTimer.Stop(); $script:firstRunTimer.Dispose()
+                $script:firstRunFont.Dispose()
+                $script:firstRunTip.Close(); $script:firstRunTip.Dispose()
+            }
+        }
+    })
+    $script:firstRunTimer.Start()
+}
+
 function Show-SettingsPanel {
     # Manual DPI scaling — WinForms AutoScaleMode doesn't work reliably with SetProcessDPIAware()
     $g = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
@@ -2166,6 +2327,12 @@ function Show-SettingsPanel {
     $cw = [int](280 * $ds)
     $bh = [int](34 * $ds)
     $y = $m
+
+    # Settings tooltips
+    $settingsTooltip = New-Object System.Windows.Forms.ToolTip
+    $settingsTooltip.InitialDelay = 400
+    $settingsTooltip.ReshowDelay = 200
+    $settings.Add_FormClosed({ $settingsTooltip.Dispose() })
 
     # --- Behavior section header ---
     $bhvSep = New-Object System.Windows.Forms.Label
@@ -2198,6 +2365,7 @@ function Show-SettingsPanel {
         }
     })
     $settings.Controls.Add($autoStartCheck)
+    $settingsTooltip.SetToolTip($autoStartCheck, "Automatically launch BatteryPill when Windows starts")
     $y += [int](30 * $ds)
 
     # Show floating pill checkbox
@@ -2218,6 +2386,7 @@ function Show-SettingsPanel {
         }
     })
     $settings.Controls.Add($showBarCheck)
+    $settingsTooltip.SetToolTip($showBarCheck, "Show or hide the floating battery pill on your desktop")
     $y += [int](30 * $ds)
 
     # Lock position checkbox
@@ -2234,6 +2403,7 @@ function Show-SettingsPanel {
         Save-Config
     })
     $settings.Controls.Add($lockPosCheck)
+    $settingsTooltip.SetToolTip($lockPosCheck, "Prevent accidental dragging of the pill")
     $y += [int](30 * $ds)
 
     # Auto-hide in fullscreen checkbox
@@ -2249,6 +2419,7 @@ function Show-SettingsPanel {
         Save-Config
     })
     $settings.Controls.Add($autoHideCheck)
+    $settingsTooltip.SetToolTip($autoHideCheck, "Hide pill when fullscreen apps are active (games, videos)")
     $y += [int](46 * $ds)
 
     # --- Appearance section header ---
@@ -2300,6 +2471,7 @@ function Show-SettingsPanel {
     })
     Set-DarkComboBox -Combo $displayCombo
     $settings.Controls.Add($displayCombo)
+    $settingsTooltip.SetToolTip($displayCombo, "Choose what information appears on the pill")
     $y += [int](42 * $ds)
 
     # --- Pill size section ---
@@ -2335,6 +2507,7 @@ function Show-SettingsPanel {
     })
     Set-DarkComboBox -Combo $sizeCombo
     $settings.Controls.Add($sizeCombo)
+    $settingsTooltip.SetToolTip($sizeCombo, "Adjust the size of the floating pill")
     $y += [int](42 * $ds)
 
     # --- Accent color section ---
@@ -2436,6 +2609,7 @@ function Show-SettingsPanel {
     })
     Set-DarkComboBox -Combo $themeCombo
     $settings.Controls.Add($themeCombo)
+    $settingsTooltip.SetToolTip($themeCombo, "Color scheme (Auto follows Windows theme)")
     $y += [int](54 * $ds)
 
     # --- Advanced section header ---
@@ -2528,6 +2702,7 @@ function Show-SettingsPanel {
     })
     Set-DarkComboBox -Combo $refreshCombo
     $settings.Controls.Add($refreshCombo)
+    $settingsTooltip.SetToolTip($refreshCombo, "How often battery data refreshes (lower = more CPU)")
     $y += [int](54 * $ds)
 
     # --- Buttons section ---
@@ -2554,8 +2729,10 @@ function Show-SettingsPanel {
         $script:config.X = $newX
         $script:config.Y = $newY
         Save-Config
+        Show-BatteryNotification "Position Reset" "Pill moved to default location"
     })
     $settings.Controls.Add($resetBtn)
+    $settingsTooltip.SetToolTip($resetBtn, "Move pill back to default position (bottom-right)")
     $y += [int](38 * $ds)
 
     # Close button (accent green)
@@ -2812,6 +2989,9 @@ $script:notifyIcon.Visible = $true
 $script:floatingBar = New-FloatingBar
 $script:floatingBar.Show()
 
+# First-run welcome tooltip
+Show-FirstRunTooltip
+
 # Register sleep/wake event - reset EMA state on resume from sleep/hibernate
 [Microsoft.Win32.SystemEvents]::add_PowerModeChanged({
     param($sender, $e)
@@ -2826,6 +3006,51 @@ $script:floatingBar.Show()
     }
 })
 
+# Re-validate pill position when displays change (monitor disconnect/resolution change)
+[Microsoft.Win32.SystemEvents]::add_DisplaySettingsChanged({
+    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+        if (-not (Test-PositionOnScreen -X $script:floatingBar.Left -Y $script:floatingBar.Top -Width $script:floatingBar.Width -Height $script:floatingBar.Height)) {
+            $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+            $newX = $screen.Right - $script:floatingBar.Width - 10
+            $newY = $screen.Bottom - $script:floatingBar.Height - 10
+            $script:floatingBar.Location = New-Object System.Drawing.Point($newX, $newY)
+            $script:config.X = $newX
+            $script:config.Y = $newY
+            Save-Config
+        }
+    }
+})
+
+# Auto-dismiss timer for pill context menu (closes when mouse moves away)
+$script:menuDismissTimer = New-Object System.Windows.Forms.Timer
+$script:menuDismissTimer.Interval = 200
+$script:menuDismissTimer.Add_Tick({
+    if ($null -eq $pillContextMenu -or -not $pillContextMenu.Visible) {
+        $script:menuDismissTimer.Stop()
+        return
+    }
+    $mousePos = [System.Windows.Forms.Cursor]::Position
+    $overMenu = $false
+    # Main menu bounds + 10px grace
+    $menuRect = New-Object System.Drawing.Rectangle($pillContextMenu.Location, $pillContextMenu.Size)
+    $menuRect.Inflate(10, 10)
+    if ($menuRect.Contains($mousePos)) { $overMenu = $true }
+    # Check any visible submenu (Power Plan dropdown)
+    if (-not $overMenu) {
+        foreach ($item in $pillContextMenu.Items) {
+            if ($item -is [System.Windows.Forms.ToolStripMenuItem] -and $item.HasDropDown -and $item.DropDown.Visible) {
+                $subRect = New-Object System.Drawing.Rectangle($item.DropDown.Location, $item.DropDown.Size)
+                $subRect.Inflate(10, 10)
+                if ($subRect.Contains($mousePos)) { $overMenu = $true; break }
+            }
+        }
+    }
+    if (-not $overMenu) {
+        $script:menuDismissTimer.Stop()
+        $pillContextMenu.Close()
+    }
+})
+
 # Pill context menu (right-click on floating bar)
 $pillContextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $pillContextMenu.Add_Opening({
@@ -2834,7 +3059,9 @@ $pillContextMenu.Add_Opening({
         Close-HoverPopup
     }
     Update-PowerPlanMenu -MenuItem $pillPowerItem
+    $script:menuDismissTimer.Start()
 })
+$pillContextMenu.Add_Closed({ $script:menuDismissTimer.Stop() })
 
 $pillHideItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hide Pill")
 $pillHideItem.Add_Click({
@@ -3036,6 +3263,10 @@ $script:mainForm.Add_FormClosing({
         $script:dismissTimer.Stop()
         $script:dismissTimer.Dispose()
     }
+    if ($null -ne $script:menuDismissTimer) {
+        $script:menuDismissTimer.Stop()
+        $script:menuDismissTimer.Dispose()
+    }
     # Close hover popup and fade timers
     if ($null -ne $script:fadeInTimer) { $script:fadeInTimer.Stop(); $script:fadeInTimer.Dispose() }
     if ($null -ne $script:fadeOutTimer) { $script:fadeOutTimer.Stop(); $script:fadeOutTimer.Dispose() }
@@ -3060,6 +3291,7 @@ $script:mainForm.Add_FormClosing({
     if ($null -ne $script:pillBorderPen) { $script:pillBorderPen.Dispose() }
     # Unregister system events to avoid leaks
     [Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($null)
+    [Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($null)
     $script:mutex.ReleaseMutex()
     $script:mutex.Dispose()
 })
