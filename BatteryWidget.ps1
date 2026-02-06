@@ -1052,7 +1052,7 @@ function New-FloatingBar {
     $script:barIsCharging = $false
 
     # Pulse animation state for charging effect
-    $script:pulseAlpha = 100
+    $script:pulseAlpha = 105
     $script:wasChargingLastUpdate = $false
 
     # Smooth color transition state
@@ -1847,7 +1847,7 @@ function Update-FloatingBar {
 
     # Smooth pulse transition: reset alpha when charging starts
     if ($BatteryInfo.IsCharging -and -not $script:wasChargingLastUpdate) {
-        $script:pulseAlpha = 100
+        $script:pulseAlpha = 105
     }
     $script:wasChargingLastUpdate = $BatteryInfo.IsCharging
     Update-PulseTimerState
@@ -3178,9 +3178,9 @@ $script:pulseTimer.Add_Tick({
     try {
         $needsRepaint = $false
         if ($script:barIsCharging) {
-            # Sine-wave breathing pulse: 3-second cycle, alpha 80-180
+            # Sine-wave breathing pulse: 5-second cycle, alpha 90-120
             $t = (Get-Date).Ticks / 10000000.0
-            $script:pulseAlpha = [int](130 + 70 * [Math]::Sin($t * 2.094))
+            $script:pulseAlpha = [int](105 + 15 * [Math]::Sin($t * 1.257))
             $needsRepaint = $true
         }
         # Plug/unplug flash decay (180→0 over ~750ms at 50ms tick = ~12 per tick)
