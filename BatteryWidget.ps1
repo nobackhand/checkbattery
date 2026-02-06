@@ -1090,6 +1090,7 @@ function New-FloatingBar {
     # Hover popup state
     $script:hoverPopup = $null
     $script:hoverPopupVisible = $false
+    $script:estimatingLabel = $null
 
     $form = New-Object System.Windows.Forms.Form
     $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
@@ -1442,15 +1443,24 @@ function New-SparklinePanel {
         }
         $linePen.Dispose()
 
+        # Current value dot at the end of the sparkline
+        if ($count -ge 2) {
+            $lastPt = $points[$count - 1]
+            $dotBrush = New-Object System.Drawing.SolidBrush(
+                [System.Drawing.Color]::FromArgb(255, $acColor.R, $acColor.G, $acColor.B))
+            $sg.FillEllipse($dotBrush, $lastPt.X - 3, $lastPt.Y - 3, 6, 6)
+            $dotBrush.Dispose()
+        }
+
         # 50% dashed guide line
         $halfY = $sh - ((50.0 / 100.0) * ($sh - 4)) - 2
         $dashPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50, 255, 255, 255), 1)
         $dashPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
         $sg.DrawLine($dashPen, 0, [int]$halfY, $sw, [int]$halfY)
         $dashPen.Dispose()
-        $guideFont = New-Object System.Drawing.Font("Segoe UI", 6, [System.Drawing.FontStyle]::Regular)
-        $guideBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(70, 255, 255, 255))
-        $sg.DrawString("50%", $guideFont, $guideBrush, 2, [int]$halfY - 10)
+        $guideFont = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
+        $guideBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, 255, 255, 255))
+        $sg.DrawString("50%", $guideFont, $guideBrush, 2, [int]$halfY - 12)
         $guideBrush.Dispose()
 
         # Time range label (right edge)
@@ -1460,7 +1470,7 @@ function New-SparklinePanel {
             $spanMin = [int](($lastTime - $firstTime).TotalMinutes)
             $spanText = if ($spanMin -ge 60) { "{0}h" -f [math]::Round($spanMin / 60.0, 1) } else { "{0} min" -f $spanMin }
             $spanSize = $sg.MeasureString($spanText, $guideFont)
-            $sg.DrawString($spanText, $guideFont, (New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(70, 255, 255, 255))), ($sw - $spanSize.Width - 2), ($sh - $spanSize.Height - 1))
+            $sg.DrawString($spanText, $guideFont, (New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, 255, 255, 255))), ($sw - $spanSize.Width - 2), ($sh - $spanSize.Height - 1))
         }
         $guideFont.Dispose()
     })
@@ -1481,21 +1491,21 @@ function New-BatteryPopupContent {
     $statusColor = Get-StatusColor -Status $BatteryInfo.StatusText
     $lightGray = $script:theme.TextLight
     $dimGray   = $script:theme.TextDim
-    $labelFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Regular)
-    $valueFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Regular)
-    # Hero fonts for top section (Percent + Time — the data users care about most)
-    $heroLabelFont = New-Object System.Drawing.Font("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Regular)
-    $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Regular)
+    $labelFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
+    $valueFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
+    # Hero fonts for top section (Time — the data users care about most)
+    $heroLabelFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
+    $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
 
     # --- Title (dynamic status) ---
     if ($BatteryInfo.IsFullyCharged) {
         $titleText = "Fully Charged"
     } elseif ($BatteryInfo.IsCharging) {
-        $titleText = "Charging - $($BatteryInfo.Percent)%"
+        $titleText = "Charging"
     } elseif ($BatteryInfo.NoBattery) {
         $titleText = "No Battery"
     } else {
-        $titleText = "Discharging - $($BatteryInfo.Percent)%"
+        $titleText = "Discharging"
     }
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Text = $titleText
@@ -1513,17 +1523,30 @@ function New-BatteryPopupContent {
     $sepLabel.BackColor = $script:theme.Border
     $Form.Controls.Add($sepLabel)
 
+    # --- Hero percentage ---
+    $heroFont = New-Object System.Drawing.Font("Segoe UI Semibold", 18, [System.Drawing.FontStyle]::Bold)
+    $pctText = if ($BatteryInfo.NoBattery) { "N/A" } else { "$($BatteryInfo.PercentExact)%" }
+    $heroLabel = New-Object System.Windows.Forms.Label
+    $heroLabel.Text = $pctText
+    $heroLabel.Font = $heroFont
+    $heroLabel.ForeColor = $statusColor
+    $heroLabel.Location = New-Object System.Drawing.Point(20, [int](38 * $DpiScale))
+    $heroLabel.AutoSize = $true
+    $heroLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+    $Form.Controls.Add($heroLabel)
+
     # --- Row layout (DPI-aware) ---
     $rh = [int](18 * $DpiScale)
+    $heroRh = [int](24 * $DpiScale)
     $lx = 20
-    $vx = [int](68 * $DpiScale)
-    $lw = [int](58 * $DpiScale)
+    $vx = [int](80 * $DpiScale)
+    $lw = [int](70 * $DpiScale)
     $vw = $PopupWidth - $vx - 20
-    $y = [int](32 * $DpiScale)
+    $y = [int](78 * $DpiScale)
 
-    # Helper to add a label+value row
+    # Helper to add a label+value row (value right-aligned)
     function Add-PopupRow {
-        param($TargetForm, $RowY, $Label, $Value, $LFont, $VFont, $DColor, $VColor, $RLx, $RVx, $RLw, $RVw)
+        param($TargetForm, $RowY, $Label, $Value, $LFont, $VFont, $DColor, $VColor, $RLx, $RVx, $RLw, $RVw, $RowHeight)
         $lbl = New-Object System.Windows.Forms.Label
         $lbl.Text = $Label; $lbl.Font = $LFont; $lbl.ForeColor = $DColor
         $lbl.Location = New-Object System.Drawing.Point($RLx, $RowY)
@@ -1532,16 +1555,14 @@ function New-BatteryPopupContent {
         $val = New-Object System.Windows.Forms.Label
         $val.Text = $Value; $val.Font = $VFont; $val.ForeColor = $VColor
         $val.Location = New-Object System.Drawing.Point($RVx, $RowY)
-        $val.AutoSize = $true; $val.MaximumSize = New-Object System.Drawing.Size($RVw, 0)
+        $val.AutoSize = $false
+        $val.Size = New-Object System.Drawing.Size($RVw, $RowHeight)
+        $val.TextAlign = [System.Drawing.ContentAlignment]::TopRight
         $TargetForm.Controls.Add($val)
+        return $val
     }
 
-    # Row 1: Percent (hero row)
-    $pctText = if ($BatteryInfo.NoBattery) { "No Battery" } else { "$($BatteryInfo.PercentExact)%" }
-    Add-PopupRow -TargetForm $Form -RowY $y -Label "Percent:" -Value $pctText -LFont $heroLabelFont -VFont $heroValueFont -DColor $dimGray -VColor $statusColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw
-    $y += $rh
-
-    # Row 2: Capacity
+    # Row 2: Capacity (hidden when N/A)
     if ($BatteryInfo.FullChargeCapacity -gt 0 -and $BatteryInfo.PercentExact -ge 0) {
         $currentCharge = [math]::Round($BatteryInfo.FullChargeCapacity * ($BatteryInfo.PercentExact / 100))
         $capText = "{0:N0} / {1:N0} mWh" -f $currentCharge, $BatteryInfo.FullChargeCapacity
@@ -1550,10 +1571,12 @@ function New-BatteryPopupContent {
     } else {
         $capText = "N/A"
     }
-    Add-PopupRow -TargetForm $Form -RowY $y -Label "Capacity:" -Value $capText -LFont $labelFont -VFont $valueFont -DColor $dimGray -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw
-    $y += $rh
+    if ($capText -ne "N/A") {
+        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Capacity:" -Value $capText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
+        $y += $rh
+    }
 
-    # Row 3: Discharge/Charge Rate
+    # Row 3: Discharge/Charge Rate (hidden when N/A)
     if ($BatteryInfo.IsCharging -and $BatteryInfo.ChargeRate -gt 0) {
         $rateText = "+{0:N0} mW" -f $BatteryInfo.ChargeRate
         $rateColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
@@ -1564,8 +1587,10 @@ function New-BatteryPopupContent {
         $rateText = "N/A"
         $rateColor = $dimGray
     }
-    Add-PopupRow -TargetForm $Form -RowY $y -Label "Rate:" -Value $rateText -LFont $labelFont -VFont $valueFont -DColor $dimGray -VColor $rateColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw
-    $y += $rh
+    if ($rateText -ne "N/A") {
+        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Rate:" -Value $rateText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $rateColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
+        $y += $rh
+    }
 
     # Row 4: Time Remaining with ETA (hero row)
     if ($BatteryInfo.IsFullyCharged) {
@@ -1583,24 +1608,19 @@ function New-BatteryPopupContent {
         $timeText = "Estimating..."
     }
     $timeRowLabel = if ($BatteryInfo.IsCharging) { "To Full:" } else { "Remaining:" }
-    Add-PopupRow -TargetForm $Form -RowY $y -Label $timeRowLabel -Value $timeText -LFont $heroLabelFont -VFont $heroValueFont -DColor $dimGray -VColor $script:theme.TextPrimary -RLx $lx -RVx $vx -RLw $lw -RVw $vw
-    $y += $rh
+    $timeValLabel = Add-PopupRow -TargetForm $Form -RowY $y -Label $timeRowLabel -Value $timeText -LFont $heroLabelFont -VFont $heroValueFont -DColor $dimGray -VColor $script:theme.TextPrimary -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $heroRh
+    if ($timeText -eq "Estimating...") { $script:estimatingLabel = $timeValLabel }
+    $y += $heroRh
 
-    # Separator between hero rows and secondary data
-    $y += [int](2 * $DpiScale)
-    $midSep = New-Object System.Windows.Forms.Label
-    $midSep.Location = New-Object System.Drawing.Point(20, $y)
-    $midSep.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 1)
-    $midSep.BackColor = $script:theme.Border
-    $Form.Controls.Add($midSep)
-    $y += [int](4 * $DpiScale)
+    # Group gap (replaces separator line)
+    $y += [int](6 * $DpiScale)
 
     # Row 5: Elapsed Time
     $elapsedText = "$($BatteryInfo.ElapsedTime) (from $($BatteryInfo.ElapsedSince))"
-    Add-PopupRow -TargetForm $Form -RowY $y -Label "Elapsed:" -Value $elapsedText -LFont $labelFont -VFont $valueFont -DColor $dimGray -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw
+    $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Elapsed:" -Value $elapsedText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
     $y += $rh
 
-    # Row 6: Full Runtime
+    # Row 6: Full Runtime (hidden when N/A)
     if ($BatteryInfo.FullRuntimeMinutes -gt 0) {
         $frH = [math]::Floor($BatteryInfo.FullRuntimeMinutes / 60)
         $frM = $BatteryInfo.FullRuntimeMinutes % 60
@@ -1608,34 +1628,39 @@ function New-BatteryPopupContent {
     } else {
         $fullRtText = "N/A"
     }
-    Add-PopupRow -TargetForm $Form -RowY $y -Label "Runtime:" -Value $fullRtText -LFont $labelFont -VFont $valueFont -DColor $dimGray -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw
-    $y += $rh
+    if ($fullRtText -ne "N/A") {
+        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Runtime:" -Value $fullRtText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
+        $y += $rh
+    }
 
-    # Row 7: Battery Wear
+    # Row 7: Battery Wear (hidden when N/A)
     if ($BatteryInfo.BatteryWearPercent -ge 0 -and $BatteryInfo.DesignCapacity -gt 0) {
         $wearText = "{0:N1}% of {1:N0} mWh" -f $BatteryInfo.BatteryWearPercent, $BatteryInfo.DesignCapacity
     } else {
         $wearText = "N/A"
     }
-    Add-PopupRow -TargetForm $Form -RowY $y -Label "Wear:" -Value $wearText -LFont $labelFont -VFont $valueFont -DColor $dimGray -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw
-    $y += $rh
+    if ($wearText -ne "N/A") {
+        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Wear:" -Value $wearText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
+        $y += $rh
+    }
 
-    # Spacer
-    $y += [int](4 * $DpiScale)
+    # Spacer before sparkline
+    $y += [int](6 * $DpiScale)
 
-    # Battery history sparkline
+    # Battery history sparkline (40px tall)
     $sparkAccent = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
     $sparkPanel = New-SparklinePanel -Y $y -AccentColor $sparkAccent
-    $sparkPanel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 30)
+    $sparkPanel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 40)
     $Form.Controls.Add($sparkPanel)
-    $y += 30
+    $y += 40
 
     # Spacer after sparkline
     $y += [int](4 * $DpiScale)
 
-    # Power source
+    # Power source with icon
+    $powerIcon = if ($BatteryInfo.IsPluggedIn) { [char]0x26A1 } else { [char]0x2022 }
     $powerLabel = New-Object System.Windows.Forms.Label
-    $powerLabel.Text = $BatteryInfo.PowerSource
+    $powerLabel.Text = "$powerIcon $($BatteryInfo.PowerSource)"
     $powerLabel.Font = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
     $powerLabel.ForeColor = $dimGray
     $powerLabel.Location = New-Object System.Drawing.Point(20, $y)
@@ -1644,19 +1669,21 @@ function New-BatteryPopupContent {
     $Form.Controls.Add($powerLabel)
     $y += 16
 
-    # Close hint
-    $hintLabel = New-Object System.Windows.Forms.Label
-    $hintLabel.Text = $CloseHintText
-    $hintLabel.Font = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
-    $hintLabel.ForeColor = $script:theme.TextMuted
-    $hintLabel.Location = New-Object System.Drawing.Point(20, $y)
-    $hintLabel.AutoSize = $true
-    $hintLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
-    $Form.Controls.Add($hintLabel)
+    # Close hint (skip when empty — hover popup passes "")
+    if ($CloseHintText) {
+        $hintLabel = New-Object System.Windows.Forms.Label
+        $hintLabel.Text = $CloseHintText
+        $hintLabel.Font = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
+        $hintLabel.ForeColor = $script:theme.TextMuted
+        $hintLabel.Location = New-Object System.Drawing.Point(20, $y)
+        $hintLabel.AutoSize = $true
+        $hintLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+        $Form.Controls.Add($hintLabel)
+    }
 
     return @{
         TotalHeight = $y + 8
-        Fonts = @($labelFont, $valueFont, $heroLabelFont, $heroValueFont, $titleLabel.Font)
+        Fonts = @($labelFont, $valueFont, $heroLabelFont, $heroValueFont, $heroFont, $titleLabel.Font)
     }
 }
 
@@ -1950,6 +1977,7 @@ function Close-HoverPopup {
         $script:hoverPopup = $null
     }
     $script:hoverPopupVisible = $false
+    $script:estimatingLabel = $null
     # Stop fade-in if running
     if ($null -ne $script:fadeInTimer) { $script:fadeInTimer.Stop() }
 }
@@ -2157,6 +2185,7 @@ function Show-BatteryPopup {
     $popup.Add_KeyDown({ if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $popup.Close() } })
 
     $popup.ShowDialog() | Out-Null
+    $script:estimatingLabel = $null
     $popup.Dispose()
 }
 
@@ -2993,7 +3022,7 @@ $script:floatingBar.Show()
 Show-FirstRunTooltip
 
 # Register sleep/wake event - reset EMA state on resume from sleep/hibernate
-[Microsoft.Win32.SystemEvents]::add_PowerModeChanged({
+$script:powerModeHandler = {
     param($sender, $e)
     if ($e.Mode -eq [Microsoft.Win32.PowerModes]::Resume) {
         $script:emaRate = -1
@@ -3004,10 +3033,11 @@ Show-FirstRunTooltip
         $script:capacityRateMismatchCount = 0
         $script:stateChangeTime = Get-Date  # trigger hysteresis window
     }
-})
+}
+[Microsoft.Win32.SystemEvents]::add_PowerModeChanged($script:powerModeHandler)
 
 # Re-validate pill position when displays change (monitor disconnect/resolution change)
-[Microsoft.Win32.SystemEvents]::add_DisplaySettingsChanged({
+$script:displaySettingsHandler = {
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
         if (-not (Test-PositionOnScreen -X $script:floatingBar.Left -Y $script:floatingBar.Top -Width $script:floatingBar.Width -Height $script:floatingBar.Height)) {
             $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
@@ -3019,7 +3049,8 @@ Show-FirstRunTooltip
             Save-Config
         }
     }
-})
+}
+[Microsoft.Win32.SystemEvents]::add_DisplaySettingsChanged($script:displaySettingsHandler)
 
 # Auto-dismiss timer for pill context menu (closes when mouse moves away)
 $script:menuDismissTimer = New-Object System.Windows.Forms.Timer
@@ -3201,6 +3232,13 @@ $script:pulseTimer.Add_Tick({
             }
             $needsRepaint = $true
         }
+        # "Estimating..." text pulse in popup
+        if ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed) {
+            $t2 = (Get-Date).Ticks / 10000000.0
+            $alpha = [int](120 + 80 * [Math]::Sin($t2 * 2.5))
+            $script:estimatingLabel.ForeColor = [System.Drawing.Color]::FromArgb(
+                $alpha, $script:theme.TextPrimary.R, $script:theme.TextPrimary.G, $script:theme.TextPrimary.B)
+        }
         if ($needsRepaint -and $null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
             $script:floatingBar.Invalidate()
         }
@@ -3212,7 +3250,7 @@ $script:pulseTimer.Add_Tick({
 
 function Update-PulseTimerState {
     # Start pulse timer only when animations need it, stop when idle
-    $anyActive = $script:barIsCharging -or ($script:flashAlpha -gt 0) -or ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive)
+    $anyActive = $script:barIsCharging -or ($script:flashAlpha -gt 0) -or ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed)
     if ($anyActive) {
         if (-not $script:pulseTimer.Enabled) { $script:pulseTimer.Start() }
     } else {
@@ -3290,8 +3328,8 @@ $script:mainForm.Add_FormClosing({
     if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
     if ($null -ne $script:pillBorderPen) { $script:pillBorderPen.Dispose() }
     # Unregister system events to avoid leaks
-    [Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($null)
-    [Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($null)
+    [Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($script:powerModeHandler)
+    [Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($script:displaySettingsHandler)
     $script:mutex.ReleaseMutex()
     $script:mutex.Dispose()
 })
