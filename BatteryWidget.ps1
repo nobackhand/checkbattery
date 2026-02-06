@@ -41,6 +41,28 @@ public class Win32Icon {
         public int Right;
         public int Bottom;
     }
+
+    // CS_DROPSHADOW support for popup elevation
+    [DllImport("user32.dll", EntryPoint = "GetClassLong")]
+    private static extern int GetClassLong32(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll", EntryPoint = "GetClassLongPtr")]
+    private static extern IntPtr GetClassLong64(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll", EntryPoint = "SetClassLong")]
+    private static extern int SetClassLong32(IntPtr hWnd, int nIndex, int dwNewLong);
+    [DllImport("user32.dll", EntryPoint = "SetClassLongPtr")]
+    private static extern IntPtr SetClassLong64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    public static void EnableDropShadow(IntPtr hWnd) {
+        const int GCL_STYLE = -26;
+        const int CS_DROPSHADOW = 0x00020000;
+        if (IntPtr.Size == 8) {
+            long style = GetClassLong64(hWnd, GCL_STYLE).ToInt64();
+            SetClassLong64(hWnd, GCL_STYLE, new IntPtr(style | CS_DROPSHADOW));
+        } else {
+            int style = GetClassLong32(hWnd, GCL_STYLE);
+            SetClassLong32(hWnd, GCL_STYLE, style | CS_DROPSHADOW);
+        }
+    }
 }
 "@
 
@@ -69,6 +91,7 @@ $script:theme = @{
     TextPrimary  = [System.Drawing.Color]::FromArgb(245, 245, 250)
     TextDim      = [System.Drawing.Color]::FromArgb(145, 145, 155)
     TextLight    = [System.Drawing.Color]::FromArgb(220, 220, 225)
+    TextMuted    = [System.Drawing.Color]::FromArgb(80, 80, 86)
     Border       = [System.Drawing.Color]::FromArgb(50, 50, 56)
     SettingsBg   = [System.Drawing.Color]::FromArgb(32, 32, 36)
     TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
@@ -96,6 +119,7 @@ function Apply-Theme {
         $script:theme.TextPrimary  = [System.Drawing.Color]::FromArgb(245, 245, 250)
         $script:theme.TextDim      = [System.Drawing.Color]::FromArgb(145, 145, 155)
         $script:theme.TextLight    = [System.Drawing.Color]::FromArgb(220, 220, 225)
+        $script:theme.TextMuted    = [System.Drawing.Color]::FromArgb(80, 80, 86)
         $script:theme.Border       = [System.Drawing.Color]::FromArgb(50, 50, 56)
         $script:theme.SettingsBg   = [System.Drawing.Color]::FromArgb(32, 32, 36)
         $script:theme.TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
@@ -105,6 +129,7 @@ function Apply-Theme {
         $script:theme.TextPrimary  = [System.Drawing.Color]::FromArgb(28, 28, 30)
         $script:theme.TextDim      = [System.Drawing.Color]::FromArgb(100, 100, 110)
         $script:theme.TextLight    = [System.Drawing.Color]::FromArgb(50, 50, 55)
+        $script:theme.TextMuted    = [System.Drawing.Color]::FromArgb(170, 170, 180)
         $script:theme.Border       = [System.Drawing.Color]::FromArgb(200, 200, 210)
         $script:theme.SettingsBg   = [System.Drawing.Color]::FromArgb(235, 235, 240)
         $script:theme.TrackBg      = [System.Drawing.Color]::FromArgb(215, 215, 220)
@@ -153,6 +178,10 @@ $script:lastStateChange = @{
 # --- EMA smoothing state for stable battery estimates ---
 $script:emaRate = -1           # Smoothed rate (mW) using Exponential Moving Average
 $script:lastValidRate = -1     # Last known good rate (for "hold" logic when rate unavailable)
+$script:lastValidRateTime = $null  # Timestamp when lastValidRate was set (for stale expiry)
+$script:rateHistory = New-Object System.Collections.ArrayList  # Last 10 raw rates (for adaptive alpha)
+$script:lastCapacityCheck = $null  # @{ Time; Capacity } for capacity-derived rate cross-validation
+$script:capacityRateMismatchCount = 0  # Consecutive divergence count for cross-validation
 
 # --- Battery history for sparkline (last 2 hours) ---
 $script:batteryHistory = New-Object System.Collections.ArrayList
@@ -167,6 +196,8 @@ $script:hysteresisSeconds = 2  # Dead time after AC plug/unplug to ignore rate s
 # ============================================================
 
 function Get-BatteryInfo {
+    param([Parameter(Mandatory=$false)][object]$Now = $null)
+    if ($null -eq $Now) { $Now = Get-Date }
     $info = @{
         Percent            = -1
         PercentExact       = -1.0
@@ -295,7 +326,8 @@ function Get-BatteryInfo {
             -FullChargeCapacity $info.FullChargeCapacity `
             -PercentExact $info.PercentExact `
             -IsCharging $info.IsCharging `
-            -IsPluggedIn $info.IsPluggedIn
+            -IsPluggedIn $info.IsPluggedIn `
+            -Now $Now
 
         # Fallback to WMI/dotnet if smoothed calculation unavailable
         if ($timeMinutes -le 0) {
@@ -335,7 +367,7 @@ function Get-BatteryInfo {
 
     # ETA
     if ($timeMinutes -gt 0) {
-        $eta = (Get-Date).AddMinutes($timeMinutes)
+        $eta = $Now.AddMinutes($timeMinutes)
         $info.ETA = $eta.ToString("h:mm tt")
     }
 
@@ -365,17 +397,17 @@ function Get-BatteryInfo {
     # Elapsed time tracking
     if ($script:lastStateChange.State -eq "") {
         # First run — initialize
-        $script:lastStateChange.Time = Get-Date
+        $script:lastStateChange.Time = $Now
         $script:lastStateChange.Percent = $info.PercentExact
         $script:lastStateChange.State = $info.StatusText
     } elseif ($script:lastStateChange.State -ne $info.StatusText) {
         # State changed — reset
-        $script:lastStateChange.Time = Get-Date
+        $script:lastStateChange.Time = $Now
         $script:lastStateChange.Percent = $info.PercentExact
         $script:lastStateChange.State = $info.StatusText
     }
 
-    $elapsed = (Get-Date) - $script:lastStateChange.Time
+    $elapsed = $Now - $script:lastStateChange.Time
     $elapsedHours = [math]::Floor($elapsed.TotalHours)
     $elapsedMins  = $elapsed.Minutes
     $info.ElapsedTime = "{0}:{1:D2}" -f $elapsedHours, $elapsedMins
@@ -391,19 +423,60 @@ function Get-BatteryInfo {
 function Update-EMARate {
     param([int]$RawRate)
 
-    # Alpha controls smoothing: lower = more stable, higher = more responsive
-    # 0.15 gives ~13 sample half-life (good balance for 10-second polling)
-    $alpha = 0.15
+    # Track recent rates for volatility detection
+    $script:rateHistory.Add($RawRate) | Out-Null
+    if ($script:rateHistory.Count -gt 10) { $script:rateHistory.RemoveAt(0) }
+
+    # Adaptive alpha based on rate stability (coefficient of variation)
+    $alpha = 0.15  # default
+    $count = $script:rateHistory.Count
+    if ($count -ge 5) {
+        $sum = 0
+        for ($i = 0; $i -lt $count; $i++) { $sum += $script:rateHistory[$i] }
+        $mean = $sum / $count
+        if ($mean -gt 0) {
+            $varSum = 0
+            for ($i = 0; $i -lt $count; $i++) {
+                $d = $script:rateHistory[$i] - $mean
+                $varSum += $d * $d
+            }
+            $cv = [math]::Sqrt($varSum / $count) / $mean
+            if ($cv -lt 0.10) { $alpha = 0.30 }      # stable: respond faster
+            elseif ($cv -gt 0.30) { $alpha = 0.08 }   # volatile: dampen more
+        }
+    }
 
     if ($script:emaRate -lt 0) {
-        # First reading — initialize directly
+        # First reading - initialize directly
         $script:emaRate = $RawRate
     } else {
-        # EMA formula: R_EMA_t = α × R_raw_t + (1 - α) × R_EMA_(t-1)
+        # EMA formula: R_EMA_t = alpha * R_raw_t + (1 - alpha) * R_EMA_(t-1)
         $script:emaRate = ($alpha * $RawRate) + ((1 - $alpha) * $script:emaRate)
     }
 
     return [int]$script:emaRate
+}
+
+function Get-CapacityDerivedRate {
+    param([int]$FullChargeCapacity, [double]$PercentExact, [object]$Now = $null)
+    if ($null -eq $Now) { $Now = Get-Date }
+    $currentCapacity = $FullChargeCapacity * ($PercentExact / 100)
+
+    if ($null -eq $script:lastCapacityCheck) {
+        $script:lastCapacityCheck = @{ Time = $now; Capacity = $currentCapacity }
+        return -1
+    }
+
+    $elapsed = ($now - $script:lastCapacityCheck.Time).TotalHours
+    if ($elapsed -lt 0.0083) { return -1 }  # need at least 30 seconds
+
+    $capDelta = $script:lastCapacityCheck.Capacity - $currentCapacity  # mWh consumed
+    $derivedRate = [int]($capDelta / $elapsed)  # mW
+
+    $script:lastCapacityCheck.Time = $Now
+    $script:lastCapacityCheck.Capacity = $currentCapacity
+    if ($derivedRate -gt 0) { return $derivedRate }
+    return -1
 }
 
 function Get-SmoothedTimeRemaining {
@@ -412,13 +485,15 @@ function Get-SmoothedTimeRemaining {
         [int]$FullChargeCapacity,
         [double]$PercentExact,
         [bool]$IsCharging,
-        [bool]$IsPluggedIn
+        [bool]$IsPluggedIn,
+        [object]$Now = $null
     )
+    if ($null -eq $Now) { $Now = Get-Date }
 
     # --- Hysteresis: detect and handle AC state transitions ---
     if ($null -ne $script:lastAcState -and $script:lastAcState -ne $IsPluggedIn) {
         # AC state just changed — start hysteresis window
-        $script:stateChangeTime = Get-Date
+        $script:stateChangeTime = $Now
         # Reset EMA on state change to avoid polluting new state with old rate
         $script:emaRate = -1
     }
@@ -426,7 +501,7 @@ function Get-SmoothedTimeRemaining {
 
     # During hysteresis window, return -1 to show "Calculating..."
     if ($null -ne $script:stateChangeTime) {
-        $elapsed = ((Get-Date) - $script:stateChangeTime).TotalSeconds
+        $elapsed = ($Now - $script:stateChangeTime).TotalSeconds
         if ($elapsed -lt $script:hysteresisSeconds) {
             return -1
         } else {
@@ -442,9 +517,31 @@ function Get-SmoothedTimeRemaining {
         # Valid rate — update EMA and track as last valid
         $effectiveRate = Update-EMARate -RawRate $RawRate
         $script:lastValidRate = $RawRate
+        $script:lastValidRateTime = $Now
     } elseif ($script:lastValidRate -gt 0) {
-        # Invalid rate but we have a previous valid one — use EMA with last valid
-        $effectiveRate = Update-EMARate -RawRate $script:lastValidRate
+        # Invalid rate but we have a previous valid one — only use if fresh (< 60s old)
+        $rateAge = if ($null -ne $script:lastValidRateTime) { ($Now - $script:lastValidRateTime).TotalSeconds } else { 999 }
+        if ($rateAge -lt 60) {
+            $effectiveRate = Update-EMARate -RawRate $script:lastValidRate
+        }
+        # else: effectiveRate stays -1, triggers WMI/dotnet fallback
+    }
+
+    # --- Cross-validate with capacity-derived rate (discharging only) ---
+    if ($effectiveRate -gt 0 -and -not $IsCharging -and $FullChargeCapacity -gt 0) {
+        $derivedRate = Get-CapacityDerivedRate -FullChargeCapacity $FullChargeCapacity -PercentExact $PercentExact -Now $Now
+        if ($derivedRate -gt 0) {
+            $divergence = [math]::Abs($effectiveRate - $derivedRate) / [math]::Max($effectiveRate, $derivedRate)
+            if ($divergence -gt 0.40) {
+                $script:capacityRateMismatchCount++
+                if ($script:capacityRateMismatchCount -ge 3) {
+                    # WMI rate consistently diverges - prefer capacity-derived rate
+                    $effectiveRate = Update-EMARate -RawRate $derivedRate
+                }
+            } else {
+                $script:capacityRateMismatchCount = 0
+            }
+        }
     }
 
     # --- Calculate time remaining from smoothed rate ---
@@ -463,6 +560,59 @@ function Get-SmoothedTimeRemaining {
     }
 
     return -1
+}
+
+# ============================================================
+# HELPER: POWER PLAN MANAGEMENT
+# ============================================================
+
+function Get-PowerPlans {
+    try {
+        $plans = Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan
+        $result = @()
+        foreach ($p in $plans) {
+            $guid = ($p.InstanceID -split '\\')[-1].Trim('{}')
+            $result += @{ Name = $p.ElementName; GUID = $guid; IsActive = $p.IsActive }
+        }
+        return $result
+    } catch { return @() }
+}
+
+function Set-ActivePowerPlan {
+    param([string]$PlanGUID)
+    try {
+        $plan = Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan `
+            -Filter "InstanceID LIKE '%$PlanGUID%'"
+        if ($plan) {
+            Invoke-CimMethod -InputObject $plan -MethodName Activate | Out-Null
+            return $true
+        }
+        return $false
+    } catch { return $false }
+}
+
+function Update-PowerPlanMenu {
+    param([System.Windows.Forms.ToolStripMenuItem]$MenuItem)
+    $MenuItem.DropDownItems.Clear()
+    $plans = Get-PowerPlans
+    foreach ($plan in $plans) {
+        $item = New-Object System.Windows.Forms.ToolStripMenuItem($plan.Name)
+        $item.Checked = $plan.IsActive
+        $item.Tag = $plan.GUID
+        $item.Add_Click({
+            $guid = $this.Tag
+            $ok = Set-ActivePowerPlan -PlanGUID $guid
+            if (-not $ok) {
+                Show-BatteryNotification -Message "Admin rights needed" -SubMessage "Cannot switch power plan without elevation"
+            }
+        })
+        $MenuItem.DropDownItems.Add($item) | Out-Null
+    }
+    if ($plans.Count -eq 0) {
+        $noItem = New-Object System.Windows.Forms.ToolStripMenuItem("No plans found")
+        $noItem.Enabled = $false
+        $MenuItem.DropDownItems.Add($noItem) | Out-Null
+    }
 }
 
 # ============================================================
@@ -625,6 +775,9 @@ function Load-Config {
         AccentColorIndex = 0
         AutoHideFullscreen = $false
         BatteryHistory = @()
+        EmaRate = -1
+        LastValidRate = -1
+        ConfigSavedAt = $null
     }
     if (Test-Path $configPath) {
         try {
@@ -671,6 +824,16 @@ function Load-Config {
                 }
                 $default.BatteryHistory = $loadedHistory
             }
+            # Restore persisted EMA state (expire if config older than 10 minutes)
+            if ($null -ne $json.EmaRate -and $null -ne $json.ConfigSavedAt) {
+                try {
+                    $savedAge = ((Get-Date) - [DateTime]::Parse($json.ConfigSavedAt)).TotalMinutes
+                    if ($savedAge -lt 10) {
+                        $default.EmaRate = [double]$json.EmaRate
+                        $default.LastValidRate = [int]$json.LastValidRate
+                    }
+                } catch {}
+            }
         } catch {}
     }
     return $default
@@ -704,6 +867,9 @@ function Save-Config {
             AccentColorIndex = $script:config.AccentColorIndex
             AutoHideFullscreen = $script:config.AutoHideFullscreen
             BatteryHistory = $historyToSave
+            EmaRate = $script:emaRate
+            LastValidRate = $script:lastValidRate
+            ConfigSavedAt = (Get-Date).ToString("o")
         } | ConvertTo-Json -Depth 3 | Set-Content $configPath -Force
     } catch {}
 }
@@ -815,7 +981,7 @@ function Get-PillDimensions {
     $mode = $script:config.DisplayMode
     $size = $script:config.PillSize
     switch ($size) {
-        "compact"  { return @{ Width = 80; Height = 28; FontSize = 8.5; FontSize2 = 0 } }
+        "compact"  { return @{ Width = 80; Height = 28; FontSize = 9.0; FontSize2 = 0 } }
         "expanded" { return @{ Width = 140; Height = 42; FontSize = 10.2; FontSize2 = 7.5 } }
         default {
             # normal — grows if DisplayMode is "both"
@@ -837,8 +1003,9 @@ function Update-PillSize {
     $script:floatingBar.Size = $sz
     $script:floatingBar.MinimumSize = $sz
     $script:floatingBar.MaximumSize = $sz
-    # Rebuild region
-    $rd = 16
+    # Rebuild region — use pill radius capped at half height for fully rounded ends
+    $script:pillRadius = [math]::Min(8, [int]($dims.Height / 2))
+    $rd = $script:pillRadius * 2
     $rPath = New-Object System.Drawing.Drawing2D.GraphicsPath
     $rPath.AddArc(0, 0, $rd, $rd, 180, 90)
     $rPath.AddArc($dims.Width - $rd - 1, 0, $rd, $rd, 270, 90)
@@ -939,11 +1106,11 @@ function New-FloatingBar {
         $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
         $w = $sender.Width
         $h = $sender.Height
-        $radius = 8
+        $radius = if ($null -ne $script:pillRadius) { $script:pillRadius } else { 8 }
 
-        # --- Rounded rectangle path (full pill) ---
+        # --- Rounded rectangle path (full pill), 1px inset from region ---
         $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-        $d = $radius * 2
+        $d = ($radius - 1) * 2
         $path.AddArc(0, 0, $d, $d, 180, 90)
         $path.AddArc($w - $d - 1, 0, $d, $d, 270, 90)
         $path.AddArc($w - $d - 1, $h - $d - 1, $d, $d, 0, 90)
@@ -1022,7 +1189,7 @@ function New-FloatingBar {
             $topRect = New-Object System.Drawing.RectangleF(0, 2, $w, ($h / 2))
             $g.DrawString($script:barDisplayText, $script:pillFont, $topBrush, $topRect, $script:pillStringFormat)
             $topBrush.Dispose()
-            $botBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(180, 180, 185))
+            $botBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
             $botRect = New-Object System.Drawing.RectangleF(0, ($h / 2) - 2, $w, ($h / 2))
             $g.DrawString($script:barDisplayText2, $script:pillFont2, $botBrush, $botRect, $script:pillStringFormat)
             $botBrush.Dispose()
@@ -1032,16 +1199,21 @@ function New-FloatingBar {
             $g.DrawString($script:barDisplayText, $script:pillFont, $script:pillTextBrush, $textRect, $script:pillStringFormat)
         }
 
-        # --- Plug/unplug flash overlay ---
+        # --- Plug/unplug flash overlay (green tint on light theme, white on dark) ---
         if ($script:flashAlpha -gt 0) {
-            $flashBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($script:flashAlpha, 255, 255, 255))
+            $isLight = ($script:theme.PillBg.R -gt 128)
+            if ($isLight) {
+                $flashBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($script:flashAlpha, 45, 212, 100))
+            } else {
+                $flashBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($script:flashAlpha, 255, 255, 255))
+            }
             $g.FillPath($flashBrush, $path)
             $flashBrush.Dispose()
         }
 
         # --- Low battery warning: pulsing red border at 15% ---
         if ($null -ne $script:lowBatBorderAlpha -and $script:lowBatBorderAlpha -gt 0) {
-            $warnPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb($script:lowBatBorderAlpha, 255, 70, 70), 2)
+            $warnPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb($script:lowBatBorderAlpha, 235, 85, 75), 2)
             $g.DrawPath($warnPen, $path)
             $warnPen.Dispose()
         } else {
@@ -1278,16 +1450,28 @@ function New-BatteryPopupContent {
     # Returns @{ TotalHeight; Fonts (array for disposal) }
 
     $statusColor = Get-StatusColor -Status $BatteryInfo.StatusText
-    $lightGray = [System.Drawing.Color]::FromArgb(220, 220, 225)
-    $dimGray   = [System.Drawing.Color]::FromArgb(145, 145, 155)
+    $lightGray = $script:theme.TextLight
+    $dimGray   = $script:theme.TextDim
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Regular)
     $valueFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Regular)
+    # Hero fonts for top section (Percent + Time — the data users care about most)
+    $heroLabelFont = New-Object System.Drawing.Font("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Regular)
+    $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Regular)
 
-    # --- Title ---
+    # --- Title (dynamic status) ---
+    if ($BatteryInfo.IsFullyCharged) {
+        $titleText = "Fully Charged"
+    } elseif ($BatteryInfo.IsCharging) {
+        $titleText = "Charging - $($BatteryInfo.Percent)%"
+    } elseif ($BatteryInfo.NoBattery) {
+        $titleText = "No Battery"
+    } else {
+        $titleText = "Discharging - $($BatteryInfo.Percent)%"
+    }
     $titleLabel = New-Object System.Windows.Forms.Label
-    $titleLabel.Text = "Battery Details"
+    $titleLabel.Text = $titleText
     $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Bold)
-    $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $titleLabel.ForeColor = $script:theme.TextPrimary
     $titleLabel.Location = New-Object System.Drawing.Point(20, 10)
     $titleLabel.AutoSize = $true
     $titleLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
@@ -1297,11 +1481,11 @@ function New-BatteryPopupContent {
     $sepLabel = New-Object System.Windows.Forms.Label
     $sepLabel.Location = New-Object System.Drawing.Point(20, 32)
     $sepLabel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 1)
-    $sepLabel.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
+    $sepLabel.BackColor = $script:theme.Border
     $Form.Controls.Add($sepLabel)
 
     # --- Row layout (DPI-aware) ---
-    $rh = [int](16 * $DpiScale)
+    $rh = [int](18 * $DpiScale)
     $lx = 20
     $vx = [int](68 * $DpiScale)
     $lw = [int](58 * $DpiScale)
@@ -1323,9 +1507,9 @@ function New-BatteryPopupContent {
         $TargetForm.Controls.Add($val)
     }
 
-    # Row 1: Percent
+    # Row 1: Percent (hero row)
     $pctText = if ($BatteryInfo.NoBattery) { "No Battery" } else { "$($BatteryInfo.PercentExact)%" }
-    Add-PopupRow -TargetForm $Form -RowY $y -Label "Percent:" -Value $pctText -LFont $labelFont -VFont $valueFont -DColor $dimGray -VColor $statusColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw
+    Add-PopupRow -TargetForm $Form -RowY $y -Label "Percent:" -Value $pctText -LFont $heroLabelFont -VFont $heroValueFont -DColor $dimGray -VColor $statusColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw
     $y += $rh
 
     # Row 2: Capacity
@@ -1354,7 +1538,7 @@ function New-BatteryPopupContent {
     Add-PopupRow -TargetForm $Form -RowY $y -Label "Rate:" -Value $rateText -LFont $labelFont -VFont $valueFont -DColor $dimGray -VColor $rateColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw
     $y += $rh
 
-    # Row 4: Time Remaining with ETA
+    # Row 4: Time Remaining with ETA (hero row)
     if ($BatteryInfo.IsFullyCharged) {
         $timeText = "Fully Charged"
     } elseif ($BatteryInfo.TimeMinutes -gt 0) {
@@ -1370,8 +1554,17 @@ function New-BatteryPopupContent {
         $timeText = "Estimating..."
     }
     $timeRowLabel = if ($BatteryInfo.IsCharging) { "To Full:" } else { "Remaining:" }
-    Add-PopupRow -TargetForm $Form -RowY $y -Label $timeRowLabel -Value $timeText -LFont $labelFont -VFont $valueFont -DColor $dimGray -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw
+    Add-PopupRow -TargetForm $Form -RowY $y -Label $timeRowLabel -Value $timeText -LFont $heroLabelFont -VFont $heroValueFont -DColor $dimGray -VColor $script:theme.TextPrimary -RLx $lx -RVx $vx -RLw $lw -RVw $vw
     $y += $rh
+
+    # Separator between hero rows and secondary data
+    $y += [int](2 * $DpiScale)
+    $midSep = New-Object System.Windows.Forms.Label
+    $midSep.Location = New-Object System.Drawing.Point(20, $y)
+    $midSep.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 1)
+    $midSep.BackColor = $script:theme.Border
+    $Form.Controls.Add($midSep)
+    $y += [int](4 * $DpiScale)
 
     # Row 5: Elapsed Time
     $elapsedText = "$($BatteryInfo.ElapsedTime) (from $($BatteryInfo.ElapsedSince))"
@@ -1404,68 +1597,12 @@ function New-BatteryPopupContent {
     # Battery history sparkline
     $sparkAccent = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
     $sparkPanel = New-SparklinePanel -Y $y -AccentColor $sparkAccent
-    $sparkPanel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 20)
+    $sparkPanel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 30)
     $Form.Controls.Add($sparkPanel)
-    $y += 20
+    $y += 30
 
-    # Custom GDI+ progress bar
-    $barPct = [math]::Max(0, [math]::Min(100, $BatteryInfo.Percent))
-    $barAccent = $sparkAccent
-    $barW = $PopupWidth - 40
-    $progressPanel = New-Object System.Windows.Forms.Panel
-    $progressPanel.Location = New-Object System.Drawing.Point(20, $y)
-    $progressPanel.Size = New-Object System.Drawing.Size($barW, 8)
-    $progressPanel.BackColor = [System.Drawing.Color]::Transparent
-    $progressPanel.Tag = @{ Percent = $barPct; AccentColor = $barAccent }
-    $progressPanel.Add_Paint({
-        param($sender, $e)
-        $pg = $e.Graphics
-        $pg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $pw2 = $sender.Width
-        $ph2 = $sender.Height
-        $pr = 4; $pd = $pr * 2
-        $trackPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-        $trackPath.AddArc(0, 0, $pd, $pd, 180, 90)
-        $trackPath.AddArc($pw2 - $pd - 1, 0, $pd, $pd, 270, 90)
-        $trackPath.AddArc($pw2 - $pd - 1, $ph2 - $pd - 1, $pd, $pd, 0, 90)
-        $trackPath.AddArc(0, $ph2 - $pd - 1, $pd, $pd, 90, 90)
-        $trackPath.CloseFigure()
-        $trackBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(40, 40, 46))
-        $pg.FillPath($trackBrush, $trackPath)
-        $trackBrush.Dispose()
-        $tagData = $sender.Tag
-        $fillPct = $tagData.Percent
-        $acColor = $tagData.AccentColor
-        $fw = [math]::Max(0, [math]::Round(($fillPct / 100) * $pw2))
-        if ($fw -gt $pd) {
-            $fillPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-            $fillPath.AddArc(0, 0, $pd, $pd, 180, 90)
-            $fillPath.AddArc($fw - $pd - 1, 0, $pd, $pd, 270, 90)
-            $fillPath.AddArc($fw - $pd - 1, $ph2 - $pd - 1, $pd, $pd, 0, 90)
-            $fillPath.AddArc(0, $ph2 - $pd - 1, $pd, $pd, 90, 90)
-            $fillPath.CloseFigure()
-            $fillRect2 = New-Object System.Drawing.Rectangle(0, 0, [math]::Max(1, $fw), $ph2)
-            $fLeft = [System.Drawing.Color]::FromArgb(200, $acColor.R, $acColor.G, $acColor.B)
-            $fRight = [System.Drawing.Color]::FromArgb(140, $acColor.R, $acColor.G, $acColor.B)
-            $fillBrush2 = New-Object System.Drawing.Drawing2D.LinearGradientBrush($fillRect2, $fLeft, $fRight, [System.Drawing.Drawing2D.LinearGradientMode]::Horizontal)
-            $pg.FillPath($fillBrush2, $fillPath)
-            $fillBrush2.Dispose()
-            $glassRect = New-Object System.Drawing.Rectangle(0, 0, $fw, [int]($ph2 / 2))
-            $glassBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($glassRect, [System.Drawing.Color]::FromArgb(40, 255, 255, 255), [System.Drawing.Color]::FromArgb(0, 255, 255, 255), [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
-            $oldClip3 = $pg.Clip
-            $pg.SetClip($fillPath)
-            $pg.FillRectangle($glassBrush, $glassRect)
-            $pg.Clip = $oldClip3
-            $glassBrush.Dispose()
-            $fillPath.Dispose()
-        }
-        $borderPen2 = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(55, 55, 62), 1)
-        $pg.DrawPath($borderPen2, $trackPath)
-        $borderPen2.Dispose()
-        $trackPath.Dispose()
-    })
-    $Form.Controls.Add($progressPanel)
-    $y += 10
+    # Spacer after sparkline
+    $y += [int](4 * $DpiScale)
 
     # Power source
     $powerLabel = New-Object System.Windows.Forms.Label
@@ -1482,7 +1619,7 @@ function New-BatteryPopupContent {
     $hintLabel = New-Object System.Windows.Forms.Label
     $hintLabel.Text = $CloseHintText
     $hintLabel.Font = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
-    $hintLabel.ForeColor = [System.Drawing.Color]::FromArgb(80, 80, 86)
+    $hintLabel.ForeColor = $script:theme.TextMuted
     $hintLabel.Location = New-Object System.Drawing.Point(20, $y)
     $hintLabel.AutoSize = $true
     $hintLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
@@ -1490,17 +1627,22 @@ function New-BatteryPopupContent {
 
     return @{
         TotalHeight = $y + 8
-        Fonts = @($labelFont, $valueFont, $titleLabel.Font)
+        Fonts = @($labelFont, $valueFont, $heroLabelFont, $heroValueFont, $titleLabel.Font)
     }
 }
 
 function Show-BatteryNotification {
     param([string]$Message, [string]$SubMessage)
     # Custom dark-themed notification card — slides in from bottom-right, auto-dismiss 10s
+    $gDs = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $nDs = $gDs.DpiX / 96.0
+    $gDs.Dispose()
+    $nW = [int](320 * $nDs); $nH = [int](100 * $nDs)
+
     $notif = New-Object System.Windows.Forms.Form
     $notif.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $notif.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
-    $notif.Size = New-Object System.Drawing.Size(320, 100)
+    $notif.Size = New-Object System.Drawing.Size($nW, $nH)
     $notif.TopMost = $true
     $notif.ShowInTaskbar = $false
     $notif.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 34)
@@ -1508,15 +1650,16 @@ function Show-BatteryNotification {
     Enable-DoubleBuffering -Form $notif
 
     $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-    $notif.Location = New-Object System.Drawing.Point(($screen.Right - 330), ($screen.Bottom - 10))
+    $notif.Location = New-Object System.Drawing.Point(($screen.Right - $nW - 10), ($screen.Bottom - 10))
 
-    # Rounded region
+    # Rounded region (DPI-scaled)
     $nr = 10; $nd = $nr * 2
+    $nrW = $nW - 2; $nrH = $nH - 2
     $nPath = New-Object System.Drawing.Drawing2D.GraphicsPath
     $nPath.AddArc(0, 0, $nd, $nd, 180, 90)
-    $nPath.AddArc(318, 0, $nd, $nd, 270, 90)
-    $nPath.AddArc(318, 78, $nd, $nd, 0, 90)
-    $nPath.AddArc(0, 78, $nd, $nd, 90, 90)
+    $nPath.AddArc($nrW, 0, $nd, $nd, 270, 90)
+    $nPath.AddArc($nrW, $nrH, $nd, $nd, 0, 90)
+    $nPath.AddArc(0, $nrH, $nd, $nd, 90, 90)
     $nPath.CloseFigure()
     $notif.Region = New-Object System.Drawing.Region($nPath)
     $nPath.Dispose()
@@ -1528,15 +1671,16 @@ function Show-BatteryNotification {
         $ng.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
         # Red accent bar on left
         $accentBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 70, 70))
-        $ng.FillRectangle($accentBrush, 0, 10, 4, 80)
+        $ng.FillRectangle($accentBrush, 0, 0, 4, $sender.Height)
         $accentBrush.Dispose()
         # Border
         $bPath = New-Object System.Drawing.Drawing2D.GraphicsPath
         $br = 10; $bd = $br * 2
+        $brW = $sender.Width - 2; $brH = $sender.Height - 2
         $bPath.AddArc(0, 0, $bd, $bd, 180, 90)
-        $bPath.AddArc(318, 0, $bd, $bd, 270, 90)
-        $bPath.AddArc(318, 78, $bd, $bd, 0, 90)
-        $bPath.AddArc(0, 78, $bd, $bd, 90, 90)
+        $bPath.AddArc($brW, 0, $bd, $bd, 270, 90)
+        $bPath.AddArc($brW, $brH, $bd, $bd, 0, 90)
+        $bPath.AddArc(0, $brH, $bd, $bd, 90, 90)
         $bPath.CloseFigure()
         $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, 255, 70, 70), 1)
         $ng.DrawPath($bPen, $bPath)
@@ -1544,29 +1688,33 @@ function Show-BatteryNotification {
     })
 
     # Title
+    $nPad = [int](16 * $nDs)
     $nTitle = New-Object System.Windows.Forms.Label
     $nTitle.Text = $Message
-    $nTitle.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 11, [System.Drawing.FontStyle]::Bold)
+    $nTitle.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5, [System.Drawing.FontStyle]::Bold)
     $nTitle.ForeColor = [System.Drawing.Color]::FromArgb(255, 100, 100)
-    $nTitle.Location = New-Object System.Drawing.Point(16, 16)
+    $nTitle.Location = New-Object System.Drawing.Point($nPad, $nPad)
     $nTitle.AutoSize = $true
-    $nTitle.MaximumSize = New-Object System.Drawing.Size(290, 0)
+    $nTitle.MaximumSize = New-Object System.Drawing.Size(($nW - $nPad * 2), 0)
     $notif.Controls.Add($nTitle)
 
     # Sub-message
     $nSub = New-Object System.Windows.Forms.Label
     $nSub.Text = $SubMessage
     $nSub.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
-    $nSub.ForeColor = [System.Drawing.Color]::FromArgb(180, 180, 185)
-    $nSub.Location = New-Object System.Drawing.Point(16, 48)
+    $nSub.ForeColor = $script:theme.TextLight
+    $nSub.Location = New-Object System.Drawing.Point($nPad, [int](48 * $nDs))
     $nSub.AutoSize = $true
-    $nSub.MaximumSize = New-Object System.Drawing.Size(290, 0)
+    $nSub.MaximumSize = New-Object System.Drawing.Size(($nW - $nPad * 2), 0)
     $notif.Controls.Add($nSub)
 
     $notif.Show()
 
-    # Slide-in and fade-in animation, then auto-dismiss after 10s
-    $script:notifSlideTarget = $screen.Bottom - 120
+    # Slide-in with cubic ease-out, then auto-dismiss after 10s
+    $script:notifSlideTarget = $screen.Bottom - $nH - 20
+    $script:notifSlideStart = $notif.Top
+    $script:notifAnimStart = Get-Date
+    $script:notifAnimDuration = 300  # ms
     $script:notifPhase = "in"  # "in", "hold", "out"
     $script:notifHoldStart = $null
     $notifTimer = New-Object System.Windows.Forms.Timer
@@ -1574,13 +1722,17 @@ function Show-BatteryNotification {
     $notifTimer.Add_Tick({
         if ($null -eq $notif -or $notif.IsDisposed) { $notifTimer.Stop(); $notifTimer.Dispose(); return }
         if ($script:notifPhase -eq "in") {
-            $notif.Opacity = [math]::Min(1.0, $notif.Opacity + 0.08)
-            $curY = $notif.Top
+            $elapsed = ((Get-Date) - $script:notifAnimStart).TotalMilliseconds
+            $t = [math]::Min(1.0, $elapsed / $script:notifAnimDuration)
+            # Cubic ease-out: 1 - (1 - t)^3
+            $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
+            $notif.Opacity = $eased
+            $startY = $script:notifSlideStart
             $targetY = $script:notifSlideTarget
-            $newY = $curY + [int](($targetY - $curY) * 0.25)
-            if ([math]::Abs($newY - $targetY) -lt 2) { $newY = $targetY }
-            $notif.Top = $newY
-            if ($notif.Opacity -ge 1.0 -and $newY -eq $targetY) {
+            $notif.Top = [int]($startY + ($targetY - $startY) * $eased)
+            if ($t -ge 1.0) {
+                $notif.Opacity = 1.0
+                $notif.Top = $targetY
                 $script:notifPhase = "hold"
                 $script:notifHoldStart = Get-Date
             }
@@ -1778,10 +1930,12 @@ function Show-HoverPopup {
     $popup.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $popup.ShowInTaskbar = $false
     $popup.TopMost = $true
-    $popup.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
+    $popup.BackColor = $script:theme.PopupBg
     $popup.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $popup.KeyPreview = $true
     Enable-DoubleBuffering -Form $popup
+    # Enable CS_DROPSHADOW for popup elevation
+    $popup.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($popup.Handle) })
 
     # Rounded border
     $popup.Add_Paint({
@@ -1796,7 +1950,7 @@ function Show-HoverPopup {
         $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
         $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
         $borderPath.CloseFigure()
-        $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(60, 60, 66), 1)
+        $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
         $g.DrawPath($borderPen, $borderPath)
         $borderPen.Dispose(); $borderPath.Dispose()
     })
@@ -1809,7 +1963,7 @@ function Show-HoverPopup {
     $popup.Size = New-Object System.Drawing.Size($popupW, 400)
 
     # Build shared content
-    $content = New-BatteryPopupContent -BatteryInfo $BatteryInfo -Form $popup -PopupWidth $popupW -DpiScale $dpiScale -CloseHintText "Move mouse away to close"
+    $content = New-BatteryPopupContent -BatteryInfo $BatteryInfo -Form $popup -PopupWidth $popupW -DpiScale $dpiScale -CloseHintText ""
 
     # Resize form to fit content
     $popup.ClientSize = New-Object System.Drawing.Size($popupW, $content.TotalHeight)
@@ -1886,10 +2040,12 @@ function Show-BatteryPopup {
     $popup.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $popup.ShowInTaskbar = $false
     $popup.TopMost = $true
-    $popup.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
+    $popup.BackColor = $script:theme.PopupBg
     $popup.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $popup.KeyPreview = $true
     Enable-DoubleBuffering -Form $popup
+    # Enable CS_DROPSHADOW for popup elevation
+    $popup.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($popup.Handle) })
 
     # Rounded border
     $popup.Add_Paint({
@@ -1904,7 +2060,7 @@ function Show-BatteryPopup {
         $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
         $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
         $borderPath.CloseFigure()
-        $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(60, 60, 66), 1)
+        $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
         $g.DrawPath($borderPen, $borderPath)
         $borderPen.Dispose(); $borderPath.Dispose()
     })
@@ -1964,6 +2120,26 @@ function Show-BatteryPopup {
 # SETTINGS PANEL
 # ============================================================
 
+function Set-DarkComboBox {
+    # Apply owner-draw dark theme to a ComboBox
+    param([System.Windows.Forms.ComboBox]$Combo)
+    $Combo.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+    $Combo.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $Combo.Add_DrawItem({
+        param($sender, $e)
+        if ($e.Index -lt 0) { return }
+        $e.DrawBackground()
+        $isSelected = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
+        $bgColor = if ($isSelected) { $script:theme.Border } else { [System.Drawing.Color]::FromArgb(50, 50, 56) }
+        $fgColor = if ($isSelected) { $script:theme.TextPrimary } else { $script:theme.TextLight }
+        $bgBrush = New-Object System.Drawing.SolidBrush($bgColor)
+        $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
+        $bgBrush.Dispose()
+        $text = $sender.Items[$e.Index].ToString()
+        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $e.Bounds, $fgColor, [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter)
+    })
+}
+
 function Show-SettingsPanel {
     # Manual DPI scaling — WinForms AutoScaleMode doesn't work reliably with SetProcessDPIAware()
     $g = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
@@ -1982,12 +2158,28 @@ function Show-SettingsPanel {
     $settings.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
 
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
+    $sectionFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+    $sectionColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
     $m = [int](20 * $ds)
     $cw = [int](280 * $ds)
     $bh = [int](34 * $ds)
     $y = $m
 
-    # --- Checkboxes section ---
+    # --- Behavior section header ---
+    $bhvSep = New-Object System.Windows.Forms.Label
+    $bhvSep.Location = New-Object System.Drawing.Point($m, $y)
+    $bhvSep.Size = New-Object System.Drawing.Size($cw, 1)
+    $bhvSep.BackColor = $script:theme.Border
+    $settings.Controls.Add($bhvSep)
+    $y += [int](8 * $ds)
+    $bhvHeader = New-Object System.Windows.Forms.Label
+    $bhvHeader.Text = "B E H A V I O R"
+    $bhvHeader.Font = $sectionFont
+    $bhvHeader.ForeColor = $sectionColor
+    $bhvHeader.Location = New-Object System.Drawing.Point($m, $y)
+    $bhvHeader.AutoSize = $true
+    $settings.Controls.Add($bhvHeader)
+    $y += [int](24 * $ds)
 
     # Auto-start checkbox
     $autoStartCheck = New-Object System.Windows.Forms.CheckBox
@@ -2057,6 +2249,22 @@ function Show-SettingsPanel {
     $settings.Controls.Add($autoHideCheck)
     $y += [int](46 * $ds)
 
+    # --- Appearance section header ---
+    $appSep = New-Object System.Windows.Forms.Label
+    $appSep.Location = New-Object System.Drawing.Point($m, $y)
+    $appSep.Size = New-Object System.Drawing.Size($cw, 1)
+    $appSep.BackColor = $script:theme.Border
+    $settings.Controls.Add($appSep)
+    $y += [int](8 * $ds)
+    $appHeader = New-Object System.Windows.Forms.Label
+    $appHeader.Text = "A P P E A R A N C E"
+    $appHeader.Font = $sectionFont
+    $appHeader.ForeColor = $sectionColor
+    $appHeader.Location = New-Object System.Drawing.Point($m, $y)
+    $appHeader.AutoSize = $true
+    $settings.Controls.Add($appHeader)
+    $y += [int](24 * $ds)
+
     # --- Display mode section ---
     $displayLabel = New-Object System.Windows.Forms.Label
     $displayLabel.Text = "Display mode:"
@@ -2088,6 +2296,7 @@ function Show-SettingsPanel {
         Update-PillSize
         Save-Config
     })
+    Set-DarkComboBox -Combo $displayCombo
     $settings.Controls.Add($displayCombo)
     $y += [int](42 * $ds)
 
@@ -2122,6 +2331,7 @@ function Show-SettingsPanel {
         Update-PillSize
         Save-Config
     })
+    Set-DarkComboBox -Combo $sizeCombo
     $settings.Controls.Add($sizeCombo)
     $y += [int](42 * $ds)
 
@@ -2165,9 +2375,10 @@ function Show-SettingsPanel {
                 $cg.FillEllipse($brush, 2, 2, $sender.Width - 5, $sender.Height - 5)
             }
             $brush.Dispose()
-            # Selection ring
+            # Selection ring (accent-colored glow)
             if ($idx -eq $script:config.AccentColorIndex) {
-                $ringPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 2)
+                $ringColor = [System.Drawing.Color]::FromArgb(200, $color.R, $color.G, $color.B)
+                $ringPen = New-Object System.Drawing.Pen($ringColor, 2)
                 $cg.DrawEllipse($ringPen, 1, 1, $sender.Width - 3, $sender.Height - 3)
                 $ringPen.Dispose()
             }
@@ -2221,10 +2432,25 @@ function Show-SettingsPanel {
         Apply-Theme
         Save-Config
     })
+    Set-DarkComboBox -Combo $themeCombo
     $settings.Controls.Add($themeCombo)
     $y += [int](54 * $ds)
 
-    # --- Opacity section ---
+    # --- Advanced section header ---
+    $advSep = New-Object System.Windows.Forms.Label
+    $advSep.Location = New-Object System.Drawing.Point($m, $y)
+    $advSep.Size = New-Object System.Drawing.Size($cw, 1)
+    $advSep.BackColor = $script:theme.Border
+    $settings.Controls.Add($advSep)
+    $y += [int](8 * $ds)
+    $advHeader = New-Object System.Windows.Forms.Label
+    $advHeader.Text = "A D V A N C E D"
+    $advHeader.Font = $sectionFont
+    $advHeader.ForeColor = $sectionColor
+    $advHeader.Location = New-Object System.Drawing.Point($m, $y)
+    $advHeader.AutoSize = $true
+    $settings.Controls.Add($advHeader)
+    $y += [int](24 * $ds)
 
     # Opacity label
     $opacityLabel = New-Object System.Windows.Forms.Label
@@ -2298,6 +2524,7 @@ function Show-SettingsPanel {
         $script:config.RefreshInterval = $newInterval
         Save-Config
     })
+    Set-DarkComboBox -Combo $refreshCombo
     $settings.Controls.Add($refreshCombo)
     $y += [int](54 * $ds)
 
@@ -2337,8 +2564,8 @@ function Show-SettingsPanel {
     $closeBtn.Location = New-Object System.Drawing.Point($m, $y)
     $closeBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $closeBtn.FlatAppearance.BorderSize = 0
-    $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(76, 175, 80)
-    $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(255, 255, 255)
+    $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
+    $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(10, 10, 12)
     $closeBtn.Add_Click({ $settings.Close() })
     $settings.Controls.Add($closeBtn)
 
@@ -2354,7 +2581,8 @@ function Show-SettingsPanel {
 # ============================================================
 
 function Update-TrayIcon {
-    $info = Get-BatteryInfo
+    $now = Get-Date
+    $info = Get-BatteryInfo -Now $now
 
     # Only regenerate icon when state actually changes
     $needsNewIcon = ($info.Percent -ne $script:cachedIconPercent) -or
@@ -2394,7 +2622,7 @@ function Update-TrayIcon {
 
     # Record history for sparkline (cap at 2400 entries = ~2h at 3s intervals)
     $script:batteryHistory.Add(@{
-        Time = Get-Date
+        Time = $now
         Percent = $info.Percent
         IsCharging = $info.IsCharging
     }) | Out-Null
@@ -2422,6 +2650,12 @@ if ($script:config.BatteryHistory.Count -gt 0) {
         $script:batteryHistory.Add($entry) | Out-Null
     }
 }
+# Restore persisted EMA state (smooth estimates immediately on restart)
+if ($script:config.EmaRate -gt 0) {
+    $script:emaRate = $script:config.EmaRate
+    $script:lastValidRate = $script:config.LastValidRate
+    $script:lastValidRateTime = Get-Date  # treat as fresh since config was recent (< 10 min)
+}
 $script:lastIconHandle = $null
 $script:lastBatteryInfo = $null
 $script:cachedIconPercent = -1
@@ -2443,6 +2677,20 @@ $script:notifyIcon.Visible = $true
 $script:floatingBar = New-FloatingBar
 $script:floatingBar.Show()
 
+# Register sleep/wake event - reset EMA state on resume from sleep/hibernate
+[Microsoft.Win32.SystemEvents]::add_PowerModeChanged({
+    param($sender, $e)
+    if ($e.Mode -eq [Microsoft.Win32.PowerModes]::Resume) {
+        $script:emaRate = -1
+        $script:lastValidRate = -1
+        $script:lastValidRateTime = $null
+        $script:rateHistory.Clear()
+        $script:lastCapacityCheck = $null
+        $script:capacityRateMismatchCount = 0
+        $script:stateChangeTime = Get-Date  # trigger hysteresis window
+    }
+})
+
 # Pill context menu (right-click on floating bar)
 $pillContextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $pillContextMenu.Add_Opening({
@@ -2450,6 +2698,7 @@ $pillContextMenu.Add_Opening({
     if ($script:hoverPopupVisible) {
         Close-HoverPopup
     }
+    Update-PowerPlanMenu -MenuItem $pillPowerItem
 })
 
 $pillHideItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hide Pill")
@@ -2461,6 +2710,8 @@ $pillHideItem.Add_Click({
 
 $pillSettingsItem = New-Object System.Windows.Forms.ToolStripMenuItem("Settings...")
 $pillSettingsItem.Add_Click({ Show-SettingsPanel })
+
+$pillPowerItem = New-Object System.Windows.Forms.ToolStripMenuItem("Power Plan")
 
 $pillSeparator1 = New-Object System.Windows.Forms.ToolStripSeparator
 
@@ -2478,6 +2729,7 @@ $pillExitItem.Add_Click({
 
 $pillContextMenu.Items.Add($pillHideItem) | Out-Null
 $pillContextMenu.Items.Add($pillSettingsItem) | Out-Null
+$pillContextMenu.Items.Add($pillPowerItem) | Out-Null
 $pillContextMenu.Items.Add($pillSeparator1) | Out-Null
 $pillContextMenu.Items.Add($pillRefreshItem) | Out-Null
 $pillContextMenu.Items.Add($pillExitItem) | Out-Null
@@ -2501,6 +2753,8 @@ $toggleBarItem.Add_Click({
 $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem("Settings...")
 $settingsItem.Add_Click({ Show-SettingsPanel })
 
+$trayPowerItem = New-Object System.Windows.Forms.ToolStripMenuItem("Power Plan")
+
 $refreshItem = New-Object System.Windows.Forms.ToolStripMenuItem("Refresh")
 $refreshItem.Add_Click({ Update-TrayIcon })
 
@@ -2515,8 +2769,13 @@ $exitItem.Add_Click({
     $script:mainForm.Close()
 })
 
+$contextMenu.Add_Opening({
+    Update-PowerPlanMenu -MenuItem $trayPowerItem
+})
+
 $contextMenu.Items.Add($toggleBarItem) | Out-Null
 $contextMenu.Items.Add($settingsItem) | Out-Null
+$contextMenu.Items.Add($trayPowerItem) | Out-Null
 $contextMenu.Items.Add($refreshItem) | Out-Null
 $contextMenu.Items.Add($separatorItem) | Out-Null
 $contextMenu.Items.Add($exitItem) | Out-Null
@@ -2541,14 +2800,14 @@ $script:timer.Add_Tick({
 
 # Pulse timer for charging animation (smooth pulsing glow effect)
 $script:pulseTimer = New-Object System.Windows.Forms.Timer
-$script:pulseTimer.Interval = 50  # 50ms for smooth animation (~20 FPS)
+$script:pulseTimer.Interval = 33  # 33ms for smooth animation (~30 FPS)
 $script:pulseTimer.Add_Tick({
     try {
         $needsRepaint = $false
         if ($script:barIsCharging) {
             # Sine-wave breathing pulse: 3-second cycle, alpha 80-180
             $t = (Get-Date).Ticks / 10000000.0
-            $script:pulseAlpha = [int](130 + 50 * [Math]::Sin($t * 2.094))
+            $script:pulseAlpha = [int](130 + 70 * [Math]::Sin($t * 2.094))
             $needsRepaint = $true
         }
         # Plug/unplug flash decay (180→0 over ~750ms at 50ms tick = ~12 per tick)
@@ -2653,6 +2912,8 @@ $script:mainForm.Add_FormClosing({
     if ($null -ne $script:pillBgBrush)   { $script:pillBgBrush.Dispose() }
     if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
     if ($null -ne $script:pillBorderPen) { $script:pillBorderPen.Dispose() }
+    # Unregister system events to avoid leaks
+    [Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($null)
     $script:mutex.ReleaseMutex()
     $script:mutex.Dispose()
 })

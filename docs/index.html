@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BatteryPill — Your battery, at a glance.</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%232dd464'/></svg>">
 <meta name="description" content="A sleek floating battery widget for Windows. Always visible, never in the way.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -183,7 +184,7 @@
   .hero-sub {
     font-size: 18px;
     color: var(--text-dim);
-    max-width: 440px;
+    max-width: 520px;
     line-height: 1.6;
     margin-bottom: 44px;
     font-weight: 300;
@@ -199,9 +200,9 @@
 
   .pill-mockup {
     position: relative;
-    width: 180px;
-    height: 56px;
-    border-radius: 28px;
+    width: 160px;
+    height: 48px;
+    border-radius: 20px;
     background: var(--bg-card);
     border: 1px solid var(--border);
     overflow: hidden;
@@ -218,7 +219,7 @@
     height: 100%;
     width: 68%;
     background: linear-gradient(90deg, rgba(45, 212, 100, 0.3) 0%, rgba(45, 212, 100, 0.12) 100%);
-    border-radius: 28px 0 0 28px;
+    border-radius: 20px 0 0 20px;
     animation: fill-breathe 4s ease-in-out infinite;
   }
 
@@ -234,7 +235,7 @@
     align-items: center;
     justify-content: center;
     font-family: 'DM Sans', sans-serif;
-    font-size: 17px;
+    font-size: 15px;
     font-weight: 700;
     color: var(--text);
     letter-spacing: -0.01em;
@@ -415,10 +416,22 @@
   }
 
   .feature-icon {
-    font-size: 24px;
+    width: 28px;
+    height: 28px;
     margin-bottom: 16px;
     display: block;
-    filter: grayscale(0.2);
+    color: var(--green);
+    opacity: 0.7;
+  }
+
+  .feature-icon svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   .feature-title {
@@ -434,6 +447,27 @@
     color: var(--text-dim);
     line-height: 1.6;
     font-weight: 300;
+  }
+
+  /* --- Screenshot showcase --- */
+  .screenshot-row {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+  }
+
+  .screenshot-frame {
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-raised);
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  }
+
+  .screenshot-frame img {
+    display: block;
+    max-width: 100%;
+    height: auto;
   }
 
   /* --- How it works --- */
@@ -604,8 +638,7 @@
       align-items: center;
     }
 
-    .nav-links { gap: 16px; }
-    .nav-links a { font-size: 12px; }
+    .nav-links { display: none; }
   }
 
   @media (max-width: 480px) {
@@ -658,10 +691,6 @@
       <span class="btn-icon">&#8595;</span>
       Download for Windows
     </a>
-    <a href="https://buymeacoffee.com/nobackhand" class="btn-coffee" target="_blank" rel="noopener">
-      <span class="btn-icon">&#9749;</span>
-      Buy me a coffee
-    </a>
   </div>
 </section>
 
@@ -680,34 +709,52 @@
 
     <div class="features-grid reveal">
       <div class="feature-card">
-        <span class="feature-icon">&#128267;</span>
+        <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18" opacity="0.3"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg></span>
         <div class="feature-title">Always on top</div>
         <div class="feature-desc">Floats above all windows so your battery status is always one glance away.</div>
       </div>
       <div class="feature-card">
-        <span class="feature-icon">&#9201;</span>
+        <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
         <div class="feature-title">Time remaining</div>
         <div class="feature-desc">Shows hours and minutes left, not just a percentage. Know exactly when you need to plug in.</div>
       </div>
       <div class="feature-card">
-        <span class="feature-icon">&#128200;</span>
+        <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 12h2M10 12h2M14 12h2M18 12h2" stroke-width="2"/><path d="M6 8h12M6 16h8" opacity="0.3"/></svg></span>
         <div class="feature-title">Detailed popup</div>
         <div class="feature-desc">Hover over the pill for charge rate, capacity, wear level, battery history, and more.</div>
       </div>
       <div class="feature-card">
-        <span class="feature-icon">&#128142;</span>
+        <span class="feature-icon"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 18h6" opacity="0.3"/><circle cx="12" cy="9" r="3"/></svg></span>
         <div class="feature-title">Crisp at any DPI</div>
         <div class="feature-desc">Renders perfectly on high-DPI and scaled displays. No blurry icons or clipped text.</div>
       </div>
       <div class="feature-card">
-        <span class="feature-icon">&#128202;</span>
+        <span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M4 19L8 15L12 17L16 10L20 13"/><path d="M4 19h16" opacity="0.3"/></svg></span>
         <div class="feature-title">Battery sparkline</div>
         <div class="feature-desc">See your battery trend over the last 2 hours. Charging periods highlighted in green, with a 50% guide line.</div>
       </div>
       <div class="feature-card">
-        <span class="feature-icon">&#127912;</span>
+        <span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span>
         <div class="feature-title">Fully customizable</div>
         <div class="feature-desc">Dark, light, or auto theme. 8 accent colors. Compact, normal, or expanded pill. Snap-to-edge dragging. All persisted across sessions.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Screenshot showcase -->
+<section id="preview">
+  <div class="container">
+    <div class="reveal" style="text-align: center;">
+      <p class="section-label">See it in action</p>
+      <h2 class="section-heading">Hover for the full picture</h2>
+      <p class="section-sub" style="margin: 0 auto 48px;">
+        The pill shows time at a glance. Hover for charge rate, capacity, wear, and a 2-hour sparkline.
+      </p>
+    </div>
+    <div class="screenshot-row reveal">
+      <div class="screenshot-frame">
+        <img src="screenshot-popup.png" alt="BatteryPill hover popup showing battery details" width="480" loading="lazy">
       </div>
     </div>
   </div>
@@ -765,8 +812,8 @@
 <!-- Footer -->
 <footer>
   <p>
-    Made by nobackhand<br>
-    BatteryPill is free. <a href="https://buymeacoffee.com/nobackhand" target="_blank" rel="noopener">Support the project</a>
+    Windows 10+ &bull; PowerShell 5.0+ &bull; No install required<br>
+    Made by nobackhand &mdash; BatteryPill is free. <a href="https://buymeacoffee.com/nobackhand" target="_blank" rel="noopener">Support the project</a>
   </p>
 </footer>
 
@@ -793,19 +840,24 @@
 
   reveals.forEach(el => observer.observe(el));
 
-  // Pill time animation — cycle through realistic values
-  const times = ['2h 34m', '2h 33m', '2h 31m', '2h 28m', '1h 45m', '3h 12m', '4h 02m'];
-  let idx = 0;
+  // Fallback: force-reveal any hidden elements after 3s
+  setTimeout(() => reveals.forEach(el => el.classList.add('visible')), 3000);
+
+  // Pill time animation — smooth countdown
+  let totalMins = 154; // start at 2h 34m
   const pillText = document.querySelector('.pill-text');
+  pillText.style.transition = 'opacity 0.3s ease';
   setInterval(() => {
-    idx = (idx + 1) % times.length;
+    totalMins = totalMins > 1 ? totalMins - 1 : 154; // loop back
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    const timeStr = h + 'h ' + String(m).padStart(2, '0') + 'm';
     pillText.style.opacity = 0;
     setTimeout(() => {
-      pillText.textContent = times[idx];
+      pillText.textContent = timeStr;
       pillText.style.opacity = 1;
     }, 300);
   }, 4000);
-  pillText.style.transition = 'opacity 0.3s ease';
 </script>
 
 </body>
