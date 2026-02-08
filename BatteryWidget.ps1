@@ -1470,7 +1470,9 @@ function New-SparklinePanel {
             $spanMin = [int](($lastTime - $firstTime).TotalMinutes)
             $spanText = if ($spanMin -ge 60) { "{0}h" -f [math]::Round($spanMin / 60.0, 1) } else { "{0} min" -f $spanMin }
             $spanSize = $sg.MeasureString($spanText, $guideFont)
-            $sg.DrawString($spanText, $guideFont, (New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, 255, 255, 255))), ($sw - $spanSize.Width - 2), ($sh - $spanSize.Height - 1))
+            $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, 255, 255, 255))
+            $sg.DrawString($spanText, $guideFont, $spanBrush, ($sw - $spanSize.Width - 2), ($sh - $spanSize.Height - 1))
+            $spanBrush.Dispose()
         }
         $guideFont.Dispose()
     })
@@ -1540,7 +1542,7 @@ function New-BatteryPopupContent {
     $heroRh = [int](24 * $DpiScale)
     $lx = 20
     $vx = [int](80 * $DpiScale)
-    $lw = [int](70 * $DpiScale)
+    $lw = [int](80 * $DpiScale)
     $vw = $PopupWidth - $vx - 20
     $y = [int](78 * $DpiScale)
 
@@ -1681,9 +1683,11 @@ function New-BatteryPopupContent {
         $Form.Controls.Add($hintLabel)
     }
 
+    $fontsToDispose = @($labelFont, $valueFont, $heroLabelFont, $heroValueFont, $heroFont, $titleLabel.Font, $powerLabel.Font)
+    if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
         TotalHeight = $y + 8
-        Fonts = @($labelFont, $valueFont, $heroLabelFont, $heroValueFont, $heroFont, $titleLabel.Font)
+        Fonts = $fontsToDispose
     }
 }
 
@@ -1964,6 +1968,11 @@ function Close-HoverPopup {
                         $script:hoverPopup.Close()
                         $script:hoverPopup.Dispose()
                         $script:hoverPopup = $null
+                        # Dispose popup fonts to prevent GDI+ handle leak
+                        if ($null -ne $script:hoverPopupFonts) {
+                            foreach ($f in $script:hoverPopupFonts) { if ($null -ne $f) { $f.Dispose() } }
+                            $script:hoverPopupFonts = $null
+                        }
                     } else {
                         $script:hoverPopup.Opacity = 1.0 - $eased
                     }
@@ -1990,6 +1999,10 @@ function Show-HoverPopup {
         $script:hoverPopup.Close()
         $script:hoverPopup.Dispose()
         $script:hoverPopup = $null
+        if ($null -ne $script:hoverPopupFonts) {
+            foreach ($f in $script:hoverPopupFonts) { if ($null -ne $f) { $f.Dispose() } }
+            $script:hoverPopupFonts = $null
+        }
     }
     $script:hoverPopupVisible = $false
 
@@ -2031,11 +2044,12 @@ function Show-HoverPopup {
     $gDpi = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
     $dpiScale = $gDpi.DpiX / 96.0
     $gDpi.Dispose()
-    $popupW = [int](280 * $dpiScale)
+    $popupW = [int](300 * $dpiScale)
     $popup.Size = New-Object System.Drawing.Size($popupW, 400)
 
     # Build shared content
     $content = New-BatteryPopupContent -BatteryInfo $BatteryInfo -Form $popup -PopupWidth $popupW -DpiScale $dpiScale -CloseHintText ""
+    $script:hoverPopupFonts = $content.Fonts
 
     # Resize form to fit content
     $popup.ClientSize = New-Object System.Drawing.Size($popupW, $content.TotalHeight)
@@ -2141,7 +2155,7 @@ function Show-BatteryPopup {
     $gDpi2 = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
     $dpiScale = $gDpi2.DpiX / 96.0
     $gDpi2.Dispose()
-    $popupW = [int](280 * $dpiScale)
+    $popupW = [int](300 * $dpiScale)
     $popup.Size = New-Object System.Drawing.Size($popupW, 400)
 
     # Build shared content
@@ -2186,6 +2200,8 @@ function Show-BatteryPopup {
 
     $popup.ShowDialog() | Out-Null
     $script:estimatingLabel = $null
+    # Dispose popup fonts to prevent GDI+ handle leak
+    foreach ($f in $content.Fonts) { if ($null -ne $f) { $f.Dispose() } }
     $popup.Dispose()
 }
 
@@ -2361,7 +2377,11 @@ function Show-SettingsPanel {
     $settingsTooltip = New-Object System.Windows.Forms.ToolTip
     $settingsTooltip.InitialDelay = 400
     $settingsTooltip.ReshowDelay = 200
-    $settings.Add_FormClosed({ $settingsTooltip.Dispose() })
+    $settings.Add_FormClosed({
+        $settingsTooltip.Dispose()
+        $labelFont.Dispose()
+        $sectionFont.Dispose()
+    })
 
     # --- Behavior section header ---
     $bhvSep = New-Object System.Windows.Forms.Label
@@ -2690,8 +2710,8 @@ function Show-SettingsPanel {
         $script:floatingBar.Opacity = $newOpacity
         $script:config.Opacity = $newOpacity
         $opacityValueLabel.Text = "{0}%" -f $opacitySlider.Value
-        Save-Config
     })
+    $opacitySlider.Add_MouseUp({ Save-Config })
     $settings.Controls.Add($opacitySlider)
     $y += [int](67 * $ds)
 
@@ -2914,6 +2934,10 @@ function Show-AboutDialog {
     $about.Add_Deactivate({ $about.Close() })
 
     $about.ShowDialog() | Out-Null
+    # Dispose fonts created for about dialog labels
+    foreach ($ctrl in $about.Controls) {
+        if ($null -ne $ctrl.Font) { $ctrl.Font.Dispose() }
+    }
     $about.Dispose()
 }
 
@@ -3323,6 +3347,7 @@ $script:mainForm.Add_FormClosing({
     }
     # Dispose cached GDI objects
     if ($null -ne $script:pillFont) { $script:pillFont.Dispose() }
+    if ($null -ne $script:pillFont2) { $script:pillFont2.Dispose() }
     if ($null -ne $script:pillStringFormat) { $script:pillStringFormat.Dispose() }
     if ($null -ne $script:pillBgBrush)   { $script:pillBgBrush.Dispose() }
     if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
