@@ -74,6 +74,18 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-02-05 — Popup Design Audit & Visual Hierarchy
+- **Hero percentage** — 18pt Semibold Bold percent below title, colored by battery status; old "Percent: XX%" row removed
+- **Simplified title** — shows "Charging" / "Discharging" instead of "Charging - 90%"
+- **Hidden N/A rows** — Capacity, Rate, Runtime, Wear rows skip rendering when value is "N/A"; popup shrinks automatically
+- **Right-aligned values** — `Add-PopupRow` returns value label, uses fixed `Size` + `TextAlign = TopRight`
+- **Font contrast** — standard rows 7.5pt, hero rows 10pt Semibold; secondary labels use `TextMuted`
+- **Power source icons** — lightning bolt (U+26A1) for AC, bullet (U+2022) for battery
+- **"Estimating..." pulse** — sine-wave alpha oscillation (120-200) on time label when rate unavailable
+- **Sparkline improvements** — height 30→40px, current value dot (6px accent circle), guide text 7pt/120-alpha
+- **Popup width** — 280→300px for breathing room; label column 70→80px to fit "Remaining:" at 10pt
+- **Bug fixes** — exit error from null delegate removal; hero text clipping from insufficient row offset
+
 ### 2026-02-03 — Compact Popup & Positioning Fix
 - **Compact popup layout** — reduced popup height ~40%: width 440→360, fonts 9.5→8.5pt, title 11→10pt, row height 28→22, sparkline 40→30px, progress bar 16→12px, label column 130→100, tighter gaps
 - **Fixed popup clipping off-screen** — positioning was calculated using stale placeholder size (420×400) before content layout; moved positioning to after `ClientSize` is set so screen-edge clamping uses actual final dimensions
