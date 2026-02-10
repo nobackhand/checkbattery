@@ -17,6 +17,9 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# Detect Terminal Services / Remote Desktop session (power plan WMI calls show error dialogs in RDP)
+$script:isRemoteSession = [System.Windows.Forms.SystemInformation]::TerminalServerSession
+
 # P/Invoke for proper icon handle cleanup, DPI awareness, and fullscreen detection
 Add-Type @"
 using System;
@@ -569,6 +572,7 @@ function Get-SmoothedTimeRemaining {
 # ============================================================
 
 function Get-PowerPlans {
+    if ($script:isRemoteSession) { return @() }
     try {
         $plans = Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan
         $result = @()
@@ -582,6 +586,7 @@ function Get-PowerPlans {
 
 function Set-ActivePowerPlan {
     param([string]$PlanGUID)
+    if ($script:isRemoteSession) { return $false }
     try {
         $plan = Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan `
             -Filter "InstanceID LIKE '%$PlanGUID%'"
@@ -611,7 +616,7 @@ function Update-PowerPlanMenu {
         $MenuItem.DropDownItems.Add($item) | Out-Null
     }
     if ($plans.Count -eq 0) {
-        $noItem = New-Object System.Windows.Forms.ToolStripMenuItem("No plans found")
+        $noItem = New-Object System.Windows.Forms.ToolStripMenuItem("Not available")
         $noItem.Enabled = $false
         $MenuItem.DropDownItems.Add($noItem) | Out-Null
     }
