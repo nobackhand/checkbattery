@@ -98,7 +98,7 @@ $script:theme = @{
     TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
 }
 
-$script:appVersion = "1.2.0"
+$script:appVersion = "0.9.0"
 
 function Get-SystemTheme {
     try {
