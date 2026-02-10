@@ -85,7 +85,7 @@ if ($widgetProc) {
     Write-Host "Found running BatteryWidget PID: $($widgetProc.Id)"
     $pid_ = [uint32]$widgetProc.Id
 } else {
-    $exePath = Join-Path $PSScriptRoot "BatteryWidget.exe"
+    $exePath = Get-ChildItem (Join-Path $PSScriptRoot "BatteryPill-*.exe") | Select-Object -First 1 -ExpandProperty FullName
     Write-Host "Launching $exePath..."
     $proc = Start-Process -FilePath $exePath -PassThru
     $pid_ = [uint32]$proc.Id

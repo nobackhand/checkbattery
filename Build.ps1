@@ -9,7 +9,11 @@
 
 $scriptDir = $PSScriptRoot
 $inputFile = Join-Path $scriptDir "BatteryWidget.ps1"
-$outputFile = Join-Path $scriptDir "BatteryWidget.exe"
+
+# Extract version from the script source
+$versionLine = Select-String -Path $inputFile -Pattern '^\$script:appVersion\s*=\s*"(.+?)"' | Select-Object -First 1
+$appVersion = if ($versionLine) { $versionLine.Matches[0].Groups[1].Value } else { "0.0.0" }
+$outputFile = Join-Path $scriptDir "BatteryPill-$appVersion.exe"
 
 # Verify source exists
 if (-not (Test-Path $inputFile)) {
@@ -23,14 +27,14 @@ if (-not (Get-Module -ListAvailable -Name ps2exe)) {
     Install-Module -Name ps2exe -Scope CurrentUser -Force
 }
 
-# Remove old exe if present
-if (Test-Path $outputFile) {
-    Write-Host "Removing previous build..." -ForegroundColor Yellow
-    Remove-Item $outputFile -Force
+# Remove old exe(s) if present
+Get-ChildItem $scriptDir -Filter "BatteryPill-*.exe" | ForEach-Object {
+    Write-Host "Removing previous build: $($_.Name)..." -ForegroundColor Yellow
+    Remove-Item $_.FullName -Force
 }
 
 # Compile
-Write-Host "Compiling BatteryWidget.ps1 -> BatteryWidget.exe" -ForegroundColor Cyan
+Write-Host "Compiling BatteryWidget.ps1 -> BatteryPill-$appVersion.exe" -ForegroundColor Cyan
 
 Invoke-PS2EXE -InputFile $inputFile `
               -OutputFile $outputFile `
@@ -39,7 +43,7 @@ Invoke-PS2EXE -InputFile $inputFile `
               -DPIAware `
               -title "Battery Widget" `
               -description "System tray battery monitor" `
-              -version "0.9.0.0" `
+              -version "$appVersion.0" `
               -copyright "(c) 2026"
 
 if (Test-Path $outputFile) {

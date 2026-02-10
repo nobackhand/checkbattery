@@ -1,5 +1,5 @@
 # Compiled executable
-BatteryWidget.exe
+BatteryPill-*.exe
 
 # Runtime config (user-specific position data)
 BatteryWidget.config.json
