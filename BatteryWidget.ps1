@@ -17,8 +17,6 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# Detect Terminal Services / Remote Desktop session (power plan WMI calls show error dialogs in RDP)
-$script:isRemoteSession = [System.Windows.Forms.SystemInformation]::TerminalServerSession
 
 # P/Invoke for proper icon handle cleanup, DPI awareness, and fullscreen detection
 Add-Type @"
@@ -572,13 +570,18 @@ function Get-SmoothedTimeRemaining {
 # ============================================================
 
 function Get-PowerPlans {
-    if ($script:isRemoteSession) { return @() }
     try {
-        $plans = Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan
+        $output = & powercfg /list 2>&1
+        if ($LASTEXITCODE -ne 0) { return @() }
         $result = @()
-        foreach ($p in $plans) {
-            $guid = ($p.InstanceID -split '\\')[-1].Trim('{}')
-            $result += @{ Name = $p.ElementName; GUID = $guid; IsActive = $p.IsActive }
+        foreach ($line in $output) {
+            if ($line -match 'GUID:\s+(\S+)\s+\((.+?)\)(\s+\*)?') {
+                $result += @{
+                    Name     = $Matches[2]
+                    GUID     = $Matches[1]
+                    IsActive = [bool]$Matches[3]
+                }
+            }
         }
         return $result
     } catch { return @() }
@@ -586,15 +589,9 @@ function Get-PowerPlans {
 
 function Set-ActivePowerPlan {
     param([string]$PlanGUID)
-    if ($script:isRemoteSession) { return $false }
     try {
-        $plan = Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan `
-            -Filter "InstanceID LIKE '%$PlanGUID%'"
-        if ($plan) {
-            Invoke-CimMethod -InputObject $plan -MethodName Activate | Out-Null
-            return $true
-        }
-        return $false
+        & powercfg /setactive $PlanGUID 2>&1 | Out-Null
+        return ($LASTEXITCODE -eq 0)
     } catch { return $false }
 }
 
