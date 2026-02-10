@@ -39,7 +39,7 @@ Invoke-PS2EXE -InputFile $inputFile `
               -DPIAware `
               -title "Battery Widget" `
               -description "System tray battery monitor" `
-              -version "1.0.0.0" `
+              -version "0.9.0.0" `
               -copyright "(c) 2026"
 
 if (Test-Path $outputFile) {
