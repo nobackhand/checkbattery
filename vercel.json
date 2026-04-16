@@ -1,0 +1,12 @@
+{
+  "outputDirectory": "docs",
+  "headers": [
+    {
+      "source": "/(.*)\\.exe",
+      "headers": [
+        { "key": "Content-Type", "value": "application/octet-stream" },
+        { "key": "Content-Disposition", "value": "attachment" }
+      ]
+    }
+  ]
+}
