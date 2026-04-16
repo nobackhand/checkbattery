@@ -98,7 +98,7 @@ $script:theme = @{
     TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
 }
 
-$script:appVersion = "0.9.0"
+$script:appVersion = "1.0.0"
 
 function Get-SystemTheme {
     try {
@@ -1501,7 +1501,7 @@ function New-BatteryPopupContent {
     $heroLabelFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
     $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
 
-    # --- Title (dynamic status) ---
+    # --- Title with percentage (e.g. "Discharging — 72%") ---
     if ($BatteryInfo.IsFullyCharged) {
         $titleText = "Fully Charged"
     } elseif ($BatteryInfo.IsCharging) {
@@ -1510,6 +1510,9 @@ function New-BatteryPopupContent {
         $titleText = "No Battery"
     } else {
         $titleText = "Discharging"
+    }
+    if (-not $BatteryInfo.NoBattery -and $BatteryInfo.PercentExact -ge 0) {
+        $titleText = "$titleText — $($BatteryInfo.PercentExact)%"
     }
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Text = $titleText
@@ -1527,26 +1530,15 @@ function New-BatteryPopupContent {
     $sepLabel.BackColor = $script:theme.Border
     $Form.Controls.Add($sepLabel)
 
-    # --- Hero percentage ---
-    $heroFont = New-Object System.Drawing.Font("Segoe UI Semibold", 18, [System.Drawing.FontStyle]::Bold)
-    $pctText = if ($BatteryInfo.NoBattery) { "N/A" } else { "$($BatteryInfo.PercentExact)%" }
-    $heroLabel = New-Object System.Windows.Forms.Label
-    $heroLabel.Text = $pctText
-    $heroLabel.Font = $heroFont
-    $heroLabel.ForeColor = $statusColor
-    $heroLabel.Location = New-Object System.Drawing.Point(20, [int](38 * $DpiScale))
-    $heroLabel.AutoSize = $true
-    $heroLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
-    $Form.Controls.Add($heroLabel)
-
     # --- Row layout (DPI-aware) ---
+    $heroFont = New-Object System.Drawing.Font("Segoe UI Semibold", 18, [System.Drawing.FontStyle]::Bold)
     $rh = [int](18 * $DpiScale)
     $heroRh = [int](24 * $DpiScale)
     $lx = 20
     $vx = [int](80 * $DpiScale)
     $lw = [int](80 * $DpiScale)
     $vw = $PopupWidth - $vx - 20
-    $y = [int](78 * $DpiScale)
+    $y = [int](40 * $DpiScale)
 
     # Helper to add a label+value row (value right-aligned)
     function Add-PopupRow {
@@ -1564,6 +1556,13 @@ function New-BatteryPopupContent {
         $val.TextAlign = [System.Drawing.ContentAlignment]::TopRight
         $TargetForm.Controls.Add($val)
         return $val
+    }
+
+    # Row 1: Percent (highlighted)
+    if (-not $BatteryInfo.NoBattery) {
+        $pctText = "$($BatteryInfo.PercentExact)%"
+        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Percent:" -Value $pctText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $statusColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
+        $y += $rh
     }
 
     # Row 2: Capacity (hidden when N/A)
@@ -1602,9 +1601,9 @@ function New-BatteryPopupContent {
     } elseif ($BatteryInfo.TimeMinutes -gt 0) {
         $h = [math]::Floor($BatteryInfo.TimeMinutes / 60)
         $m = $BatteryInfo.TimeMinutes % 60
-        $shortTime = "{0}:{1:D2}" -f $h, $m
+        $shortTime = "{0}h {1:D2}m" -f $h, $m
         if ($BatteryInfo.ETA) {
-            $timeText = "$shortTime (until $($BatteryInfo.ETA))"
+            $timeText = "$shortTime — ETA $($BatteryInfo.ETA)"
         } else {
             $timeText = $shortTime
         }
@@ -1612,6 +1611,8 @@ function New-BatteryPopupContent {
         $timeText = "Estimating..."
     }
     $timeRowLabel = if ($BatteryInfo.IsCharging) { "To Full:" } else { "Remaining:" }
+    # Spacer before time row
+    $y += [int](4 * $DpiScale)
     $timeValLabel = Add-PopupRow -TargetForm $Form -RowY $y -Label $timeRowLabel -Value $timeText -LFont $heroLabelFont -VFont $heroValueFont -DColor $dimGray -VColor $script:theme.TextPrimary -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $heroRh
     if ($timeText -eq "Estimating...") { $script:estimatingLabel = $timeValLabel }
     $y += $heroRh
@@ -1628,7 +1629,7 @@ function New-BatteryPopupContent {
     if ($BatteryInfo.FullRuntimeMinutes -gt 0) {
         $frH = [math]::Floor($BatteryInfo.FullRuntimeMinutes / 60)
         $frM = $BatteryInfo.FullRuntimeMinutes % 60
-        $fullRtText = "{0}:{1:D2}" -f $frH, $frM
+        $fullRtText = "~{0}h {1:D2}m full" -f $frH, $frM
     } else {
         $fullRtText = "N/A"
     }
@@ -1639,7 +1640,7 @@ function New-BatteryPopupContent {
 
     # Row 7: Battery Wear (hidden when N/A)
     if ($BatteryInfo.BatteryWearPercent -ge 0 -and $BatteryInfo.DesignCapacity -gt 0) {
-        $wearText = "{0:N1}% of {1:N0} mWh" -f $BatteryInfo.BatteryWearPercent, $BatteryInfo.DesignCapacity
+        $wearText = "{0:N1}%" -f $BatteryInfo.BatteryWearPercent
     } else {
         $wearText = "N/A"
     }
