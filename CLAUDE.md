@@ -7,6 +7,26 @@
 **Website**: batterypill.com (GitHub Pages from `docs/`)
 **Donate**: buymeacoffee.com/nobackhand
 
+## Agent Team — Working Agreement (launch-readiness pass)
+
+This pass is run by a 4-person team coordinated by a lead. **Read this before doing anything.**
+
+**File ownership (do NOT edit outside your lane — parallel edits to one file overwrite each other):**
+- **Lena (Web & UX):** `docs/index.html`, `vercel.json`
+- **Russ (Widget & Systems):** `BatteryWidget.ps1`, `Build.ps1`, `CheckBattery.ps1`, `CheckBattery.bat`
+- **Priya (Docs & New-User):** `README.md`, `CLAUDE.md` (below this section), `CURRENT_STATUS.md`, `.gitignore`, `parse_check.ps1`, `capture_popup.ps1`
+- **Vic (Red-Team/Validation):** owns no existing file; read-only everywhere; may create NEW files only under `tests/` and `.github/`.
+
+**Hard rules:**
+1. **No new dependencies** and **no config-schema / data-model changes** without flagging the lead first.
+2. Preserve existing behavior unless the change is intentional and documented.
+3. Every implementation plan must state how it will be validated.
+4. Prefer small, reversible diffs over rewrites. No unsystematic styling churn.
+
+**Environment reality (this matters):**
+- No PowerShell / Windows / PS2EXE here → the widget **cannot be built, run, or linted**. Widget work is inspection or statically-reviewable edits only; anything needing a running widget stays a recommendation.
+- The website renders in headless Chromium (`/opt/pw-browsers`) and validates via Python `html.parser` — Lena's changes ARE verifiable.
+
 ## Architecture
 
 - **BatteryWidget.ps1** — Main widget (~2800 lines). Creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position. Supports dark/light/auto themes, configurable pill size and display mode, accent color presets, battery history sparkline, and fullscreen auto-hide.
