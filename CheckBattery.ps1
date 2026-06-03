@@ -22,7 +22,8 @@ if ($PSVersionTable.PSVersion.Major -ge 6 -and -not $IsWindows) {
 
 # --- Query battery data from WMI (primary source) ---
 try {
-    $wmiBattery = Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop
+    # Select-Object -First 1: dual-battery laptops return an array; pick the primary battery
+    $wmiBattery = Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop | Select-Object -First 1
 } catch {
     Write-Verbose "WMI query failed: $_"
     $wmiBattery = $null

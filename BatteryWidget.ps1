@@ -226,7 +226,8 @@ function Get-BatteryInfo {
 
     # WMI primary source
     try {
-        $wmiBattery = Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop
+        # Select-Object -First 1: dual-battery laptops return an array; pick the primary battery
+        $wmiBattery = Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop | Select-Object -First 1
     } catch {
         $wmiBattery = $null
     }
@@ -558,7 +559,8 @@ function Get-SmoothedTimeRemaining {
         }
 
         # Rate is in mW, capacity is in mWh, so time = capacity / rate (hours)
-        $timeMinutes = [int](($remainingCapacity / $effectiveRate) * 60)
+        # Cap at 6000 min (100h) so a rounding-underflow in $effectiveRate can't show "5333 hours"
+        $timeMinutes = [math]::Min([int](($remainingCapacity / $effectiveRate) * 60), 6000)
         return $timeMinutes
     }
 
@@ -737,6 +739,8 @@ function New-BatteryIcon {
         $fillBrush.Dispose()
 
         $g.Clip = $oldClip
+        # $g.Clip getter allocated a new Region; dispose it after restore (avoids GDI+ leak)
+        if ($oldClip) { $oldClip.Dispose() }
     }
 
     # Border (slightly brighter than pill for visibility at small size)
@@ -1165,6 +1169,8 @@ function New-FloatingBar {
             $fillBrush.Dispose()
 
             $g.Clip = $oldClip
+            # $g.Clip getter allocated a new Region; dispose it after restore (avoids GDI+ leak in paint hot path)
+            if ($oldClip) { $oldClip.Dispose() }
         }
 
         # --- Glass effect: convex top highlight band ---
@@ -1203,6 +1209,8 @@ function New-FloatingBar {
             $glowBrush.Dispose()
         }
         $g.Clip = $oldClip2
+        # $g.Clip getter allocated a new Region; dispose it after restore (avoids GDI+ leak in paint hot path)
+        if ($oldClip2) { $oldClip2.Dispose() }
 
         # --- Text rendering (supports single-line and dual-line modes) ---
         if ($script:barDisplayText2 -and $script:barDisplayText2.Length -gt 0 -and $null -ne $script:pillFont2) {
