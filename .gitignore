@@ -7,6 +7,13 @@ BatteryWidget.config.json
 # Debug scripts
 debug_dpi.ps1
 
+# MCP / tooling debug output
+.playwright-mcp/
+
+# Build & audit screenshots (regenerated, not source)
+website-*.png
+
 # Claude plans
 .claude/
 .vercel
+.vercel/

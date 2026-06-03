@@ -3,9 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BatteryPill</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect rx='4' width='14' height='8' y='4' x='1' fill='none' stroke='%23888' stroke-width='1.5'/><rect rx='2' x='3' y='6' width='8' height='4' fill='%23888'/></svg>">
-<meta name="description" content="A floating battery widget for Windows that shows time remaining.">
+<title>BatteryPill — Battery time remaining for Windows</title>
+<meta name="description" content="A floating pill widget for Windows that shows how much battery time is left — hours and minutes, not just a percentage. Free, portable, single .exe.">
+<link rel="canonical" href="https://batterypill.com/">
+<meta name="theme-color" content="#111111">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect rx='4' width='14' height='8' y='4' x='1' fill='none' stroke='%234ade80' stroke-width='1.5'/><rect rx='2' x='3' y='6' width='8' height='4' fill='%234ade80'/></svg>">
+
+<!-- Open Graph / social -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="BatteryPill">
+<meta property="og:title" content="BatteryPill — Battery time remaining for Windows">
+<meta property="og:description" content="A floating pill widget for Windows that shows hours and minutes of battery left, not just a percentage. Free, portable, single .exe.">
+<meta property="og:url" content="https://batterypill.com/">
+<meta property="og:image" content="https://batterypill.com/screenshot-popup.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="BatteryPill — Battery time remaining for Windows">
+<meta name="twitter:description" content="A floating pill widget for Windows that shows hours and minutes of battery left, not just a percentage.">
+<meta name="twitter:image" content="https://batterypill.com/screenshot-popup.png">
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -13,8 +28,8 @@
     --bg: #111;
     --bg-card: #191919;
     --text: #e0e0e0;
-    --text-2: #999;
-    --text-3: #666;
+    --text-2: #9a9a9a;
+    --text-3: #808080;
     --border: #282828;
     --accent: #4ade80;
     --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -34,6 +49,18 @@
 
   a { color: var(--text-2); text-decoration: none; }
   a:hover { color: var(--text); }
+
+  /* Keyboard focus — visible for a11y, invisible for mouse users */
+  a:focus-visible, .hero-dl:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { transition-duration: 0.01ms !important; }
+  }
 
   .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px; }
 
@@ -120,7 +147,8 @@
     border: 1px solid #333;
     border-radius: 6px;
     padding: 16px 20px;
-    width: 280px;
+    width: 300px;
+    max-width: 100%;
     font-family: 'Segoe UI', var(--font);
     font-size: 13px;
     color: #ccc;
@@ -140,11 +168,12 @@
   .popup-row {
     display: flex;
     justify-content: space-between;
+    gap: 12px;
     padding: 3px 0;
   }
 
-  .popup-label { color: #888; }
-  .popup-value { color: #ccc; }
+  .popup-label { color: #888; white-space: nowrap; }
+  .popup-value { color: #ccc; white-space: nowrap; }
   .popup-value.highlight { color: #f0c040; font-weight: 600; }
   .popup-value.bold { font-weight: 600; }
 
@@ -291,17 +320,20 @@
   @media (max-width: 520px) {
     .features ul { grid-template-columns: 1fr; }
     .footer-inner { flex-direction: column; gap: 12px; }
-    .nav-right span { display: none; }
+    /* In-page anchors are redundant on mobile (you just scroll); keep
+       the brand and the primary actions so nothing collides. */
+    .nav-right .nav-anchor { display: none; }
+    .nav-right { gap: 16px; }
   }
 </style>
 </head>
 <body>
 
-<nav>
-  <span class="nav-left">BatteryPill</span>
+<nav aria-label="Primary">
+  <a class="nav-left" href="#top">BatteryPill</a>
   <div class="nav-right">
-    <a href="#features">Features</a>
-    <a href="#install">Install</a>
+    <a class="nav-anchor" href="#features">Features</a>
+    <a class="nav-anchor" href="#install">Install</a>
     <a href="https://github.com/nobackhand/checkbattery" target="_blank" rel="noopener">GitHub</a>
     <a href="/BatteryPill-1.0.0.exe" class="dl" download>Download</a>
   </div>
@@ -311,13 +343,13 @@
   <h1>Battery time remaining,<br>always visible</h1>
   <p>A floating pill widget for Windows that shows hours and minutes left. Not a percentage.</p>
   <a href="/BatteryPill-1.0.0.exe" class="hero-dl" download>Download for Windows</a>
-  <div class="hero-meta">v1.0.0 &middot; 170 KB &middot; single exe &middot; no install</div>
+  <div class="hero-meta">v1.0.0 &middot; 176 KB &middot; single exe &middot; no install</div>
   <div class="hero-note">SmartScreen may warn on first run &mdash; click "More info" &rarr; "Run anyway"</div>
 </div>
 
 <div class="popup-preview">
   <div>
-    <div class="popup-mock">
+    <div class="popup-mock" aria-hidden="true">
       <div class="popup-title">Discharging &mdash; 72%</div>
       <div class="popup-row"><span class="popup-label">Percent:</span><span class="popup-value highlight">72%</span></div>
       <div class="popup-row"><span class="popup-label">Capacity:</span><span class="popup-value">43,180 / 59,970 mWh</span></div>
