@@ -4,7 +4,7 @@
 
 **BatteryPill** is a Windows desktop battery widget built in PowerShell with WinForms, compiled to `.exe` via PS2EXE. It shows a floating pill-shaped indicator on the desktop displaying time remaining, with a detailed popup on click and a system tray icon.
 
-**Website**: batterypill.com (GitHub Pages from `docs/`)
+**Website**: batterypill.com (deployed via Vercel from `docs/`)
 **Donate**: buymeacoffee.com/nobackhand
 
 ## Agent Team — Working Agreement (launch-readiness pass)
@@ -29,12 +29,12 @@ This pass is run by a 4-person team coordinated by a lead. **Read this before do
 
 ## Architecture
 
-- **BatteryWidget.ps1** — Main widget (~2800 lines). Creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position. Supports dark/light/auto themes, configurable pill size and display mode, accent color presets, battery history sparkline, and fullscreen auto-hide.
+- **BatteryWidget.ps1** — Main widget (~3,370 lines). Creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position. Supports dark/light/auto themes, configurable pill size and display mode, accent color presets, battery history sparkline, and fullscreen auto-hide.
 - **Build.ps1** — Compiles `BatteryWidget.ps1` to `BatteryWidget.exe` using `Invoke-PS2EXE`.
 - **CheckBattery.ps1** — Standalone CLI script for quick battery status checks.
 - **CheckBattery.bat** — Batch launcher for `CheckBattery.ps1`.
-- **docs/index.html** — Splash/landing page served via GitHub Pages at batterypill.com. Single HTML file with embedded CSS/JS, dark theme, scroll animations.
-- **docs/CNAME** — Custom domain config for GitHub Pages (batterypill.com).
+- **docs/index.html** — Splash/landing page served at batterypill.com. Single HTML file with embedded CSS/JS, dark theme, scroll animations.
+- **vercel.json** — Vercel deployment config. Publishes the `docs/` directory (`outputDirectory: "docs"`) and sets download headers for `.exe` files. The custom domain batterypill.com is configured in the Vercel dashboard (no `CNAME` file in the repo).
 
 ## Key Technical Decisions
 
@@ -95,8 +95,9 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 ## Changelog
 
 ### 2026-02-05 — Popup Design Audit & Visual Hierarchy
-- **Hero percentage** — 18pt Semibold Bold percent below title, colored by battery status; old "Percent: XX%" row removed
-- **Simplified title** — shows "Charging" / "Discharging" instead of "Charging - 90%"
+> **CORRECTION (2026-06-03):** Parts of this entry were planned but NOT shipped. The current `BatteryWidget.ps1` still builds the popup title WITH the percentage (e.g. "Discharging — 72%", lines ~1504/1515) and still renders the "Percent:" row (line ~1564). The 18pt hero treatment is applied to the **Time** row, not to a percentage. Treat the "Hero percentage" and "Simplified title" items below as aspirational, not done. See the correction banner in `CURRENT_STATUS.md`.
+- **Hero percentage** *(NOT shipped)* — 18pt Semibold Bold percent below title, colored by battery status; old "Percent: XX%" row removed
+- **Simplified title** *(NOT shipped)* — shows "Charging" / "Discharging" instead of "Charging - 90%"
 - **Hidden N/A rows** — Capacity, Rate, Runtime, Wear rows skip rendering when value is "N/A"; popup shrinks automatically
 - **Right-aligned values** — `Add-PopupRow` returns value label, uses fixed `Size` + `TextAlign = TopRight`
 - **Font contrast** — standard rows 7.5pt, hero rows 10pt Semibold; secondary labels use `TextMuted`
@@ -159,8 +160,8 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 - Enlarged floating pill 20%: 90×28 → 108×34 px, font 8.5pt → 10.2pt
 
 ### 2026-01-27 — BatteryPill Branding & Splash Page
-- Created splash page at docs/index.html (GitHub Pages)
-- Custom domain batterypill.com configured with CNAME
+- Created splash page at docs/index.html
+- Custom domain batterypill.com set up for the site (now served via Vercel; no in-repo CNAME file)
 - Buy Me a Coffee integration (buymeacoffee.com/nobackhand)
 - Removed all GitHub references from public-facing site
 

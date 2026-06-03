@@ -28,8 +28,12 @@ steady instead of jumping when CPU load changes.
 
 ## Run
 
+> **A fresh clone has no prebuilt `.exe`.** Either download the latest one from the
+> [Releases](https://github.com/nobackhand/checkbattery/releases) page, or build it
+> yourself first with `Build.ps1` (see [Build](#build) below).
+
 ```powershell
-# Run the prebuilt executable
+# Run the prebuilt executable (after downloading from Releases or building it)
 .\BatteryPill-<version>.exe
 
 # Or run the source directly
@@ -67,4 +71,4 @@ For a quick one-shot status report without the widget:
 
 ## License
 
-Free and open source. *(A `LICENSE` file should be added to declare the exact terms.)*
+MIT — see [LICENSE](LICENSE).
