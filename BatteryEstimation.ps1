@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Pure battery time-remaining estimation math (EMA smoothing + rate calc).
 .DESCRIPTION

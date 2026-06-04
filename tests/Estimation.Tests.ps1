@@ -10,7 +10,7 @@
 #>
 
 BeforeAll {
-    $estimationPath = Join-Path $PSScriptRoot '..' 'BatteryEstimation.ps1'
+    $estimationPath = Join-Path (Join-Path $PSScriptRoot '..') 'BatteryEstimation.ps1'
     $estimationPath = (Resolve-Path -LiteralPath $estimationPath).Path
     . $estimationPath
 
@@ -29,11 +29,9 @@ BeforeAll {
     }
 }
 
-BeforeEach {
-    Reset-EstimationState
-}
-
 Describe 'Get-SmoothedTimeRemaining' {
+
+    BeforeEach { Reset-EstimationState }
 
     It 'returns ~180 min discharging 10W / 50Wh / 60%' {
         # 10 W = 10000 mW, 50 Wh = 50000 mWh, 60% -> 30000 mWh / 10000 mW * 60 = 180 min.
@@ -74,6 +72,8 @@ Describe 'Get-SmoothedTimeRemaining' {
 
 Describe 'Update-EMARate' {
 
+    BeforeEach { Reset-EstimationState }
+
     It 'converges to a constant input rate' {
         $last = -1
         for ($i = 0; $i -lt 20; $i++) { $last = Update-EMARate -RawRate 10000 }
@@ -96,6 +96,8 @@ Describe 'Update-EMARate' {
 }
 
 Describe 'Get-CapacityDerivedRate' {
+
+    BeforeEach { Reset-EstimationState }
 
     It 'seeds a baseline and returns -1 on the first call (insufficient data)' {
         $t0 = Get-Date '2026-01-01T00:00:00'

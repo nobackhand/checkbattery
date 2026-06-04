@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # --- Locate and load the system under test -------------------------------
-$estimationPath = Join-Path $PSScriptRoot '..' 'BatteryEstimation.ps1'
+$estimationPath = Join-Path (Join-Path $PSScriptRoot '..') 'BatteryEstimation.ps1'
 $estimationPath = (Resolve-Path -LiteralPath $estimationPath).Path
 . $estimationPath
 

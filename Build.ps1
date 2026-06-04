@@ -50,10 +50,19 @@ Get-ChildItem $scriptDir -Filter "BatteryPill-*.exe" | ForEach-Object {
 # then always delete it.
 $tempFile = Join-Path ([System.IO.Path]::GetTempPath()) ("BatteryPill-build-{0}.ps1" -f ([System.Guid]::NewGuid().ToString('N')))
 
-$estimationSource = Get-Content -Path $estimationFile -Raw
-$widgetSource     = Get-Content -Path $inputFile -Raw
+# Read both sources as UTF-8 explicitly. The source files are UTF-8 WITHOUT a BOM
+# and contain non-ASCII glyphs (em-dash, bullet, arrows). Windows PowerShell 5.1's
+# `Get-Content -Raw` defaults to the ANSI code page for BOM-less files, which would
+# mojibake those glyphs and produce a syntactically broken temp script. Forcing UTF-8
+# on read (and writing the temp WITH a BOM below) keeps the round-trip lossless on
+# both Windows PowerShell 5.1 and PowerShell 7+.
+$estimationSource = [System.IO.File]::ReadAllText($estimationFile, [System.Text.Encoding]::UTF8)
+$widgetSource     = [System.IO.File]::ReadAllText($inputFile, [System.Text.Encoding]::UTF8)
 $combinedSource   = $estimationSource + [Environment]::NewLine + [Environment]::NewLine + $widgetSource
-Set-Content -Path $tempFile -Value $combinedSource -Encoding UTF8
+# Write the temp script as UTF-8 WITH a BOM so PS2EXE (and the PowerShell parser)
+# unambiguously decode it as UTF-8 regardless of the host's default code page.
+$utf8WithBom = New-Object System.Text.UTF8Encoding($true)
+[System.IO.File]::WriteAllText($tempFile, $combinedSource, $utf8WithBom)
 
 # Compile
 Write-Host "Compiling BatteryEstimation.ps1 + BatteryWidget.ps1 -> BatteryPill-$appVersion.exe" -ForegroundColor Cyan
