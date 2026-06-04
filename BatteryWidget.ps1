@@ -1,4 +1,4 @@
-#Requires -Version 5.0
+﻿#Requires -Version 5.0
 
 <#
 .SYNOPSIS
@@ -78,8 +78,15 @@ public class Win32Icon {
 #  - Compiled exe: Build.ps1 inlines BatteryEstimation.ps1 ahead of this file, so the
 #    functions are already defined; the file is NOT shipped next to the exe, so this
 #    Test-Path no-ops harmlessly. (Re-dot-sourcing identical defs would also be safe.)
-$estPath = Join-Path $PSScriptRoot 'BatteryEstimation.ps1'
-if (Test-Path $estPath) { . $estPath }
+# Guard on $PSScriptRoot: it is the script's folder when running from source, but an
+# EMPTY string in a PS2EXE-compiled exe (where the estimation functions are already
+# inlined ahead of this file by Build.ps1). Calling Join-Path with an empty -Path throws
+# "Cannot bind argument to parameter 'Path' because it is an empty string", so only attempt
+# the dot-source when running from source.
+if ($PSScriptRoot) {
+    $estPath = Join-Path $PSScriptRoot 'BatteryEstimation.ps1'
+    if (Test-Path $estPath) { . $estPath }
+}
 
 # --- Single-instance guard ---
 $script:mutexName = "Global\BatteryWidgetSingleInstance"
