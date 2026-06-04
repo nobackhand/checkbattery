@@ -7,9 +7,17 @@ otherwise reach production:
 
   * DANGLING-LINK CHECK   - a root-relative href/src ("/foo") that has no file
                             under docs/ (this is the check that would have
-                            caught the original download 404).
+                            caught the original download 404). A path that is a
+                            vercel.json redirect `source` is NOT dangling — it
+                            is served by a redirect, not a missing file.
   * DOWNLOAD CTA CHECK    - the nav `.dl` and hero `.hero-dl` must point at an
-                            https URL OR an existing local file under docs/.
+                            https URL OR an existing local file under docs/ OR a
+                            vercel.json redirect `source` whose `destination` is
+                            an https URL.
+  * DOWNLOAD REDIRECT     - every CTA href that is a vercel redirect `source`
+                            must resolve to an https `destination` (and that
+                            destination should look like a GitHub Releases
+                            asset).
   * VERSION PARITY        - every version token in index.html must equal
                             $script:appVersion from BatteryWidget.ps1.
   * OG IMAGE              - og:image / twitter:image filename must exist
@@ -23,6 +31,7 @@ otherwise reach production:
 Exit code is non-zero if any check FAILs.
 """
 
+import json
 import os
 import re
 import sys
@@ -36,6 +45,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS_DIR = os.path.join(REPO_ROOT, "docs")
 INDEX_HTML = os.path.join(DOCS_DIR, "index.html")
 WIDGET_PS1 = os.path.join(REPO_ROOT, "BatteryWidget.ps1")
+VERCEL_JSON = os.path.join(REPO_ROOT, "vercel.json")
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +111,37 @@ def read_text(path):
         return fh.read()
 
 
+def load_vercel_redirects():
+    """Parse vercel.json and return (sources, src_to_dest).
+
+    `sources` is the set of redirect `source` paths; `src_to_dest` maps each
+    source to its `destination`. Tolerates vercel.json being absent, the
+    `redirects` key being absent, or individual entries lacking source/dest.
+    """
+    sources = set()
+    src_to_dest = {}
+    if not os.path.isfile(VERCEL_JSON):
+        return sources, src_to_dest
+    try:
+        with open(VERCEL_JSON, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (ValueError, OSError):
+        return sources, src_to_dest
+    redirects = data.get("redirects", []) if isinstance(data, dict) else []
+    if not isinstance(redirects, list):
+        return sources, src_to_dest
+    for entry in redirects:
+        if not isinstance(entry, dict):
+            continue
+        src = entry.get("source")
+        if not isinstance(src, str) or not src:
+            continue
+        sources.add(src)
+        dest = entry.get("destination")
+        src_to_dest[src] = dest if isinstance(dest, str) else None
+    return sources, src_to_dest
+
+
 def is_remote(url):
     """True if url is an absolute http(s) URL or protocol-relative."""
     p = urlparse(url)
@@ -144,12 +185,17 @@ def get_app_version():
     return m.group(1)
 
 
-def check_dangling_links(results, links):
+def check_dangling_links(results, links, redirect_sources):
     bad = []
     for url, tag, _attrs in links:
         if is_data_or_anchor(url) or is_remote(url):
             continue
         if url.startswith("/"):
+            # A root-relative href that exactly matches a vercel redirect
+            # source is served by that redirect, not a file under docs/ —
+            # it is NOT dangling.
+            if url in redirect_sources:
+                continue
             fs = docs_path_for_root_relative(url)
             if not os.path.isfile(fs):
                 bad.append(f"{tag} -> {url} (expected {os.path.relpath(fs, REPO_ROOT)})")
@@ -158,7 +204,8 @@ def check_dangling_links(results, links):
                     "; ".join(bad))
     else:
         results.add("dangling root-relative links", True,
-                    "all root-relative paths resolve to files under docs/")
+                    "all root-relative paths resolve to files under docs/ "
+                    "or to a vercel.json redirect source")
 
 
 def find_cta(links, cls):
@@ -172,7 +219,7 @@ def find_cta(links, cls):
     return None
 
 
-def check_download_ctas(results, links):
+def check_download_ctas(results, links, redirect_sources, src_to_dest):
     targets = {"nav .dl": "dl", "hero .hero-dl": "hero-dl"}
     problems = []
     found_any = False
@@ -182,12 +229,23 @@ def check_download_ctas(results, links):
             problems.append(f"{label}: no <a class='{cls}'> found")
             continue
         found_any = True
+        # (a) https URL -> OK (direct GitHub Releases link)
         if is_remote(href):
-            continue  # https URL -> OK (Lena's GitHub Releases link)
+            continue
         if is_data_or_anchor(href):
             problems.append(f"{label}: href '{href}' is not a download target")
             continue
-        # local path: root-relative or relative — must exist under docs/
+        # (c) vercel redirect source whose destination is an https URL -> OK
+        if href in redirect_sources:
+            dest = src_to_dest.get(href)
+            if isinstance(dest, str) and is_remote(dest):
+                continue
+            problems.append(
+                f"{label}: href '{href}' is a vercel redirect source but its "
+                f"destination is {dest!r} (not an https URL)"
+            )
+            continue
+        # (b) local path: root-relative or relative — must exist under docs/
         if href.startswith("/"):
             fs = docs_path_for_root_relative(href)
         else:
@@ -195,19 +253,60 @@ def check_download_ctas(results, links):
         if not os.path.isfile(fs):
             problems.append(
                 f"{label}: local href '{href}' has no file "
-                f"({os.path.relpath(fs, REPO_ROOT)} missing). "
-                "If Lena's GitHub-Releases fix has not landed yet, this is "
-                "EXPECTED until her commit merges."
+                f"({os.path.relpath(fs, REPO_ROOT)} missing) and is not a "
+                "vercel.json redirect source."
             )
     if problems:
         results.add("download CTAs (nav .dl / hero .hero-dl)", False,
                     "; ".join(problems))
     elif found_any:
         results.add("download CTAs (nav .dl / hero .hero-dl)", True,
-                    "both CTAs are https URLs or existing local files")
+                    "both CTAs are https URLs, existing local files, or "
+                    "vercel redirects to an https destination")
     else:
         results.add("download CTAs (nav .dl / hero .hero-dl)", False,
                     "neither CTA element was found")
+
+
+def check_download_redirect_resolves(results, links, redirect_sources,
+                                     src_to_dest):
+    """For every CTA whose href is a vercel redirect source, assert the
+    redirect destination is an https URL (bonus: looks like a GitHub Releases
+    asset). If no CTA uses a redirect, the check is informational (PASS)."""
+    targets = {"nav .dl": "dl", "hero .hero-dl": "hero-dl"}
+    problems = []
+    resolved = []
+    used_redirect = False
+    for label, cls in targets.items():
+        href = find_cta(links, cls)
+        if href is None or href not in redirect_sources:
+            continue
+        used_redirect = True
+        dest = src_to_dest.get(href)
+        if not isinstance(dest, str) or not dest:
+            problems.append(
+                f"{label}: redirect source '{href}' has no destination "
+                "in vercel.json"
+            )
+            continue
+        if not is_remote(dest):
+            problems.append(
+                f"{label}: redirect '{href}' -> '{dest}' is not an https URL"
+            )
+            continue
+        note = ""
+        if not re.search(r'github\.com/.+/releases/', dest):
+            note = " (warning: destination does not look like a GitHub "
+            note += "Releases asset)"
+        resolved.append(f"{href} -> {dest}{note}")
+    if problems:
+        results.add("download redirect resolves", False, "; ".join(problems))
+    elif used_redirect:
+        results.add("download redirect resolves", True, "; ".join(resolved))
+    else:
+        results.add("download redirect resolves", True,
+                    "no CTA uses a vercel redirect source (direct https or "
+                    "local file)")
 
 
 def check_version_parity(results, html_text, app_version):
@@ -344,10 +443,13 @@ def main():
     parser.feed(html_text)
 
     app_version = get_app_version()
+    redirect_sources, src_to_dest = load_vercel_redirects()
     results = Results()
 
-    check_dangling_links(results, parser.links)
-    check_download_ctas(results, parser.links)
+    check_dangling_links(results, parser.links, redirect_sources)
+    check_download_ctas(results, parser.links, redirect_sources, src_to_dest)
+    check_download_redirect_resolves(results, parser.links, redirect_sources,
+                                     src_to_dest)
     check_version_parity(results, html_text, app_version)
     check_og_image(results, parser.metas)
     check_meta_presence(results, parser.metas, parser.link_tags)

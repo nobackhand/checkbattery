@@ -5,7 +5,7 @@ hours and minutes left, not just a percentage. Hover it for charge rate,
 capacity, wear, ETA, and a 2-hour history sparkline. Single `.exe`, no
 installer, no dependencies.
 
-**Website:** [batterypill.com](https://batterypill.com) · **Download:** [Releases](https://github.com/nobackhand/checkbattery/releases)
+**Download:** [batterypill.com](https://batterypill.com) (or the [Releases](https://github.com/nobackhand/checkbattery/releases) page)
 
 ## Features
 
@@ -28,9 +28,11 @@ steady instead of jumping when CPU load changes.
 
 ## Run
 
-> **A fresh clone has no prebuilt `.exe`.** Either download the latest one from the
-> [Releases](https://github.com/nobackhand/checkbattery/releases) page, or build it
-> yourself first with `Build.ps1` (see [Build](#build) below).
+> **A fresh clone has no prebuilt `.exe`.** The easiest way to get BatteryPill is
+> the download button at [batterypill.com](https://batterypill.com), which serves the
+> latest release (you can also grab it from the [Releases](https://github.com/nobackhand/checkbattery/releases)
+> page directly). Developers can build it from source with `Build.ps1` (see
+> [Build](#build) below).
 
 ```powershell
 # Run the prebuilt executable (after downloading from Releases or building it)

@@ -1,5 +1,17 @@
 {
   "outputDirectory": "docs",
+  "redirects": [
+    {
+      "source": "/download",
+      "destination": "https://github.com/nobackhand/checkbattery/releases/download/v1.0.0/BatteryPill-1.0.0.exe",
+      "permanent": false
+    },
+    {
+      "source": "/BatteryPill-1.0.0.exe",
+      "destination": "https://github.com/nobackhand/checkbattery/releases/download/v1.0.0/BatteryPill-1.0.0.exe",
+      "permanent": false
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)\\.exe",
