@@ -34,6 +34,18 @@ jobs:
         shell: pwsh
         run: ./parse_check.ps1
 
+      - name: Estimation unit tests (dependency-free runner)
+        shell: pwsh
+        run: ./tests/run-estimation-tests.ps1
+
+      - name: Install Pester
+        shell: pwsh
+        run: Install-Module Pester -Force -SkipPublisherCheck
+
+      - name: Estimation unit tests (Pester)
+        shell: pwsh
+        run: Invoke-Pester tests/ -Output Detailed
+
       - name: Install PSScriptAnalyzer
         shell: pwsh
         run: Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
