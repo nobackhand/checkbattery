@@ -94,10 +94,19 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-06-04 — Launch-readiness dev pass
+- **On-brand download** — site "Download" now points at a Vercel redirect (`/download` → the latest GitHub Release `.exe` asset) instead of a raw asset URL, so the link stays stable across releases and keeps the batterypill.com brand
+- **Popup builders de-duplicated** — `Show-HoverPopup` and `Show-BatteryPopup` previously carried near-identical layout code; both now call one shared popup builder, eliminating the drift that caused earlier "fixed in one, not the other" bugs
+- **Popup redesign shipped** *(the 2026-02-05 audit items)* — status-only title ("Charging" / "Discharging", no percentage), 18pt hero PERCENTAGE below the title colored by battery status, and the old "Percent:" row removed
+- **DPI-scaled popup offsets** — hero label position and row-start offsets now scale with `$DpiScale` instead of using fixed pixel values, fixing hero/row clipping at 125% and 150% scaling
+- **Atomic config writes** — `BatteryWidget.config.json` is now written to a temp file then swapped in via `[System.IO.File]::Replace`, preventing a truncated/corrupt config if the process is killed mid-write
+- **Estimation math extracted** — pure time-remaining/EMA-smoothing math moved into `BatteryEstimation.ps1` (dot-sourced by the widget) so it can be unit-tested without WinForms; unit tests added alongside it
+- **CI added** — GitHub Actions runs site checks (HTML/link validation), a no-egress guard, and PowerShell parse + analyzer (PSScriptAnalyzer) on push/PR
+
 ### 2026-02-05 — Popup Design Audit & Visual Hierarchy
-> **CORRECTION (2026-06-03):** Parts of this entry were planned but NOT shipped. The current `BatteryWidget.ps1` still builds the popup title WITH the percentage (e.g. "Discharging — 72%", lines ~1504/1515) and still renders the "Percent:" row (line ~1564). The 18pt hero treatment is applied to the **Time** row, not to a percentage. Treat the "Hero percentage" and "Simplified title" items below as aspirational, not done. See the correction banner in `CURRENT_STATUS.md`.
-- **Hero percentage** *(NOT shipped)* — 18pt Semibold Bold percent below title, colored by battery status; old "Percent: XX%" row removed
-- **Simplified title** *(NOT shipped)* — shows "Charging" / "Discharging" instead of "Charging - 90%"
+> **UPDATE (2026-06-04):** The two items flagged below as "NOT shipped" have NOW SHIPPED in the 2026-06-04 launch-readiness dev pass. The popup title is now status-only ("Discharging", no percentage), an 18pt hero PERCENTAGE renders below the title colored by status, and the old "Percent:" row has been removed. The earlier 2026-06-03 correction (which noted these were unshipped) was accurate at the time but is now superseded — see the 2026-06-04 changelog entry below.
+- **Hero percentage** *(shipped 2026-06-04)* — 18pt Semibold Bold percent below title, colored by battery status; old "Percent: XX%" row removed
+- **Simplified title** *(shipped 2026-06-04)* — shows "Charging" / "Discharging" instead of "Charging - 90%"
 - **Hidden N/A rows** — Capacity, Rate, Runtime, Wear rows skip rendering when value is "N/A"; popup shrinks automatically
 - **Right-aligned values** — `Add-PopupRow` returns value label, uses fixed `Size` + `TextAlign = TopRight`
 - **Font contrast** — standard rows 7.5pt, hero rows 10pt Semibold; secondary labels use `TextMuted`

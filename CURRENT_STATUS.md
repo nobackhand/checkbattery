@@ -1,12 +1,12 @@
-> # ⚠️ CORRECTION — 2026-06-03: This handoff is HISTORICAL/ASPIRATIONAL, not current state
+> # ✅ UPDATE — 2026-06-04: The "Popup Design Audit" items below ARE NOW SHIPPED
 >
-> A launch-readiness review found that key items in the "Popup Design Audit" below were **NOT actually shipped**. The current `BatteryWidget.ps1` refutes them:
+> A 2026-06-03 review correctly found these items unshipped at the time. In the **2026-06-04 launch-readiness development pass** they were actually implemented in `BatteryWidget.ps1`:
 >
-> - **"Simplified title" — NOT shipped.** The code still builds the popup title **with** the percentage (e.g. `"Discharging — 72%"`), not a bare `"Charging"`/`"Discharging"`. See `BatteryWidget.ps1` lines ~1504 and ~1515.
-> - **"Percent: XX% row deleted" — NOT shipped.** The popup still renders the **"Percent:"** row. See `BatteryWidget.ps1` line ~1564.
-> - **"18pt hero percentage" — NOT shipped as described.** The 18pt hero treatment is applied to the **Time** row (the data users care about most), not to a percentage.
+> - **"Simplified title" — SHIPPED.** The popup title is now status-only ("Charging" / "Discharging"), with no percentage appended.
+> - **"Percent: XX% row removed" — SHIPPED.** The dedicated "Percent:" row is gone.
+> - **"18pt hero percentage" — SHIPPED.** The 18pt hero treatment is now an actual **PERCENTAGE** rendered below the status-only title, colored by battery status (it is no longer applied to the Time row).
 >
-> Everything below this banner is preserved for history but describes **planned/intended** work — do not rely on it as a description of the current codebase. For the corrected record see the annotated 2026-02-05 changelog entry in `CLAUDE.md`.
+> The rest of this handoff is preserved for history. For the current record see the 2026-06-04 changelog entry in `CLAUDE.md`.
 
 # Session Handoff — 2026-02-05
 
