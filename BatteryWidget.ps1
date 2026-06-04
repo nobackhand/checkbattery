@@ -867,7 +867,7 @@ function Save-Config {
                 }
             }
         }
-        @{
+        $json = @{
             X = $script:config.X
             Y = $script:config.Y
             Opacity = $script:config.Opacity
@@ -883,8 +883,28 @@ function Save-Config {
             EmaRate = $script:emaRate
             LastValidRate = $script:lastValidRate
             ConfigSavedAt = (Get-Date).ToString("o")
-        } | ConvertTo-Json -Depth 3 | Set-Content $configPath -Force
+        } | ConvertTo-Json -Depth 3
+
+        # Atomic write: write to a temp file in the same directory, then swap into
+        # place so a crash mid-write can't leave a truncated/corrupt config.
+        $tmpPath = "$configPath.tmp"
+        $bakPath = "$configPath.bak"
+        Set-Content -Path $tmpPath -Value $json -Force
+        if (Test-Path $configPath) {
+            # Replace performs an atomic swap when the destination already exists.
+            # A backup path is supplied (required cross-platform); remove it after.
+            [System.IO.File]::Replace($tmpPath, $configPath, $bakPath)
+            if (Test-Path $bakPath) { Remove-Item $bakPath -Force -ErrorAction SilentlyContinue }
+        } else {
+            # First run — no existing file to replace; move the temp into place.
+            [System.IO.File]::Move($tmpPath, $configPath)
+        }
     } catch {
+        # Clean up stray temp/backup files so they can't be mistaken for the real config.
+        $tmpPath = "$configPath.tmp"
+        $bakPath = "$configPath.bak"
+        if (Test-Path $tmpPath) { Remove-Item $tmpPath -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $bakPath) { Remove-Item $bakPath -Force -ErrorAction SilentlyContinue }
         Show-BatteryNotification "Config Save Failed" "Settings may not persist"
     }
 }
@@ -1500,16 +1520,17 @@ function New-BatteryPopupContent {
     # Shared popup content builder — used by both hover and tray popups
     # Returns @{ TotalHeight; Fonts (array for disposal) }
 
-    $statusColor = Get-StatusColor -Status $BatteryInfo.StatusText
     $lightGray = $script:theme.TextLight
     $dimGray   = $script:theme.TextDim
+    $mx = [int](20 * $DpiScale)   # horizontal margin (DPI-scaled; 20px @100%)
+    $contentW = $PopupWidth - ($mx * 2)
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
     $valueFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
     # Hero fonts for top section (Time — the data users care about most)
     $heroLabelFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
     $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
 
-    # --- Title with percentage (e.g. "Discharging — 72%") ---
+    # --- Title (status only, no percentage — e.g. "Discharging") ---
     if ($BatteryInfo.IsFullyCharged) {
         $titleText = "Fully Charged"
     } elseif ($BatteryInfo.IsCharging) {
@@ -1519,34 +1540,47 @@ function New-BatteryPopupContent {
     } else {
         $titleText = "Discharging"
     }
-    if (-not $BatteryInfo.NoBattery -and $BatteryInfo.PercentExact -ge 0) {
-        $titleText = "$titleText — $($BatteryInfo.PercentExact)%"
-    }
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Text = $titleText
     $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Bold)
     $titleLabel.ForeColor = $script:theme.TextPrimary
-    $titleLabel.Location = New-Object System.Drawing.Point(20, 10)
+    $titleLabel.Location = New-Object System.Drawing.Point($mx, [int](10 * $DpiScale))
     $titleLabel.AutoSize = $true
-    $titleLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+    $titleLabel.MaximumSize = New-Object System.Drawing.Size($contentW, 0)
     $Form.Controls.Add($titleLabel)
 
-    # Separator line under title
+    # --- Hero percentage (18pt) directly under the title, colored by battery status ---
+    $heroFont = New-Object System.Drawing.Font("Segoe UI Semibold", 18, [System.Drawing.FontStyle]::Bold)
+    $heroPctBottom = [int](28 * $DpiScale)  # y after title where the hero block (if shown) ends
+    if (-not $BatteryInfo.NoBattery -and $BatteryInfo.PercentExact -ge 0) {
+        $heroColor = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
+        $heroPctLabel = New-Object System.Windows.Forms.Label
+        $heroPctLabel.Text = "$($BatteryInfo.PercentExact)%"
+        $heroPctLabel.Font = $heroFont
+        $heroPctLabel.ForeColor = $heroColor
+        $heroPctLabel.Location = New-Object System.Drawing.Point($mx, [int](28 * $DpiScale))
+        $heroPctLabel.AutoSize = $true
+        $heroPctLabel.MaximumSize = New-Object System.Drawing.Size($contentW, 0)
+        $Form.Controls.Add($heroPctLabel)
+        $heroPctBottom = [int]((28 + 34) * $DpiScale)  # title offset + 18pt label height (~34px @100%)
+    }
+
+    # Separator line under the title / hero percentage
+    $sepY = $heroPctBottom + [int](4 * $DpiScale)
     $sepLabel = New-Object System.Windows.Forms.Label
-    $sepLabel.Location = New-Object System.Drawing.Point(20, 32)
-    $sepLabel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 1)
+    $sepLabel.Location = New-Object System.Drawing.Point($mx, $sepY)
+    $sepLabel.Size = New-Object System.Drawing.Size($contentW, 1)
     $sepLabel.BackColor = $script:theme.Border
     $Form.Controls.Add($sepLabel)
 
     # --- Row layout (DPI-aware) ---
-    $heroFont = New-Object System.Drawing.Font("Segoe UI Semibold", 18, [System.Drawing.FontStyle]::Bold)
     $rh = [int](18 * $DpiScale)
     $heroRh = [int](24 * $DpiScale)
-    $lx = 20
+    $lx = $mx
     $vx = [int](80 * $DpiScale)
     $lw = [int](80 * $DpiScale)
-    $vw = $PopupWidth - $vx - 20
-    $y = [int](40 * $DpiScale)
+    $vw = $PopupWidth - $vx - $mx
+    $y = $sepY + [int](8 * $DpiScale)
 
     # Helper to add a label+value row (value right-aligned)
     function Add-PopupRow {
@@ -1566,12 +1600,7 @@ function New-BatteryPopupContent {
         return $val
     }
 
-    # Row 1: Percent (highlighted)
-    if (-not $BatteryInfo.NoBattery) {
-        $pctText = "$($BatteryInfo.PercentExact)%"
-        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Percent:" -Value $pctText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $statusColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
-        $y += $rh
-    }
+    # Row 1 (Percent) removed — percentage is now shown as the hero label under the title.
 
     # Row 2: Capacity (hidden when N/A)
     if ($BatteryInfo.FullChargeCapacity -gt 0 -and $BatteryInfo.PercentExact -ge 0) {
@@ -1660,12 +1689,14 @@ function New-BatteryPopupContent {
     # Spacer before sparkline
     $y += [int](6 * $DpiScale)
 
-    # Battery history sparkline (40px tall)
+    # Battery history sparkline (40px tall @100% DPI)
+    $sparkH = [int](40 * $DpiScale)
     $sparkAccent = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
     $sparkPanel = New-SparklinePanel -Y $y -AccentColor $sparkAccent
-    $sparkPanel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 40)
+    $sparkPanel.Location = New-Object System.Drawing.Point($mx, $y)
+    $sparkPanel.Size = New-Object System.Drawing.Size($contentW, $sparkH)
     $Form.Controls.Add($sparkPanel)
-    $y += 40
+    $y += $sparkH
 
     # Spacer after sparkline
     $y += [int](4 * $DpiScale)
@@ -1676,11 +1707,11 @@ function New-BatteryPopupContent {
     $powerLabel.Text = "$powerIcon $($BatteryInfo.PowerSource)"
     $powerLabel.Font = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
     $powerLabel.ForeColor = $dimGray
-    $powerLabel.Location = New-Object System.Drawing.Point(20, $y)
+    $powerLabel.Location = New-Object System.Drawing.Point($mx, $y)
     $powerLabel.AutoSize = $true
-    $powerLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+    $powerLabel.MaximumSize = New-Object System.Drawing.Size($contentW, 0)
     $Form.Controls.Add($powerLabel)
-    $y += 16
+    $y += [int](16 * $DpiScale)
 
     # Close hint (skip when empty — hover popup passes "")
     if ($CloseHintText) {
@@ -1688,17 +1719,110 @@ function New-BatteryPopupContent {
         $hintLabel.Text = $CloseHintText
         $hintLabel.Font = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
         $hintLabel.ForeColor = $script:theme.TextMuted
-        $hintLabel.Location = New-Object System.Drawing.Point(20, $y)
+        $hintLabel.Location = New-Object System.Drawing.Point($mx, $y)
         $hintLabel.AutoSize = $true
-        $hintLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+        $hintLabel.MaximumSize = New-Object System.Drawing.Size($contentW, 0)
         $Form.Controls.Add($hintLabel)
     }
 
     $fontsToDispose = @($labelFont, $valueFont, $heroLabelFont, $heroValueFont, $heroFont, $titleLabel.Font, $powerLabel.Font)
     if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
-        TotalHeight = $y + 8
+        TotalHeight = $y + [int](8 * $DpiScale)
         Fonts = $fontsToDispose
+    }
+}
+
+function New-BatteryPopup {
+    param(
+        [hashtable]$BatteryInfo,
+        [string]$CloseHintText
+    )
+    # Shared popup FORM builder — used by both hover (non-modal) and tray (modal) popups.
+    # Creates the form, border paint, content, rounded-region clip, and positions it
+    # near the floating pill. Caller is responsible for dismissal wiring + Show/ShowDialog.
+    # Returns @{ Popup = <Form>; Content = <hashtable from New-BatteryPopupContent> }
+
+    $popup = New-Object System.Windows.Forms.Form
+    $popup.Text = "Battery Widget"
+    $popup.Size = New-Object System.Drawing.Size(420, 400)
+    $popup.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $popup.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+    $popup.ShowInTaskbar = $false
+    $popup.TopMost = $true
+    $popup.BackColor = $script:theme.PopupBg
+    $popup.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+    $popup.KeyPreview = $true
+    Enable-DoubleBuffering -Form $popup
+    # Enable CS_DROPSHADOW for popup elevation
+    $popup.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($popup.Handle) })
+
+    # Rounded border
+    $popup.Add_Paint({
+        param($sender, $e)
+        $g = $e.Graphics
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $r = 10; $rd2 = $r * 2
+        $bw = $sender.Width - 1; $bh = $sender.Height - 1
+        $borderPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $borderPath.AddArc(0, 0, $rd2, $rd2, 180, 90)
+        $borderPath.AddArc($bw - $rd2, 0, $rd2, $rd2, 270, 90)
+        $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
+        $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
+        $borderPath.CloseFigure()
+        $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
+        $g.DrawPath($borderPen, $borderPath)
+        $borderPen.Dispose(); $borderPath.Dispose()
+    })
+
+    # DPI scale and popup width
+    $gDpi = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $dpiScale = $gDpi.DpiX / 96.0
+    $gDpi.Dispose()
+    $popupW = [int](300 * $dpiScale)
+    $popup.Size = New-Object System.Drawing.Size($popupW, 400)
+
+    # Build shared content
+    $content = New-BatteryPopupContent -BatteryInfo $BatteryInfo -Form $popup -PopupWidth $popupW -DpiScale $dpiScale -CloseHintText $CloseHintText
+
+    # Resize form to fit content
+    $popup.ClientSize = New-Object System.Drawing.Size($popupW, $content.TotalHeight)
+
+    # Set rounded region to clip corners
+    $prd = 20; $pw = $popup.ClientSize.Width; $ph = $popup.ClientSize.Height
+    $popupRegionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $popupRegionPath.AddArc(0, 0, $prd, $prd, 180, 90)
+    $popupRegionPath.AddArc($pw - $prd - 1, 0, $prd, $prd, 270, 90)
+    $popupRegionPath.AddArc($pw - $prd - 1, $ph - $prd - 1, $prd, $prd, 0, 90)
+    $popupRegionPath.AddArc(0, $ph - $prd - 1, $prd, $prd, 90, 90)
+    $popupRegionPath.CloseFigure()
+    $popup.Region = New-Object System.Drawing.Region($popupRegionPath)
+    $popupRegionPath.Dispose()
+
+    # Position near the floating pill (deferred — uses actual final size)
+    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+        $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
+    } else {
+        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    }
+    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+        $barLoc = $script:floatingBar.Location
+        $barSize = $script:floatingBar.Size
+        $popGap = [int](8 * $dpiScale)
+        $popX = $barLoc.X + ($barSize.Width / 2) - ($popup.Width / 2)
+        $popY = $barLoc.Y - $popup.Height - $popGap
+        if ($popY -lt $screen.Top) { $popY = $barLoc.Y + $barSize.Height + $popGap }
+        $popX = [math]::Max($screen.Left, [math]::Min($popX, $screen.Right - $popup.Width))
+        $popY = [math]::Max($screen.Top, [math]::Min($popY, $screen.Bottom - $popup.Height))
+        $popup.Location = New-Object System.Drawing.Point([int]$popX, [int]$popY)
+    } else {
+        $edgeGap = [int](10 * $dpiScale)
+        $popup.Location = New-Object System.Drawing.Point(($screen.Right - $popup.Width - $edgeGap), ($screen.Bottom - $popup.Height - $edgeGap))
+    }
+
+    return @{
+        Popup = $popup
+        Content = $content
     }
 }
 
@@ -2019,81 +2143,10 @@ function Show-HoverPopup {
 
     $BatteryInfo = Get-BatteryInfo
 
-    $popup = New-Object System.Windows.Forms.Form
-    $popup.Text = "Battery Widget"
-    $popup.Size = New-Object System.Drawing.Size(420, 400)
-    $popup.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
-    $popup.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
-    $popup.ShowInTaskbar = $false
-    $popup.TopMost = $true
-    $popup.BackColor = $script:theme.PopupBg
-    $popup.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
-    $popup.KeyPreview = $true
-    Enable-DoubleBuffering -Form $popup
-    # Enable CS_DROPSHADOW for popup elevation
-    $popup.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($popup.Handle) })
-
-    # Rounded border
-    $popup.Add_Paint({
-        param($sender, $e)
-        $g = $e.Graphics
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $r = 10; $rd2 = $r * 2
-        $bw = $sender.Width - 1; $bh = $sender.Height - 1
-        $borderPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-        $borderPath.AddArc(0, 0, $rd2, $rd2, 180, 90)
-        $borderPath.AddArc($bw - $rd2, 0, $rd2, $rd2, 270, 90)
-        $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
-        $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
-        $borderPath.CloseFigure()
-        $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
-        $g.DrawPath($borderPen, $borderPath)
-        $borderPen.Dispose(); $borderPath.Dispose()
-    })
-
-    # DPI scale and popup width
-    $gDpi = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
-    $dpiScale = $gDpi.DpiX / 96.0
-    $gDpi.Dispose()
-    $popupW = [int](300 * $dpiScale)
-    $popup.Size = New-Object System.Drawing.Size($popupW, 400)
-
-    # Build shared content
-    $content = New-BatteryPopupContent -BatteryInfo $BatteryInfo -Form $popup -PopupWidth $popupW -DpiScale $dpiScale -CloseHintText ""
-    $script:hoverPopupFonts = $content.Fonts
-
-    # Resize form to fit content
-    $popup.ClientSize = New-Object System.Drawing.Size($popupW, $content.TotalHeight)
-
-    # Set rounded region to clip corners
-    $prd = 20; $pw = $popup.ClientSize.Width; $ph = $popup.ClientSize.Height
-    $popupRegionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $popupRegionPath.AddArc(0, 0, $prd, $prd, 180, 90)
-    $popupRegionPath.AddArc($pw - $prd - 1, 0, $prd, $prd, 270, 90)
-    $popupRegionPath.AddArc($pw - $prd - 1, $ph - $prd - 1, $prd, $prd, 0, 90)
-    $popupRegionPath.AddArc(0, $ph - $prd - 1, $prd, $prd, 90, 90)
-    $popupRegionPath.CloseFigure()
-    $popup.Region = New-Object System.Drawing.Region($popupRegionPath)
-    $popupRegionPath.Dispose()
-
-    # Position near the floating pill (deferred — uses actual final size)
-    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-        $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
-    } else {
-        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-    }
-    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-        $barLoc = $script:floatingBar.Location
-        $barSize = $script:floatingBar.Size
-        $popX = $barLoc.X + ($barSize.Width / 2) - ($popup.Width / 2)
-        $popY = $barLoc.Y - $popup.Height - 8
-        if ($popY -lt $screen.Top) { $popY = $barLoc.Y + $barSize.Height + 8 }
-        $popX = [math]::Max($screen.Left, [math]::Min($popX, $screen.Right - $popup.Width))
-        $popY = [math]::Max($screen.Top, [math]::Min($popY, $screen.Bottom - $popup.Height))
-        $popup.Location = New-Object System.Drawing.Point([int]$popX, [int]$popY)
-    } else {
-        $popup.Location = New-Object System.Drawing.Point(($screen.Right - $popup.Width - 10), ($screen.Bottom - $popup.Height - 10))
-    }
+    # Build the shared popup form (hover popup uses no close-hint text)
+    $built = New-BatteryPopup -BatteryInfo $BatteryInfo -CloseHintText ""
+    $popup = $built.Popup
+    $script:hoverPopupFonts = $built.Content.Fonts
 
     # Mouse leave/enter on popup — dismiss check
     $popup.Add_MouseLeave({ $script:dismissTimer.Start() })
@@ -2130,80 +2183,10 @@ function Show-HoverPopup {
 function Show-BatteryPopup {
     param([hashtable]$BatteryInfo)
 
-    $popup = New-Object System.Windows.Forms.Form
-    $popup.Text = "Battery Widget"
-    $popup.Size = New-Object System.Drawing.Size(420, 400)
-    $popup.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
-    $popup.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
-    $popup.ShowInTaskbar = $false
-    $popup.TopMost = $true
-    $popup.BackColor = $script:theme.PopupBg
-    $popup.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
-    $popup.KeyPreview = $true
-    Enable-DoubleBuffering -Form $popup
-    # Enable CS_DROPSHADOW for popup elevation
-    $popup.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($popup.Handle) })
-
-    # Rounded border
-    $popup.Add_Paint({
-        param($sender, $e)
-        $g = $e.Graphics
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $r = 10; $rd2 = $r * 2
-        $bw = $sender.Width - 1; $bh = $sender.Height - 1
-        $borderPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-        $borderPath.AddArc(0, 0, $rd2, $rd2, 180, 90)
-        $borderPath.AddArc($bw - $rd2, 0, $rd2, $rd2, 270, 90)
-        $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
-        $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
-        $borderPath.CloseFigure()
-        $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
-        $g.DrawPath($borderPen, $borderPath)
-        $borderPen.Dispose(); $borderPath.Dispose()
-    })
-
-    # DPI scale and popup width
-    $gDpi2 = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
-    $dpiScale = $gDpi2.DpiX / 96.0
-    $gDpi2.Dispose()
-    $popupW = [int](300 * $dpiScale)
-    $popup.Size = New-Object System.Drawing.Size($popupW, 400)
-
-    # Build shared content
-    $content = New-BatteryPopupContent -BatteryInfo $BatteryInfo -Form $popup -PopupWidth $popupW -DpiScale $dpiScale -CloseHintText "Click outside or press Esc to close"
-
-    # Resize form to fit content
-    $popup.ClientSize = New-Object System.Drawing.Size($popupW, $content.TotalHeight)
-
-    # Set rounded region to clip corners
-    $prd = 20; $pw = $popup.ClientSize.Width; $ph = $popup.ClientSize.Height
-    $popupRegionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $popupRegionPath.AddArc(0, 0, $prd, $prd, 180, 90)
-    $popupRegionPath.AddArc($pw - $prd - 1, 0, $prd, $prd, 270, 90)
-    $popupRegionPath.AddArc($pw - $prd - 1, $ph - $prd - 1, $prd, $prd, 0, 90)
-    $popupRegionPath.AddArc(0, $ph - $prd - 1, $prd, $prd, 90, 90)
-    $popupRegionPath.CloseFigure()
-    $popup.Region = New-Object System.Drawing.Region($popupRegionPath)
-    $popupRegionPath.Dispose()
-
-    # Position near the floating pill (deferred — uses actual final size)
-    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-        $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
-    } else {
-        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-    }
-    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-        $barLoc = $script:floatingBar.Location
-        $barSize = $script:floatingBar.Size
-        $popX = $barLoc.X + ($barSize.Width / 2) - ($popup.Width / 2)
-        $popY = $barLoc.Y - $popup.Height - 8
-        if ($popY -lt $screen.Top) { $popY = $barLoc.Y + $barSize.Height + 8 }
-        $popX = [math]::Max($screen.Left, [math]::Min($popX, $screen.Right - $popup.Width))
-        $popY = [math]::Max($screen.Top, [math]::Min($popY, $screen.Bottom - $popup.Height))
-        $popup.Location = New-Object System.Drawing.Point([int]$popX, [int]$popY)
-    } else {
-        $popup.Location = New-Object System.Drawing.Point(($screen.Right - $popup.Width - 10), ($screen.Bottom - $popup.Height - 10))
-    }
+    # Build the shared popup form (tray popup shows a close hint)
+    $built = New-BatteryPopup -BatteryInfo $BatteryInfo -CloseHintText "Click outside or press Esc to close"
+    $popup = $built.Popup
+    $content = $built.Content
 
     # Close on deactivate or Escape
     $popup.Add_Deactivate({ $popup.Close() })
