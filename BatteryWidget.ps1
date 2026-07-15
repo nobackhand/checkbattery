@@ -64,6 +64,18 @@ public class Win32Icon {
             SetClassLong32(hWnd, GCL_STYLE, style | CS_DROPSHADOW);
         }
     }
+
+    // Dark title bar for standard (chromed) windows so they don't clash with a dark body
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+    public static void UseDarkTitleBar(IntPtr hWnd) {
+        int useDark = 1;
+        // DWMWA_USE_IMMERSIVE_DARK_MODE = 20 on Win10 2004+/Win11; older builds used 19
+        if (DwmSetWindowAttribute(hWnd, 20, ref useDark, 4) != 0) {
+            DwmSetWindowAttribute(hWnd, 19, ref useDark, 4);
+        }
+    }
 }
 "@
 
@@ -96,6 +108,8 @@ $script:theme = @{
     Border       = [System.Drawing.Color]::FromArgb(50, 50, 56)
     SettingsBg   = [System.Drawing.Color]::FromArgb(32, 32, 36)
     TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
+    SparkBg      = [System.Drawing.Color]::FromArgb(20, 20, 24)
+    SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
 $script:appVersion = "1.0.0"
@@ -126,6 +140,8 @@ function Apply-Theme {
         $script:theme.Border       = [System.Drawing.Color]::FromArgb(50, 50, 56)
         $script:theme.SettingsBg   = [System.Drawing.Color]::FromArgb(32, 32, 36)
         $script:theme.TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
+        $script:theme.SparkBg      = [System.Drawing.Color]::FromArgb(20, 20, 24)
+        $script:theme.SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
     } else {
         $script:theme.PillBg       = [System.Drawing.Color]::FromArgb(242, 242, 247)
         $script:theme.PopupBg      = [System.Drawing.Color]::FromArgb(248, 248, 252)
@@ -136,6 +152,8 @@ function Apply-Theme {
         $script:theme.Border       = [System.Drawing.Color]::FromArgb(200, 200, 210)
         $script:theme.SettingsBg   = [System.Drawing.Color]::FromArgb(235, 235, 240)
         $script:theme.TrackBg      = [System.Drawing.Color]::FromArgb(215, 215, 220)
+        $script:theme.SparkBg      = [System.Drawing.Color]::FromArgb(232, 232, 238)
+        $script:theme.SparkGuide   = [System.Drawing.Color]::FromArgb(60, 60, 68)
     }
 
     # Refresh cached brushes for new theme
@@ -1399,21 +1417,23 @@ function New-SparklinePanel {
         $sw = $sender.Width
         $sh = $sender.Height
 
-        # Background
-        $bgBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(20, 20, 24))
+        # Background (theme-aware)
+        $bgBrush = New-Object System.Drawing.SolidBrush($script:theme.SparkBg)
         $sg.FillRectangle($bgBrush, 0, 0, $sw, $sh)
         $bgBrush.Dispose()
 
         # Border
-        $bdrPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(40, 40, 46), 1)
+        $bdrPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
         $sg.DrawRectangle($bdrPen, 0, 0, $sw - 1, $sh - 1)
         $bdrPen.Dispose()
+
+        $guide = $script:theme.SparkGuide
 
         $history = $script:batteryHistory
         if ($null -eq $history -or $history.Count -lt 2) {
             # Not enough data — show placeholder
             $noDataFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Regular)
-            $noDataBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(80, 80, 86))
+            $noDataBrush = New-Object System.Drawing.SolidBrush($script:theme.TextMuted)
             $sg.DrawString("Collecting history...", $noDataFont, $noDataBrush, 8, 12)
             $noDataBrush.Dispose(); $noDataFont.Dispose()
             return
@@ -1456,12 +1476,12 @@ function New-SparklinePanel {
 
         # 50% dashed guide line
         $halfY = $sh - ((50.0 / 100.0) * ($sh - 4)) - 2
-        $dashPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50, 255, 255, 255), 1)
+        $dashPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50, $guide.R, $guide.G, $guide.B), 1)
         $dashPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
         $sg.DrawLine($dashPen, 0, [int]$halfY, $sw, [int]$halfY)
         $dashPen.Dispose()
         $guideFont = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
-        $guideBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, 255, 255, 255))
+        $guideBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
         $sg.DrawString("50%", $guideFont, $guideBrush, 2, [int]$halfY - 12)
         $guideBrush.Dispose()
 
@@ -1472,7 +1492,7 @@ function New-SparklinePanel {
             $spanMin = [int](($lastTime - $firstTime).TotalMinutes)
             $spanText = if ($spanMin -ge 60) { "{0}h" -f [math]::Round($spanMin / 60.0, 1) } else { "{0} min" -f $spanMin }
             $spanSize = $sg.MeasureString($spanText, $guideFont)
-            $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, 255, 255, 255))
+            $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
             $sg.DrawString($spanText, $guideFont, $spanBrush, ($sw - $spanSize.Width - 2), ($sh - $spanSize.Height - 1))
             $spanBrush.Dispose()
         }
@@ -1498,7 +1518,6 @@ function New-BatteryPopupContent {
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
     $valueFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
     # Hero fonts for top section (Time — the data users care about most)
-    $heroLabelFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
     $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
 
     # --- Title with percentage (e.g. "Discharging — 72%") ---
@@ -1534,8 +1553,8 @@ function New-BatteryPopupContent {
     $rh = [int](18 * $DpiScale)
     $heroRh = [int](24 * $DpiScale)
     $lx = 20
-    $vx = [int](80 * $DpiScale)
-    $lw = [int](80 * $DpiScale)
+    $lw = [int](74 * $DpiScale)
+    $vx = $lx + $lw + [int](6 * $DpiScale)   # value column starts AFTER the label column so labels never collide with values at any DPI
     $vw = $PopupWidth - $vx - 20
     $y = [int](40 * $DpiScale)
 
@@ -1612,7 +1631,7 @@ function New-BatteryPopupContent {
     $timeRowLabel = if ($BatteryInfo.IsCharging) { "To Full:" } else { "Remaining:" }
     # Spacer before time row
     $y += [int](4 * $DpiScale)
-    $timeValLabel = Add-PopupRow -TargetForm $Form -RowY $y -Label $timeRowLabel -Value $timeText -LFont $heroLabelFont -VFont $heroValueFont -DColor $dimGray -VColor $script:theme.TextPrimary -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $heroRh
+    $timeValLabel = Add-PopupRow -TargetForm $Form -RowY $y -Label $timeRowLabel -Value $timeText -LFont $labelFont -VFont $heroValueFont -DColor $dimGray -VColor $script:theme.TextPrimary -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $heroRh
     if ($timeText -eq "Estimating...") { $script:estimatingLabel = $timeValLabel }
     $y += $heroRh
 
@@ -1685,7 +1704,7 @@ function New-BatteryPopupContent {
         $Form.Controls.Add($hintLabel)
     }
 
-    $fontsToDispose = @($labelFont, $valueFont, $heroLabelFont, $heroValueFont, $titleLabel.Font, $powerLabel.Font)
+    $fontsToDispose = @($labelFont, $valueFont, $heroValueFont, $titleLabel.Font, $powerLabel.Font)
     if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
         TotalHeight = $y + 8
@@ -2221,8 +2240,9 @@ function Set-DarkComboBox {
         if ($e.Index -lt 0) { return }
         $e.DrawBackground()
         $isSelected = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
-        $bgColor = if ($isSelected) { $script:theme.Border } else { [System.Drawing.Color]::FromArgb(50, 50, 56) }
-        $fgColor = if ($isSelected) { $script:theme.TextPrimary } else { $script:theme.TextLight }
+        # Settings panel is always dark, so use fixed light-on-dark colors (theme text would be invisible in Light theme)
+        $bgColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(64, 64, 72) } else { [System.Drawing.Color]::FromArgb(50, 50, 56) }
+        $fgColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(245, 245, 250) } else { [System.Drawing.Color]::FromArgb(230, 230, 235) }
         $bgBrush = New-Object System.Drawing.SolidBrush($bgColor)
         $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
         $bgBrush.Dispose()
@@ -2367,6 +2387,7 @@ function Show-SettingsPanel {
     $settings.TopMost = $true
     $settings.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 36)
     $settings.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $settings.Add_HandleCreated({ [Win32Icon]::UseDarkTitleBar($settings.Handle) })
 
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
     $sectionFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
