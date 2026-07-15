@@ -56,6 +56,8 @@ if ($noBattery) {
     Write-Host "    This appears to be a desktop PC" -ForegroundColor Yellow
     Write-Host "    or a device without a battery." -ForegroundColor Yellow
     Write-Host ""
+    Write-Host "    You're on wall power - nothing to charge here." -ForegroundColor DarkGray
+    Write-Host ""
     Write-Host "  $separator" -ForegroundColor DarkGray
     Write-Host ""
     exit 0
