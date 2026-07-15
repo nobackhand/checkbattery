@@ -89,8 +89,8 @@ $script:mutex = New-Object System.Threading.Mutex($true, $script:mutexName, [ref
 
 if (-not $script:createdNew) {
     [System.Windows.Forms.MessageBox]::Show(
-        "Battery Widget is already running.",
-        "Battery Widget",
+        "BatteryPill is already running.`n`nLook for the pill on your desktop, or its icon in the system tray (bottom-right).",
+        "BatteryPill",
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information
     ) | Out-Null
@@ -1431,11 +1431,19 @@ function New-SparklinePanel {
 
         $history = $script:batteryHistory
         if ($null -eq $history -or $history.Count -lt 2) {
-            # Not enough data — show placeholder
+            # Not enough data yet — a friendly, centered placeholder with a faint baseline
+            $baseY = $sh - 9
+            $basePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(45, $guide.R, $guide.G, $guide.B), 1)
+            $basePen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+            $sg.DrawLine($basePen, 8, $baseY, $sw - 8, $baseY)
+            $basePen.Dispose()
             $noDataFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Regular)
-            $noDataBrush = New-Object System.Drawing.SolidBrush($script:theme.TextMuted)
-            $sg.DrawString("Collecting history...", $noDataFont, $noDataBrush, 8, 12)
-            $noDataBrush.Dispose(); $noDataFont.Dispose()
+            $noDataBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
+            $noDataFmt = New-Object System.Drawing.StringFormat
+            $noDataFmt.Alignment = [System.Drawing.StringAlignment]::Center
+            $noDataFmt.LineAlignment = [System.Drawing.StringAlignment]::Center
+            $sg.DrawString("Charting your battery...", $noDataFont, $noDataBrush, (New-Object System.Drawing.RectangleF(0, 0, $sw, ($sh - 6))), $noDataFmt)
+            $noDataFmt.Dispose(); $noDataBrush.Dispose(); $noDataFont.Dispose()
             return
         }
 
@@ -1548,6 +1556,57 @@ function New-BatteryPopupContent {
     $sepLabel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 1)
     $sepLabel.BackColor = $script:theme.Border
     $Form.Controls.Add($sepLabel)
+
+    # --- No-battery: a friendly empty state instead of a wall of N/A rows ---
+    if ($BatteryInfo.NoBattery) {
+        $emptyFonts = @()
+        $ny = [int](50 * $DpiScale)
+
+        # Big accent lightning glyph, centered
+        $glyphFont = New-Object System.Drawing.Font("Segoe UI Symbol", 26, [System.Drawing.FontStyle]::Regular)
+        $emptyFonts += $glyphFont
+        $glyph = New-Object System.Windows.Forms.Label
+        $glyph.Text = [string][char]0x26A1
+        $glyph.Font = $glyphFont
+        $glyph.ForeColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
+        $glyph.AutoSize = $false
+        $glyph.Size = New-Object System.Drawing.Size($PopupWidth, [int](44 * $DpiScale))
+        $glyph.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+        $glyph.Location = New-Object System.Drawing.Point(0, $ny)
+        $Form.Controls.Add($glyph)
+        $ny += [int](50 * $DpiScale)
+
+        # Headline
+        $mainFont = New-Object System.Drawing.Font("Segoe UI Semibold", 11, [System.Drawing.FontStyle]::Regular)
+        $emptyFonts += $mainFont
+        $mainLbl = New-Object System.Windows.Forms.Label
+        $mainLbl.Text = "Running on AC power"
+        $mainLbl.Font = $mainFont
+        $mainLbl.ForeColor = $script:theme.TextPrimary
+        $mainLbl.AutoSize = $false
+        $mainLbl.Size = New-Object System.Drawing.Size($PopupWidth, [int](24 * $DpiScale))
+        $mainLbl.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+        $mainLbl.Location = New-Object System.Drawing.Point(0, $ny)
+        $Form.Controls.Add($mainLbl)
+        $ny += [int](26 * $DpiScale)
+
+        # Subtitle
+        $subLbl = New-Object System.Windows.Forms.Label
+        $subLbl.Text = "No battery to monitor on this PC."
+        $subLbl.Font = $labelFont
+        $subLbl.ForeColor = $script:theme.TextDim
+        $subLbl.AutoSize = $false
+        $subLbl.Size = New-Object System.Drawing.Size(($PopupWidth - [int](40 * $DpiScale)), [int](22 * $DpiScale))
+        $subLbl.TextAlign = [System.Drawing.ContentAlignment]::TopCenter
+        $subLbl.Location = New-Object System.Drawing.Point([int](20 * $DpiScale), $ny)
+        $Form.Controls.Add($subLbl)
+        $ny += [int](26 * $DpiScale)
+
+        return @{
+            TotalHeight = $ny + [int](8 * $DpiScale)
+            Fonts = @($labelFont, $valueFont, $heroValueFont, $titleLabel.Font) + $emptyFonts
+        }
+    }
 
     # --- Row layout (DPI-aware) ---
     $rh = [int](18 * $DpiScale)
@@ -1856,8 +1915,9 @@ function Update-FloatingBar {
     $timeStr = ""
     $pctStr = ""
     if ($BatteryInfo.NoBattery) {
-        $timeStr = "N/A"
-        $pctStr = "N/A"
+        # Desktop / no battery: show "AC" rather than a dead "N/A"
+        $timeStr = "AC"
+        $pctStr = "AC"
     } elseif ($BatteryInfo.IsFullyCharged) {
         $timeStr = "Full"
         $pctStr = "100%"
@@ -1867,12 +1927,8 @@ function Update-FloatingBar {
         $timeStr = if ($h -gt 0) { "${h}h ${m}m" } else { "${m}m" }
         $pctStr = "$($BatteryInfo.Percent)%"
     } else {
-        # Time unavailable — show percent if charging, dashes if discharging
-        if ($BatteryInfo.IsCharging) {
-            $timeStr = "$($BatteryInfo.Percent)%"
-        } else {
-            $timeStr = "--:--"
-        }
+        # Time not computed yet — fall back to the (real) percent instead of dead dashes
+        $timeStr = "$($BatteryInfo.Percent)%"
         $pctStr = "$($BatteryInfo.Percent)%"
     }
 
@@ -2996,7 +3052,7 @@ function Update-TrayIcon {
 
     # Build tooltip (max 127 chars)
     if ($info.NoBattery) {
-        $script:notifyIcon.Text = "Battery Widget: No battery detected"
+        $script:notifyIcon.Text = "BatteryPill - on AC power (no battery detected)"
     } else {
         $tipText = "Battery: $($info.Percent)% - $($info.StatusText)"
         if ($info.TimeString -and $info.TimeString -ne "N/A (plugged in)") {
@@ -3009,14 +3065,17 @@ function Update-TrayIcon {
     # Update floating bar
     Update-FloatingBar -BatteryInfo $info
 
-    # Record history for sparkline (cap at 2400 entries = ~2h at 3s intervals)
-    $script:batteryHistory.Add(@{
-        Time = $now
-        Percent = $info.Percent
-        IsCharging = $info.IsCharging
-    }) | Out-Null
-    if ($script:batteryHistory.Count -gt 2400) {
-        $script:batteryHistory.RemoveAt(0)
+    # Record history for sparkline (cap at 2400 entries = ~2h at 3s intervals).
+    # Skip when there's no battery so we don't fill the graph with junk -1 readings.
+    if (-not $info.NoBattery) {
+        $script:batteryHistory.Add(@{
+            Time = $now
+            Percent = $info.Percent
+            IsCharging = $info.IsCharging
+        }) | Out-Null
+        if ($script:batteryHistory.Count -gt 2400) {
+            $script:batteryHistory.RemoveAt(0)
+        }
     }
 
     $script:lastBatteryInfo = $info
