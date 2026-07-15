@@ -1,4 +1,4 @@
-#Requires -Version 5.0
+﻿#Requires -Version 5.0
 
 <#
 .SYNOPSIS
@@ -1531,7 +1531,6 @@ function New-BatteryPopupContent {
     $Form.Controls.Add($sepLabel)
 
     # --- Row layout (DPI-aware) ---
-    $heroFont = New-Object System.Drawing.Font("Segoe UI Semibold", 18, [System.Drawing.FontStyle]::Bold)
     $rh = [int](18 * $DpiScale)
     $heroRh = [int](24 * $DpiScale)
     $lx = 20
@@ -1686,7 +1685,7 @@ function New-BatteryPopupContent {
         $Form.Controls.Add($hintLabel)
     }
 
-    $fontsToDispose = @($labelFont, $valueFont, $heroLabelFont, $heroValueFont, $heroFont, $titleLabel.Font, $powerLabel.Font)
+    $fontsToDispose = @($labelFont, $valueFont, $heroLabelFont, $heroValueFont, $titleLabel.Font, $powerLabel.Font)
     if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
         TotalHeight = $y + 8
@@ -2294,6 +2293,7 @@ function Show-FirstRunTooltip {
     foreach ($text in $tips) {
         $lbl = New-Object System.Windows.Forms.Label
         $lbl.Text = "  $text"
+        $lbl.UseMnemonic = $false  # render literal '&' (e.g. "settings & options") instead of eating it as an accelerator
         $lbl.Font = $script:firstRunFont
         $lbl.ForeColor = $script:theme.TextLight
         $lbl.Location = New-Object System.Drawing.Point($pad, $ty)
