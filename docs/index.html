@@ -137,6 +137,15 @@
     border-bottom: 1px solid #333;
   }
 
+  .popup-hero {
+    font-family: 'Segoe UI Semibold', 'Segoe UI', var(--font);
+    font-size: 27px;
+    font-weight: 600;
+    line-height: 1.1;
+    color: #00b4ff;
+    margin-bottom: 10px;
+  }
+
   .popup-row {
     display: flex;
     justify-content: space-between;
@@ -145,7 +154,6 @@
 
   .popup-label { color: #888; }
   .popup-value { color: #ccc; }
-  .popup-value.highlight { color: #f0c040; font-weight: 600; }
   .popup-value.bold { font-weight: 600; }
 
   .popup-spacer { height: 8px; }
@@ -318,10 +326,10 @@
 <div class="popup-preview">
   <div>
     <div class="popup-mock">
-      <div class="popup-title">Discharging &mdash; 72%</div>
-      <div class="popup-row"><span class="popup-label">Percent:</span><span class="popup-value highlight">72%</span></div>
+      <div class="popup-title">Discharging</div>
+      <div class="popup-hero">72%</div>
       <div class="popup-row"><span class="popup-label">Capacity:</span><span class="popup-value">43,180 / 59,970 mWh</span></div>
-      <div class="popup-row"><span class="popup-label">Rate:</span><span class="popup-value">8,241 mW</span></div>
+      <div class="popup-row"><span class="popup-label">Rate:</span><span class="popup-value">-8,241 mW</span></div>
       <div class="popup-spacer"></div>
       <div class="popup-row"><span class="popup-label">Remaining:</span><span class="popup-value bold">3h 08m &mdash; ETA 6:42 PM</span></div>
       <div class="popup-row"><span class="popup-label">Elapsed:</span><span class="popup-value">1:24 (from 91%)</span></div>
@@ -332,10 +340,11 @@
           <rect x="0" y="0" width="60" height="32" fill="rgba(74,222,128,0.08)"/>
           <line x1="0" y1="16" x2="240" y2="16" stroke="#333" stroke-width="0.5" stroke-dasharray="2,2"/>
           <polyline fill="none" stroke="#4ade80" stroke-width="1.5" points="0,28 15,26 30,22 45,14 60,8 75,6 90,8 105,10 120,11 135,13 150,15 165,17 180,18 195,20 210,21 225,22 240,23"/>
+          <circle cx="237" cy="22.8" r="2.5" fill="#4ade80"/>
         </svg>
       </div>
       <div class="popup-spark-label"><span>50%</span><span>2h ago</span><span>now</span></div>
-      <div class="popup-status">Battery Power</div>
+      <div class="popup-status">&bull; Battery (unplugged)</div>
     </div>
     <p class="popup-caption">Hover the pill for the full picture.</p>
   </div>
@@ -357,7 +366,7 @@
       </li>
       <li>
         <strong>Hover popup</strong>
-        Charge rate, capacity, wear level, ETA, and a 2-hour sparkline.
+        Big percentage up top, plus charge rate, capacity, wear, ETA, and a 2-hour sparkline.
       </li>
       <li>
         <strong>DPI aware</strong>
