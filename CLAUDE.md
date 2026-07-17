@@ -82,6 +82,16 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-17 — Max-Compute Sprint (hero popup, tactile pill, notification resurrection)
+- **Popup hero redesign** — status-only title ("Discharging"), 18pt status-colored hero percent below it, "Percent:" row removed; light theme darkens the status palette x0.62 for contrast (all combos >= 3.7:1)
+- **Tactile pill** — left-click cycles display mode time -> percent -> both (works with position locked); hover brightens the border via a cached theme-blended pen
+- **Notification system resurrected** — the animation timer referenced function locals that are $null at fire time, so every card (incl. 10%/5% battery warnings) sat at Opacity 0 forever; rewritten with per-card GetNewClosure() state (also fixes two-card state collisions + a font leak)
+- **Both-mode second line finally renders** — argument-list comma bound tighter than minus in a RectangleF call = array subtraction crash every paint frame
+- **Fixes**: dual-battery WMI array crash; RefreshInterval clamp (0 => 100ms polling); tray icon cache invalidation on accent/theme change; hover fade-out flash; DST/NTP clock-jump sampling deadlock; low-battery pulse sticking above 15%; opacity not restored after low-battery oscillation; no-battery accent was critical-red; negative-monitor saved positions discarded; light-theme contrast (6 fixes: notification text, first-run tip, pill fringe, About links, settings separators, popup greens)
+- **Build.ps1** bootstraps TLS 1.2 + NuGet provider (first build works on stock PS 5.1); gotcha corrected: Stop-Process -Force DOES kill same-session exes
+- **tools/** added (check-source.ps1 gate + render-states.ps1 headless renderer); README landed from docs/readme branch with accuracy fixes; website mock synced to hero design
+- **Deferred (triage log)**: White accent preset (#7) near-invisible on light theme (needs design call: substitute dark neutral or drop); settings combos go stale if open while click-cycling the pill; double-click cycles twice; SettingsBg/TrackBg theme keys defined but unused; lowBatShown15 written never read; per-frame Paint allocations cacheable; capture_popup.ps1 superseded by tools/render-states.ps1; tray icon body stays dark when pill is light-themed; docs/screenshot-popup.png shows the pre-hero design + an "Activate Windows" watermark (regenerate on a battery laptop)
+
 ### 2026-02-05 — Popup Design Audit & Visual Hierarchy
 - **Hero percentage** — 18pt Semibold Bold percent below title, colored by battery status; old "Percent: XX%" row removed
 - **Simplified title** — shows "Charging" / "Discharging" instead of "Charging - 90%"
