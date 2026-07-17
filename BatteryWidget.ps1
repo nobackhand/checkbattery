@@ -705,17 +705,6 @@ function Get-AccentColor {
     return $script:accentPresets[$idx]
 }
 
-function Get-BarBackColor {
-    param([int]$Percent, [bool]$IsCharging)
-    if ($IsCharging) {
-        return [System.Drawing.Color]::FromArgb(40, 120, 40)
-    }
-    if ($Percent -le 10) { return [System.Drawing.Color]::FromArgb(180, 30, 30) }
-    if ($Percent -le 20) { return [System.Drawing.Color]::FromArgb(200, 120, 0) }
-    if ($Percent -le 50) { return [System.Drawing.Color]::FromArgb(160, 160, 0) }
-    return [System.Drawing.Color]::FromArgb(30, 130, 30)
-}
-
 # ============================================================
 # DYNAMIC TRAY ICON
 # ============================================================
@@ -1635,7 +1624,12 @@ function New-BatteryPopupContent {
         $glyph = New-Object System.Windows.Forms.Label
         $glyph.Text = [string][char]0x26A1
         $glyph.Font = $glyphFont
-        $glyph.ForeColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
+        # Darker green on the light popup background for contrast
+        $glyph.ForeColor = if ($script:theme.PopupBg.GetBrightness() -gt 0.5) {
+            [System.Drawing.Color]::FromArgb(27, 131, 62)
+        } else {
+            [System.Drawing.Color]::FromArgb(45, 212, 100)
+        }
         $glyph.AutoSize = $false
         $glyph.Size = New-Object System.Drawing.Size($PopupWidth, [int](44 * $DpiScale))
         $glyph.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
@@ -1742,7 +1736,12 @@ function New-BatteryPopupContent {
     # Row 2: Discharge/Charge Rate (hidden when N/A)
     if ($BatteryInfo.IsCharging -and $BatteryInfo.ChargeRate -gt 0) {
         $rateText = "+{0:N0} mW" -f $BatteryInfo.ChargeRate
-        $rateColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
+        # Darker green on the light popup background for contrast
+        $rateColor = if ($script:theme.PopupBg.GetBrightness() -gt 0.5) {
+            [System.Drawing.Color]::FromArgb(27, 131, 62)
+        } else {
+            [System.Drawing.Color]::FromArgb(45, 212, 100)
+        }
     } elseif (-not $BatteryInfo.IsCharging -and $BatteryInfo.DischargeRate -gt 0) {
         $rateText = "-{0:N0} mW" -f $BatteryInfo.DischargeRate
         $rateColor = $lightGray
@@ -3436,14 +3435,14 @@ $script:pulseTimer.Add_Tick({
             $script:pulseAlpha = [int](105 + 15 * [Math]::Sin($t * 1.257))
             $needsRepaint = $true
         }
-        # Plug/unplug flash decay (180→0 over ~750ms at 50ms tick = ~12 per tick)
+        # Plug/unplug flash decay (180→0 at 33ms tick, ~8/tick = ~750ms)
         if ($script:flashAlpha -gt 0) {
             $script:flashAlpha = [math]::Max(0, $script:flashAlpha - 12)
             $needsRepaint = $true
         }
         # Low battery warning animations
         if ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) {
-            # Pulsing red border (4.7s cycle at 50ms tick = ~94 ticks)
+            # Pulsing red border (~3.1s cycle at 33ms tick = ~94 ticks)
             $script:lowBatBorderAlpha += $script:lowBatBorderDir * 3
             if ($script:lowBatBorderAlpha -ge 220) { $script:lowBatBorderAlpha = 220; $script:lowBatBorderDir = -1 }
             elseif ($script:lowBatBorderAlpha -le 80) { $script:lowBatBorderAlpha = 80; $script:lowBatBorderDir = 1 }
