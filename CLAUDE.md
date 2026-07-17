@@ -61,6 +61,13 @@
 - **Build requires exit first** — The exe file is locked while running, so the widget must be closed before `Build.ps1` can overwrite it.
 - **DPI label sizing** — Never use fixed `Size` on popup labels. Always use `AutoSize = $true` + `MaximumSize` to handle varying DPI/font scales.
 
+## Dev Tools (tools\)
+
+Two PS 5.1-safe helpers in `tools\`; both resolve repo paths via `$PSScriptRoot` and exit nonzero on failure.
+
+- **`tools\check-source.ps1`** — source health gate. Verifies `BatteryWidget.ps1` has its UTF-8 BOM, parse-checks `BatteryWidget.ps1` / `CheckBattery.ps1` / `Build.ps1`, and inventories non-ASCII characters inside string tokens (WARN — those are the BOM-dependent hazard). Run after any edit to a `.ps1` and before committing or building.
+- **`tools\render-states.ps1`** — headless state renderer. Stages a message-loop-stripped copy of the widget in a temp dir, feeds it fake battery presets, and captures PNGs of popup/pill/settings states plus a control-geometry dump (`geometry.txt` — the reliable layout oracle: type, X, Right, Width, wrapped-line count, text) to `-OutDir` (default `%TEMP%\batterypill-renders`). Subset with `-States popup-discharge,settings`; add `-DrawToBitmap` under RDP where CopyFromScreen fails. Never touches repo files; kills its child process on timeout.
+
 ## Build & Run
 
 ```powershell
