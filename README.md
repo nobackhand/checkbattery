@@ -1,11 +1,12 @@
 # BatteryPill
 
-BatteryPill is a Windows desktop battery widget built with PowerShell and WinForms. It displays a floating, draggable pill-shaped indicator on the desktop showing time remaining, a detailed information popup on hover or click, and a system tray icon. It is designed for Windows users who want a persistent, glanceable view of their battery status using smoothed estimates rather than just a percentage.
+BatteryPill is a Windows desktop battery widget built with PowerShell and WinForms. It displays a floating, draggable pill-shaped indicator on the desktop showing time remaining, a detailed information popup on hover (the tray icon opens a modal version on click), and a system tray icon. It is designed for Windows users who want a persistent, glanceable view of their battery status using smoothed estimates rather than just a percentage.
 
 ## Features
 
 - **Floating Pill Bar**: Draggable indicator with snap-to-edge functionality and fullscreen auto-hide.
-- **Detailed Popup**: Hover over the pill (500ms delay) to see percentage, capacity, charge/discharge rate, ETA, elapsed time, battery wear, and a history sparkline.
+- **Display Modes**: Click the pill to cycle what it shows - time remaining, percentage, or both stacked.
+- **Detailed Popup**: Hover over the pill (500ms delay) to see a large status-colored percentage, capacity, charge/discharge rate, ETA, elapsed time, battery wear, and a history sparkline.
 - **Smart Estimates**: Uses Exponential Moving Average (EMA) smoothing to provide stable time remaining estimates that resist "jumping" caused by CPU load changes.
 - **Themes & Personalization**: Supports Dark, Light, and Auto themes; 8 accent color presets; and three pill size variants (Compact, Normal, Expanded).
 - **Visual Alerts**: Includes pulsing red borders and notifications for low battery states (15%, 10%, and 5%).
@@ -32,9 +33,9 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Usage
 
-Run the compiled executable:
+Run the compiled executable (the version suffix comes from `$script:appVersion` in the source):
 ```powershell
-.\BatteryPill-1.0.0.exe
+.\BatteryPill-<version>.exe
 ```
 
 Quick battery status check via CLI:
@@ -64,4 +65,5 @@ or
 - `Build.ps1`: Script to compile the widget into a standalone `.exe` using `ps2exe`.
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
 - `capture_popup.ps1`: Utility script to capture a screenshot of the popup for documentation.
+- `tools/`: Dev harness - `check-source.ps1` (BOM + parse gate) and `render-states.ps1` (headless renderer of popup/pill/settings states).
 - `docs/`: Website files for the project landing page.
