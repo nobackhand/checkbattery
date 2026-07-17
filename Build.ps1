@@ -21,7 +21,15 @@ if (-not (Test-Path $inputFile)) {
     exit 1
 }
 
-# Ensure ps2exe module is available
+# Ensure ps2exe module is available.
+# Bootstrap first: stock Windows PowerShell 5.1 lacks a TLS 1.2 default and the
+# NuGet package provider; without both, Install-Module fails with
+# "NuGet provider is required to interact with NuGet-based repositories".
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+if (-not (Get-PackageProvider -ListAvailable -Name NuGet -ErrorAction SilentlyContinue)) {
+    Write-Host "Installing NuGet package provider..." -ForegroundColor Yellow
+    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+}
 if (-not (Get-Module -ListAvailable -Name ps2exe)) {
     Write-Host "Installing ps2exe module..." -ForegroundColor Yellow
     Install-Module -Name ps2exe -Scope CurrentUser -Force
