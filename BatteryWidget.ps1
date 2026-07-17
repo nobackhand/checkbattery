@@ -1053,6 +1053,19 @@ function Update-PillSize {
     $script:floatingBar.Invalidate()
 }
 
+function Invoke-CycleDisplayMode {
+    # Left-click on the pill cycles what it shows: time -> percent -> both -> time
+    $order = @("time", "percent", "both")
+    $idx = [array]::IndexOf($order, [string]$script:config.DisplayMode)
+    if ($idx -lt 0) { $idx = 0 }
+    $script:config.DisplayMode = $order[($idx + 1) % $order.Count]
+    Update-PillSize
+    if ($null -ne $script:lastBatteryInfo) {
+        Update-FloatingBar -BatteryInfo $script:lastBatteryInfo
+    }
+    Save-Config
+}
+
 function Test-PositionOnScreen {
     param([int]$X, [int]$Y, [int]$Width, [int]$Height)
     # Check if the center of the pill falls within any connected screen's working area
@@ -1257,6 +1270,13 @@ function New-FloatingBar {
             $warnPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb($script:lowBatBorderAlpha, 235, 85, 75), 2)
             $g.DrawPath($warnPen, $path)
             $warnPen.Dispose()
+        } elseif ($script:pillHovered) {
+            # --- Hover affordance: brighter border while the cursor is on the pill ---
+            $bc = $script:pillBorderPen.Color
+            $hoverPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,
+                [math]::Min(255, $bc.R + 70), [math]::Min(255, $bc.G + 70), [math]::Min(255, $bc.B + 75)), 1)
+            $g.DrawPath($hoverPen, $path)
+            $hoverPen.Dispose()
         } else {
             # --- Border (cached pen) ---
             $g.DrawPath($script:pillBorderPen, $path)
@@ -1302,15 +1322,19 @@ function New-FloatingBar {
         }
     })
 
-    # Mouse enter - start hover timer
+    # Mouse enter - start hover timer + hover affordance
     $form.Add_MouseEnter({
+        $script:pillHovered = $true
+        $script:floatingBar.Invalidate()
         if (-not $script:hoverPopupVisible -and -not $script:isDragging) {
             $script:hoverTimer.Start()
         }
     })
 
-    # Mouse leave - stop timer, start dismiss check
+    # Mouse leave - stop timer, start dismiss check, clear hover affordance
     $form.Add_MouseLeave({
+        $script:pillHovered = $false
+        $script:floatingBar.Invalidate()
         $script:hoverTimer.Stop()
         if ($script:hoverPopupVisible) {
             $script:dismissTimer.Start()
@@ -1320,16 +1344,21 @@ function New-FloatingBar {
     # Drag handling — track if mouse actually moved to distinguish click vs drag
     $script:isDragging = $false
     $script:didDrag = $false
+    $script:leftPressed = $false
+    $script:pillHovered = $false
     $script:dragOffset = New-Object System.Drawing.Point(0, 0)
 
     $dragDown = {
         param($sender, $e)
-        if ($script:positionLocked) { return }
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-            $script:isDragging = $true
+            # Track the press even when position is locked - click-to-cycle must still work
+            $script:leftPressed = $true
             $script:didDrag = $false
-            $script:dragOffset = $e.Location
-            $script:floatingBar.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+            if (-not $script:positionLocked) {
+                $script:isDragging = $true
+                $script:dragOffset = $e.Location
+                $script:floatingBar.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+            }
         }
     }
     $dragMove = {
@@ -1372,8 +1401,12 @@ function New-FloatingBar {
                 $script:config.Y = $script:floatingBar.Top
                 Save-Config
             }
-            # No click-to-popup — hover handles popup display
         }
+        # Left-click without drag cycles the display mode (works even when position is locked)
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left -and $script:leftPressed -and -not $script:didDrag) {
+            Invoke-CycleDisplayMode
+        }
+        $script:leftPressed = $false
     }
 
     # Apply drag/click events to form only (no label — everything is paint-drawn)
