@@ -158,6 +158,7 @@ function Apply-Theme {
 
     # Refresh cached brushes for new theme
     Initialize-PillBrushes
+    $script:cachedIconPercent = -999   # force tray icon rebuild in the new theme
 
     # Apply to floating bar immediately
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
@@ -242,9 +243,11 @@ function Get-BatteryInfo {
         ElapsedSince       = ""
     }
 
-    # WMI primary source
+    # WMI primary source. Dual-battery laptops return an ARRAY here; member access
+    # on it produces arrays that crash the [int] casts below, so take the first
+    # pack (empty array pipes to $null, preserving the no-battery path).
     try {
-        $wmiBattery = Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop
+        $wmiBattery = @(Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop) | Select-Object -First 1
     } catch {
         $wmiBattery = $null
     }
@@ -489,6 +492,12 @@ function Get-CapacityDerivedRate {
     }
 
     $elapsed = ($now - $script:lastCapacityCheck.Time).TotalHours
+    if ($elapsed -lt 0) {
+        # Wall clock jumped backward (DST/NTP) - resync the sample or the
+        # early-return below deadlocks sampling until real time re-passes it
+        $script:lastCapacityCheck = @{ Time = $Now; Capacity = $currentCapacity }
+        return -1
+    }
     if ($elapsed -lt 0.0083) { return -1 }  # need at least 30 seconds
 
     $capDelta = $script:lastCapacityCheck.Capacity - $currentCapacity  # mWh consumed
@@ -817,7 +826,9 @@ function Load-Config {
                 $default.Opacity = [math]::Max(0.3, [math]::Min(1.0, [double]$json.Opacity))
             }
             if ($null -ne $json.RefreshInterval) {
-                $default.RefreshInterval = [int]$json.RefreshInterval
+                # Clamp: 0/negative would throw at Timer.Interval assignment and leave
+                # the WinForms default of 100ms - a WMI query 10x/second
+                $default.RefreshInterval = [math]::Max(1000, [math]::Min(60000, [int]$json.RefreshInterval))
             }
             if ($null -ne $json.PositionLocked) {
                 $default.PositionLocked = [bool]$json.PositionLocked
@@ -1862,9 +1873,8 @@ function Show-BatteryNotification {
     $notif.Opacity = 0
     Enable-DoubleBuffering -Form $notif
 
-    # 3C. Escape to dismiss
+    # Escape-to-dismiss is wired below, once the per-notification state exists
     $notif.KeyPreview = $true
-    $notif.Add_KeyDown({ if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $script:notifPhase = "out" } })
 
     # Position on same screen as pill (fallback to primary)
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
@@ -1930,52 +1940,64 @@ function Show-BatteryNotification {
     $nSub.MaximumSize = New-Object System.Drawing.Size(($nW - $nPad * 2), 0)
     $notif.Controls.Add($nSub)
 
-    # Click-to-dismiss on notification and its labels
-    $dismissClick = { $script:notifPhase = "out" }
+    $notif.Show()
+
+    # Per-notification animation state, captured into every handler with
+    # GetNewClosure(). CRITICAL: Add_* scriptblocks resolve variables at FIRE
+    # time - after this function returns, its locals are gone, so without the
+    # closures the tick handler saw $notif/$notifTimer as $null, threw every
+    # 16ms, and the card stayed at Opacity 0 forever (notifications were
+    # invisible). The per-card hashtable also lets two live cards animate
+    # independently instead of fighting over shared script-scope state.
+    $nState = @{
+        Phase       = "in"      # "in", "hold", "out"
+        AnimStart   = Get-Date
+        HoldStart   = $null
+        SlideStart  = $notif.Top
+        SlideTarget = $screen.Bottom - $nH - 20
+        Fonts       = @($nTitle.Font, $nSub.Font)
+    }
+
+    # Dismissers: click anywhere on the card, or Escape
+    $dismissClick = { $nState.Phase = "out" }.GetNewClosure()
     $notif.Add_Click($dismissClick)
     $nTitle.Add_Click($dismissClick)
     $nSub.Add_Click($dismissClick)
+    $notif.Add_KeyDown({
+        if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $nState.Phase = "out" }
+    }.GetNewClosure())
 
-    $notif.Show()
-
-    # Slide-in with cubic ease-out, then auto-dismiss after 10s
-    $script:notifSlideTarget = $screen.Bottom - $nH - 20
-    $script:notifSlideStart = $notif.Top
-    $script:notifAnimStart = Get-Date
-    $script:notifAnimDuration = 300  # ms
-    $script:notifPhase = "in"  # "in", "hold", "out"
-    $script:notifHoldStart = $null
+    # Slide-in with cubic ease-out, hold 10s, fade out
     $notifTimer = New-Object System.Windows.Forms.Timer
     $notifTimer.Interval = 16
     $notifTimer.Add_Tick({
         if ($null -eq $notif -or $notif.IsDisposed) { $notifTimer.Stop(); $notifTimer.Dispose(); return }
-        if ($script:notifPhase -eq "in") {
-            $elapsed = ((Get-Date) - $script:notifAnimStart).TotalMilliseconds
-            $t = [math]::Min(1.0, $elapsed / $script:notifAnimDuration)
+        if ($nState.Phase -eq "in") {
+            $elapsed = ((Get-Date) - $nState.AnimStart).TotalMilliseconds
+            $t = [math]::Min(1.0, $elapsed / 300.0)
             # Cubic ease-out: 1 - (1 - t)^3
             $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
             $notif.Opacity = $eased
-            $startY = $script:notifSlideStart
-            $targetY = $script:notifSlideTarget
-            $notif.Top = [int]($startY + ($targetY - $startY) * $eased)
+            $notif.Top = [int]($nState.SlideStart + ($nState.SlideTarget - $nState.SlideStart) * $eased)
             if ($t -ge 1.0) {
                 $notif.Opacity = 1.0
-                $notif.Top = $targetY
-                $script:notifPhase = "hold"
-                $script:notifHoldStart = Get-Date
+                $notif.Top = $nState.SlideTarget
+                $nState.Phase = "hold"
+                $nState.HoldStart = Get-Date
             }
-        } elseif ($script:notifPhase -eq "hold") {
-            if (((Get-Date) - $script:notifHoldStart).TotalSeconds -ge 10) {
-                $script:notifPhase = "out"
+        } elseif ($nState.Phase -eq "hold") {
+            if (((Get-Date) - $nState.HoldStart).TotalSeconds -ge 10) {
+                $nState.Phase = "out"
             }
-        } elseif ($script:notifPhase -eq "out") {
+        } elseif ($nState.Phase -eq "out") {
             $notif.Opacity -= 0.06
             if ($notif.Opacity -le 0) {
                 $notifTimer.Stop(); $notifTimer.Dispose()
+                foreach ($nf in $nState.Fonts) { if ($null -ne $nf) { $nf.Dispose() } }
                 $notif.Close(); $notif.Dispose()
             }
         }
-    })
+    }.GetNewClosure())
     $notifTimer.Start()
 }
 
@@ -2118,7 +2140,9 @@ function Get-EaseInOutCubic {
 
 function Close-HoverPopup {
     if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed) {
-        # Start eased fade-out (100ms duration)
+        # Start eased fade-out (100ms duration) FROM the popup's current opacity -
+        # interrupting a fade-in used to restart at full brightness (visible flash)
+        $script:fadeOutFrom = $script:hoverPopup.Opacity
         $script:fadeOutStart = (Get-Date).Ticks
         if ($null -eq $script:fadeOutTimer) {
             $script:fadeOutTimer = New-Object System.Windows.Forms.Timer
@@ -2139,7 +2163,7 @@ function Close-HoverPopup {
                             $script:hoverPopupFonts = $null
                         }
                     } else {
-                        $script:hoverPopup.Opacity = 1.0 - $eased
+                        $script:hoverPopup.Opacity = $script:fadeOutFrom * (1.0 - $eased)
                     }
                 } else {
                     $script:fadeOutTimer.Stop()
@@ -2780,6 +2804,7 @@ function Show-SettingsPanel {
         $colorPanel.Add_Click({
             param($sender)
             $script:config.AccentColorIndex = $sender.Tag.Index
+            $script:cachedIconPercent = -999   # force tray icon rebuild with the new accent
             Save-Config
             # Repaint all color circles to update selection ring
             foreach ($ctrl in $settings.Controls) {
