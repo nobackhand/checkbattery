@@ -1648,12 +1648,21 @@ function New-BatteryPopupContent {
     $y = [int](40 * $DpiScale)
 
     # --- Hero percent: the number users came for, big and status-colored ---
+    # Light theme: Get-StatusColor's palette is tuned for the dark popup; darken it
+    # so 18pt text stays readable on the light background (248,248,252).
+    $heroPctColor = $statusColor
+    if ($script:theme.PopupBg.GetBrightness() -gt 0.5) {
+        $heroPctColor = [System.Drawing.Color]::FromArgb(
+            [int]($statusColor.R * 0.62),
+            [int]($statusColor.G * 0.62),
+            [int]($statusColor.B * 0.62))
+    }
     $heroPctFont = New-Object System.Drawing.Font("Segoe UI Semibold", 18, [System.Drawing.FontStyle]::Bold)
     if ($BatteryInfo.PercentExact -ge 0) {
         $heroPctLabel = New-Object System.Windows.Forms.Label
         $heroPctLabel.Text = "$([int][math]::Round($BatteryInfo.PercentExact))%"
         $heroPctLabel.Font = $heroPctFont
-        $heroPctLabel.ForeColor = $statusColor
+        $heroPctLabel.ForeColor = $heroPctColor
         $heroPctLabel.Location = New-Object System.Drawing.Point($lx, $y)
         $heroPctLabel.AutoSize = $true
         $heroPctLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
@@ -1693,7 +1702,7 @@ function New-BatteryPopupContent {
         $y += $rh
     }
 
-    # Row 3: Discharge/Charge Rate (hidden when N/A)
+    # Row 2: Discharge/Charge Rate (hidden when N/A)
     if ($BatteryInfo.IsCharging -and $BatteryInfo.ChargeRate -gt 0) {
         $rateText = "+{0:N0} mW" -f $BatteryInfo.ChargeRate
         $rateColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
@@ -1709,7 +1718,7 @@ function New-BatteryPopupContent {
         $y += $rh
     }
 
-    # Row 4: Time Remaining with ETA (hero row)
+    # Row 3: Time Remaining with ETA (hero row)
     if ($BatteryInfo.IsFullyCharged) {
         $timeText = "Fully Charged"
     } elseif ($BatteryInfo.TimeMinutes -gt 0) {
@@ -1734,12 +1743,12 @@ function New-BatteryPopupContent {
     # Group gap (replaces separator line)
     $y += [int](6 * $DpiScale)
 
-    # Row 5: Elapsed Time
+    # Row 4: Elapsed Time
     $elapsedText = "$($BatteryInfo.ElapsedTime) (from $($BatteryInfo.ElapsedSince))"
     $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Elapsed:" -Value $elapsedText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
     $y += $rh
 
-    # Row 6: Full Runtime (hidden when N/A)
+    # Row 5: Full Runtime (hidden when N/A)
     if ($BatteryInfo.FullRuntimeMinutes -gt 0) {
         $frH = [math]::Floor($BatteryInfo.FullRuntimeMinutes / 60)
         $frM = $BatteryInfo.FullRuntimeMinutes % 60
@@ -1752,7 +1761,7 @@ function New-BatteryPopupContent {
         $y += $rh
     }
 
-    # Row 7: Battery Wear (hidden when N/A)
+    # Row 6: Battery Wear (hidden when N/A)
     if ($BatteryInfo.BatteryWearPercent -ge 0 -and $BatteryInfo.DesignCapacity -gt 0) {
         $wearText = "{0:N1}%" -f $BatteryInfo.BatteryWearPercent
     } else {
@@ -1798,6 +1807,7 @@ function New-BatteryPopupContent {
         $hintLabel.AutoSize = $true
         $hintLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
         $Form.Controls.Add($hintLabel)
+        $y += [int](14 * $DpiScale)   # account for the hint's height so it doesn't clip the bottom edge
     }
 
     $fontsToDispose = @($labelFont, $valueFont, $heroValueFont, $heroPctFont, $titleLabel.Font, $powerLabel.Font)
