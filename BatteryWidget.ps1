@@ -670,6 +670,10 @@ function Get-AccentColor {
         [int]$Percent,
         [bool]$IsCharging
     )
+    # No battery (desktop PCs report -1): neutral slate, NOT critical red
+    if ($Percent -lt 0) {
+        return [System.Drawing.Color]::FromArgb(120, 130, 140)
+    }
     # Yellow when charging (any level)
     if ($IsCharging) {
         return [System.Drawing.Color]::FromArgb(255, 200, 0)
@@ -986,19 +990,26 @@ function Enable-DoubleBuffering {
 # CACHED GDI+ BRUSHES/PENS FOR PAINT HANDLER
 # ============================================================
 
-$script:pillBgBrush    = $null
-$script:pillTextBrush  = $null
-$script:pillBorderPen  = $null
+$script:pillBgBrush        = $null
+$script:pillTextBrush      = $null
+$script:pillBorderPen      = $null
+$script:pillBorderHoverPen = $null
 
 function Initialize-PillBrushes {
     # Dispose old cached objects
-    if ($null -ne $script:pillBgBrush)   { $script:pillBgBrush.Dispose() }
-    if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
-    if ($null -ne $script:pillBorderPen) { $script:pillBorderPen.Dispose() }
+    if ($null -ne $script:pillBgBrush)        { $script:pillBgBrush.Dispose() }
+    if ($null -ne $script:pillTextBrush)      { $script:pillTextBrush.Dispose() }
+    if ($null -ne $script:pillBorderPen)      { $script:pillBorderPen.Dispose() }
+    if ($null -ne $script:pillBorderHoverPen) { $script:pillBorderHoverPen.Dispose() }
     # Create from current theme colors
     $script:pillBgBrush    = New-Object System.Drawing.SolidBrush($script:theme.PillBg)
     $script:pillTextBrush  = New-Object System.Drawing.SolidBrush($script:theme.TextPrimary)
     $script:pillBorderPen  = New-Object System.Drawing.Pen($script:theme.Border, 1)
+    # Hover pen: blend border 50% toward TextPrimary - reads brighter on dark theme
+    # and stronger on light theme (a flat brighten washes out on a light background)
+    $hb = $script:theme.Border; $ht = $script:theme.TextPrimary
+    $script:pillBorderHoverPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,
+        [int](($hb.R + $ht.R) / 2), [int](($hb.G + $ht.G) / 2), [int](($hb.B + $ht.B) / 2)), 1)
 }
 
 # ============================================================
@@ -1049,6 +1060,12 @@ function Update-PillSize {
     if ($dims.FontSize2 -gt 0) {
         if ($null -ne $script:pillFont2) { $script:pillFont2.Dispose() }
         $script:pillFont2 = New-Object System.Drawing.Font("Segoe UI", $dims.FontSize2, [System.Drawing.FontStyle]::Regular)
+    } else {
+        # No room for a second line at this size (e.g. compact) - clear the font so the
+        # paint handler deterministically takes the single-line branch instead of
+        # depending on which size the user visited previously
+        if ($null -ne $script:pillFont2) { $script:pillFont2.Dispose() }
+        $script:pillFont2 = $null
     }
     $script:floatingBar.Invalidate()
 }
@@ -1244,7 +1261,10 @@ function New-FloatingBar {
             $g.DrawString($script:barDisplayText, $script:pillFont, $topBrush, $topRect, $script:pillStringFormat)
             $topBrush.Dispose()
             $botBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
-            $botRect = New-Object System.Drawing.RectangleF(0, ($h / 2) - 2, $w, ($h / 2))
+            # NOTE: the inner subtraction MUST be fully parenthesized - in an argument list the
+            # comma binds tighter than minus, so "($h / 2) - 2, $w" parses as array subtraction
+            # and throws op_Subtraction every paint, silently killing this second line.
+            $botRect = New-Object System.Drawing.RectangleF(0, (($h / 2) - 2), $w, ($h / 2))
             $g.DrawString($script:barDisplayText2, $script:pillFont2, $botBrush, $botRect, $script:pillStringFormat)
             $botBrush.Dispose()
         } else {
@@ -1270,13 +1290,9 @@ function New-FloatingBar {
             $warnPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb($script:lowBatBorderAlpha, 235, 85, 75), 2)
             $g.DrawPath($warnPen, $path)
             $warnPen.Dispose()
-        } elseif ($script:pillHovered) {
-            # --- Hover affordance: brighter border while the cursor is on the pill ---
-            $bc = $script:pillBorderPen.Color
-            $hoverPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,
-                [math]::Min(255, $bc.R + 70), [math]::Min(255, $bc.G + 70), [math]::Min(255, $bc.B + 75)), 1)
-            $g.DrawPath($hoverPen, $path)
-            $hoverPen.Dispose()
+        } elseif ($script:pillHovered -and $null -ne $script:pillBorderHoverPen) {
+            # --- Hover affordance: stronger border while the cursor is on the pill (cached pen) ---
+            $g.DrawPath($script:pillBorderHoverPen, $path)
         } else {
             # --- Border (cached pen) ---
             $g.DrawPath($script:pillBorderPen, $path)
@@ -1354,15 +1370,22 @@ function New-FloatingBar {
             # Track the press even when position is locked - click-to-cycle must still work
             $script:leftPressed = $true
             $script:didDrag = $false
+            $script:dragOffset = $e.Location
             if (-not $script:positionLocked) {
                 $script:isDragging = $true
-                $script:dragOffset = $e.Location
                 $script:floatingBar.Cursor = [System.Windows.Forms.Cursors]::SizeAll
             }
         }
     }
     $dragMove = {
         param($sender, $e)
+        if (-not $script:isDragging -and $script:leftPressed -and $script:positionLocked) {
+            # Locked: the pill never moves, but still track cursor travel so a
+            # held-and-dragged press is not treated as a click on release
+            $ldx = [math]::Abs($e.X - $script:dragOffset.X)
+            $ldy = [math]::Abs($e.Y - $script:dragOffset.Y)
+            if ($ldx -gt 3 -or $ldy -gt 3) { $script:didDrag = $true }
+        }
         if ($script:isDragging) {
             $dx = [math]::Abs($e.X - $script:dragOffset.X)
             $dy = [math]::Abs($e.Y - $script:dragOffset.Y)
@@ -1414,9 +1437,12 @@ function New-FloatingBar {
     $form.Add_MouseMove($dragMove)
     $form.Add_MouseUp($dragUp)
 
-    # Set position from config (validate against current screens)
+    # Set position from config (validate against current screens).
+    # Only the exact (-1,-1) pair means "never saved" - monitors left of or above
+    # the primary have legitimate negative coordinates, and Test-PositionOnScreen
+    # is the real validity check.
     $useDefault = $true
-    if ($script:config.X -ge 0 -and $script:config.Y -ge 0) {
+    if (-not ($script:config.X -eq -1 -and $script:config.Y -eq -1)) {
         if (Test-PositionOnScreen -X $script:config.X -Y $script:config.Y -Width $form.Width -Height $form.Height) {
             $form.Location = New-Object System.Drawing.Point($script:config.X, $script:config.Y)
             $useDefault = $false
@@ -1987,7 +2013,8 @@ function Update-FloatingBar {
         }
         "both" {
             $script:barDisplayText = $pctStr
-            $script:barDisplayText2 = $timeStr
+            # No battery: both lines would read "AC"/"AC" - show it once
+            $script:barDisplayText2 = if ($BatteryInfo.NoBattery) { "" } else { $timeStr }
         }
         default {
             # "time" mode (default)
@@ -2031,9 +2058,23 @@ function Update-FloatingBar {
         $script:lowBatShown5 = $false
         $script:lowBatPulseActive = $false
         $script:lowBatBorderAlpha = 0
-        $script:lowBatOpacityPulse = $false
+        if ($script:lowBatOpacityPulse) {
+            # Restore configured opacity - the oscillation may have left it mid-swing
+            $script:lowBatOpacityPulse = $false
+            $script:floatingBar.Opacity = $script:config.Opacity
+        }
     } else {
         $pct = $BatteryInfo.Percent
+        if ($pct -gt 15) {
+            # Recovered above the warning band (e.g. percent bounced 15<->16):
+            # clear the pulse state or the red border/opacity swing sticks forever
+            $script:lowBatPulseActive = $false
+            $script:lowBatBorderAlpha = 0
+            if ($script:lowBatOpacityPulse) {
+                $script:lowBatOpacityPulse = $false
+                $script:floatingBar.Opacity = $script:config.Opacity
+            }
+        }
         # 15% — pulsing red border
         if ($pct -le 15 -and $pct -gt 10) {
             $script:lowBatPulseActive = $true
