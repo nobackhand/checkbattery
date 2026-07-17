@@ -1528,7 +1528,7 @@ function New-BatteryPopupContent {
     # Hero fonts for top section (Time — the data users care about most)
     $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
 
-    # --- Title with percentage (e.g. "Discharging — 72%") ---
+    # --- Title: status only (the hero percent below carries the number) ---
     if ($BatteryInfo.IsFullyCharged) {
         $titleText = "Fully Charged"
     } elseif ($BatteryInfo.IsCharging) {
@@ -1537,9 +1537,6 @@ function New-BatteryPopupContent {
         $titleText = "No Battery"
     } else {
         $titleText = "Discharging"
-    }
-    if (-not $BatteryInfo.NoBattery -and $BatteryInfo.PercentExact -ge 0) {
-        $titleText = "$titleText — $($BatteryInfo.PercentExact)%"
     }
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Text = $titleText
@@ -1617,6 +1614,20 @@ function New-BatteryPopupContent {
     $vw = $PopupWidth - $vx - 20
     $y = [int](40 * $DpiScale)
 
+    # --- Hero percent: the number users came for, big and status-colored ---
+    $heroPctFont = New-Object System.Drawing.Font("Segoe UI Semibold", 18, [System.Drawing.FontStyle]::Bold)
+    if ($BatteryInfo.PercentExact -ge 0) {
+        $heroPctLabel = New-Object System.Windows.Forms.Label
+        $heroPctLabel.Text = "$([int][math]::Round($BatteryInfo.PercentExact))%"
+        $heroPctLabel.Font = $heroPctFont
+        $heroPctLabel.ForeColor = $statusColor
+        $heroPctLabel.Location = New-Object System.Drawing.Point($lx, $y)
+        $heroPctLabel.AutoSize = $true
+        $heroPctLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+        $Form.Controls.Add($heroPctLabel)
+        $y += [int](40 * $DpiScale)
+    }
+
     # Helper to add a label+value row (value right-aligned)
     function Add-PopupRow {
         param($TargetForm, $RowY, $Label, $Value, $LFont, $VFont, $DColor, $VColor, $RLx, $RVx, $RLw, $RVw, $RowHeight)
@@ -1635,14 +1646,7 @@ function New-BatteryPopupContent {
         return $val
     }
 
-    # Row 1: Percent (highlighted)
-    if (-not $BatteryInfo.NoBattery) {
-        $pctText = "$($BatteryInfo.PercentExact)%"
-        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Percent:" -Value $pctText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $statusColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
-        $y += $rh
-    }
-
-    # Row 2: Capacity (hidden when N/A)
+    # Row 1: Capacity (hidden when N/A) - the old Percent row is replaced by the hero above
     if ($BatteryInfo.FullChargeCapacity -gt 0 -and $BatteryInfo.PercentExact -ge 0) {
         $currentCharge = [math]::Round($BatteryInfo.FullChargeCapacity * ($BatteryInfo.PercentExact / 100))
         $capText = "{0:N0} / {1:N0} mWh" -f $currentCharge, $BatteryInfo.FullChargeCapacity
@@ -1763,7 +1767,7 @@ function New-BatteryPopupContent {
         $Form.Controls.Add($hintLabel)
     }
 
-    $fontsToDispose = @($labelFont, $valueFont, $heroValueFont, $titleLabel.Font, $powerLabel.Font)
+    $fontsToDispose = @($labelFont, $valueFont, $heroValueFont, $heroPctFont, $titleLabel.Font, $powerLabel.Font)
     if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
         TotalHeight = $y + 8
