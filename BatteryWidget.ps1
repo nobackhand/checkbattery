@@ -1138,7 +1138,7 @@ function New-FloatingBar {
     $form.Opacity = $script:config.Opacity
 
     # Region-based clipping for rounded corners (no TransparencyKey = no purple fringe)
-    $form.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
+    $form.BackColor = $script:theme.PillBg  # themed: hardcoded dark left a fringe ring around the pill in Light theme
     $regionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
     $rd = 16
     $regionPath.AddArc(0, 0, $rd, $rd, 180, 90)
@@ -1898,7 +1898,7 @@ function Show-BatteryNotification {
     $nSub = New-Object System.Windows.Forms.Label
     $nSub.Text = $SubMessage
     $nSub.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
-    $nSub.ForeColor = $script:theme.TextLight
+    $nSub.ForeColor = [System.Drawing.Color]::FromArgb(220, 220, 225)  # fixed: card is always dark; theme.TextLight goes dark in Light theme and vanished here
     $nSub.Location = New-Object System.Drawing.Point($nPad, [int](48 * $nDs))
     $nSub.AutoSize = $true
     $nSub.MaximumSize = New-Object System.Drawing.Size(($nW - $nPad * 2), 0)
@@ -2418,7 +2418,7 @@ function Show-FirstRunTooltip {
         $lbl.Text = "  $text"
         $lbl.UseMnemonic = $false  # render literal '&' (e.g. "settings & options") instead of eating it as an accelerator
         $lbl.Font = $script:firstRunFont
-        $lbl.ForeColor = $script:theme.TextLight
+        $lbl.ForeColor = [System.Drawing.Color]::FromArgb(220, 220, 225)  # fixed: tip card is always dark; theme.TextLight vanishes here in Light theme
         $lbl.Location = New-Object System.Drawing.Point($pad, $ty)
         $lbl.AutoSize = $true
         $lbl.MaximumSize = New-Object System.Drawing.Size(($ttW - $pad * 2), 0)
@@ -2514,7 +2514,7 @@ function Show-SettingsPanel {
     $bhvSep = New-Object System.Windows.Forms.Label
     $bhvSep.Location = New-Object System.Drawing.Point($m, $y)
     $bhvSep.Size = New-Object System.Drawing.Size($cw, 1)
-    $bhvSep.BackColor = $script:theme.Border
+    $bhvSep.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)  # settings panel is always dark
     $settings.Controls.Add($bhvSep)
     $y += [int](8 * $ds)
     $bhvHeader = New-Object System.Windows.Forms.Label
@@ -2602,7 +2602,7 @@ function Show-SettingsPanel {
     $appSep = New-Object System.Windows.Forms.Label
     $appSep.Location = New-Object System.Drawing.Point($m, $y)
     $appSep.Size = New-Object System.Drawing.Size($cw, 1)
-    $appSep.BackColor = $script:theme.Border
+    $appSep.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)  # settings panel is always dark
     $settings.Controls.Add($appSep)
     $y += [int](8 * $ds)
     $appHeader = New-Object System.Windows.Forms.Label
@@ -2792,7 +2792,7 @@ function Show-SettingsPanel {
     $advSep = New-Object System.Windows.Forms.Label
     $advSep.Location = New-Object System.Drawing.Point($m, $y)
     $advSep.Size = New-Object System.Drawing.Size($cw, 1)
-    $advSep.BackColor = $script:theme.Border
+    $advSep.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)  # settings panel is always dark
     $settings.Controls.Add($advSep)
     $y += [int](8 * $ds)
     $advHeader = New-Object System.Windows.Forms.Label
@@ -3007,8 +3007,10 @@ function Show-AboutDialog {
     $siteLink = New-Object System.Windows.Forms.LinkLabel
     $siteLink.Text = "batterypill.com"
     $siteLink.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
-    $siteLink.LinkColor = [System.Drawing.Color]::FromArgb(100, 149, 237)
-    $siteLink.ActiveLinkColor = [System.Drawing.Color]::FromArgb(130, 170, 255)
+    # Link colors adapt: About follows the theme, so light bg needs darker links for contrast
+    $aboutIsLight = ($script:theme.PopupBg.R -gt 128)
+    $siteLink.LinkColor = if ($aboutIsLight) { [System.Drawing.Color]::FromArgb(0, 102, 204) } else { [System.Drawing.Color]::FromArgb(100, 149, 237) }
+    $siteLink.ActiveLinkColor = if ($aboutIsLight) { [System.Drawing.Color]::FromArgb(0, 82, 164) } else { [System.Drawing.Color]::FromArgb(130, 170, 255) }
     $siteLink.AutoSize = $true
     $siteLink.Location = New-Object System.Drawing.Point($m, $y)
     $siteLink.Add_LinkClicked({ Start-Process "https://batterypill.com" })
@@ -3019,8 +3021,8 @@ function Show-AboutDialog {
     $donateLink = New-Object System.Windows.Forms.LinkLabel
     $donateLink.Text = "Buy me a coffee"
     $donateLink.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
-    $donateLink.LinkColor = [System.Drawing.Color]::FromArgb(255, 200, 60)
-    $donateLink.ActiveLinkColor = [System.Drawing.Color]::FromArgb(255, 220, 100)
+    $donateLink.LinkColor = if ($aboutIsLight) { [System.Drawing.Color]::FromArgb(153, 102, 0) } else { [System.Drawing.Color]::FromArgb(255, 200, 60) }
+    $donateLink.ActiveLinkColor = if ($aboutIsLight) { [System.Drawing.Color]::FromArgb(122, 82, 0) } else { [System.Drawing.Color]::FromArgb(255, 220, 100) }
     $donateLink.AutoSize = $true
     $donateLink.Location = New-Object System.Drawing.Point($m, $y)
     $donateLink.Add_LinkClicked({ Start-Process "https://buymeacoffee.com/nobackhand" })
