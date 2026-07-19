@@ -1892,7 +1892,13 @@ function New-BatteryPopupContent {
 }
 
 function Show-BatteryNotification {
-    param([string]$Message, [string]$SubMessage)
+    param(
+        [string]$Message,
+        [string]$SubMessage,
+        # Accent tints the left bar, border, and title. Default red suits the
+        # battery warnings; pass a calmer color for informational cards.
+        [System.Drawing.Color]$Accent = [System.Drawing.Color]::FromArgb(255, 70, 70)
+    )
     # Custom dark-themed notification card — slides in from bottom-right, auto-dismiss 10s
     $gDs = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
     $nDs = $gDs.DpiX / 96.0
@@ -1927,30 +1933,33 @@ function Show-BatteryNotification {
     $notif.Region = New-Object System.Drawing.Region($nPath)
     $nPath.Dispose()
 
+    # Closure captures $Accent per-card (Add_* handlers resolve at fire time)
     $notif.Add_Paint({
         param($sender, $e)
         $ng = $e.Graphics
         $ng.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $ng.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
-        # Red accent bar on left
-        $accentBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 70, 70))
+        # Accent bar on left
+        $accentBrush = New-Object System.Drawing.SolidBrush($Accent)
         $ng.FillRectangle($accentBrush, 0, 0, 4, $sender.Height)
         $accentBrush.Dispose()
         # Border
         $br = 10; $bd = $br * 2
         $brW = $sender.Width - 2; $brH = $sender.Height - 2
         $bPath = New-RoundedRectPath -Right $brW -Bottom $brH -Diameter $bd
-        $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, 255, 70, 70), 1)
+        $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, $Accent.R, $Accent.G, $Accent.B), 1)
         $ng.DrawPath($bPen, $bPath)
         $bPen.Dispose(); $bPath.Dispose()
-    })
+    }.GetNewClosure())
 
     # Title
     $nPad = [int](16 * $nDs)
     $nTitle = New-Object System.Windows.Forms.Label
     $nTitle.Text = $Message
     $nTitle.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5, [System.Drawing.FontStyle]::Bold)
-    $nTitle.ForeColor = [System.Drawing.Color]::FromArgb(255, 100, 100)
+    # Title tint: lighten the accent so it reads on the dark card
+    $nTitle.ForeColor = [System.Drawing.Color]::FromArgb(
+        [math]::Min(255, $Accent.R + 30), [math]::Min(255, $Accent.G + 30), [math]::Min(255, $Accent.B + 30))
     $nTitle.Location = New-Object System.Drawing.Point($nPad, $nPad)
     $nTitle.AutoSize = $true
     $nTitle.MaximumSize = New-Object System.Drawing.Size(($nW - $nPad * 2), 0)
@@ -2432,7 +2441,7 @@ function Show-FirstRunTooltip {
     $g = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
     $ds = $g.DpiX / 96.0
     $g.Dispose()
-    $ttW = [int](260 * $ds); $ttH = [int](110 * $ds)
+    $ttW = [int](260 * $ds); $ttH = [int](134 * $ds)   # fits 4 tips at 24px spacing
 
     $script:firstRunTip = New-Object System.Windows.Forms.Form
     $script:firstRunTip.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
@@ -2468,6 +2477,7 @@ function Show-FirstRunTooltip {
     $pad = [int](14 * $ds)
     $tips = @(
         "Hover over the pill for details"
+        "Click to switch time / percent view"
         "Drag to move, snaps to screen edges"
         "Right-click for settings & options"
     )
@@ -3308,6 +3318,8 @@ $pillHideItem.Add_Click({
     $script:floatingBar.Hide()
     # Update tray menu item too
     $toggleBarItem.Text = "Show Bar"
+    # Breadcrumb so a first-timer isn't left wondering where it went
+    Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
 })
 
 $pillSettingsItem = New-Object System.Windows.Forms.ToolStripMenuItem("Settings...")
@@ -3353,6 +3365,8 @@ $toggleBarItem.Add_Click({
     if ($script:floatingBar.Visible) {
         $script:floatingBar.Hide()
         $toggleBarItem.Text = "Show Bar"
+        # Breadcrumb so a first-timer isn't left wondering where it went
+        Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
     } else {
         $script:floatingBar.Show()
         $toggleBarItem.Text = "Hide Bar"
