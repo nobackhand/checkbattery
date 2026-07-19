@@ -82,6 +82,10 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-19 — v1.1.0 Release
+- Version bump 1.0.0 -> 1.1.0; exe committed into docs/ so git-driven deploys serve the download
+- /unleash runs: New-RoundedRectPath primitive replaces 14 hand-rolled rounded rects (pixel-identical proof) + file map header; ugly-data hardening (100h+ estimate clamp, ETA suppressed beyond 12h, "42m" not "0h 42m"); deferred triage log burned down (white accent adapts on light theme, Settings combo syncs with click-cycle, dead keys/files removed)
+
 ### 2026-07-17 — Max-Compute Sprint (hero popup, tactile pill, notification resurrection)
 - **Popup hero redesign** — status-only title ("Discharging"), 18pt status-colored hero percent below it, "Percent:" row removed; light theme darkens the status palette x0.62 for contrast (all combos >= 3.7:1)
 - **Tactile pill** — left-click cycles display mode time -> percent -> both (works with position locked); hover brightens the border via a cached theme-blended pen
