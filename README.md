@@ -64,6 +64,5 @@ or
 - `BatteryWidget.ps1`: Main widget logic and UI code.
 - `Build.ps1`: Script to compile the widget into a standalone `.exe` using `ps2exe`.
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
-- `capture_popup.ps1`: Utility script to capture a screenshot of the popup for documentation.
 - `tools/`: Dev harness - `check-source.ps1` (BOM + parse gate) and `render-states.ps1` (headless renderer of popup/pill/settings states).
 - `docs/`: Website files for the project landing page.

@@ -106,8 +106,6 @@ $script:theme = @{
     TextLight    = [System.Drawing.Color]::FromArgb(220, 220, 225)
     TextMuted    = [System.Drawing.Color]::FromArgb(80, 80, 86)
     Border       = [System.Drawing.Color]::FromArgb(50, 50, 56)
-    SettingsBg   = [System.Drawing.Color]::FromArgb(32, 32, 36)
-    TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
     SparkBg      = [System.Drawing.Color]::FromArgb(20, 20, 24)
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
@@ -138,8 +136,6 @@ function Apply-Theme {
         $script:theme.TextLight    = [System.Drawing.Color]::FromArgb(220, 220, 225)
         $script:theme.TextMuted    = [System.Drawing.Color]::FromArgb(80, 80, 86)
         $script:theme.Border       = [System.Drawing.Color]::FromArgb(50, 50, 56)
-        $script:theme.SettingsBg   = [System.Drawing.Color]::FromArgb(32, 32, 36)
-        $script:theme.TrackBg      = [System.Drawing.Color]::FromArgb(40, 40, 46)
         $script:theme.SparkBg      = [System.Drawing.Color]::FromArgb(20, 20, 24)
         $script:theme.SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
     } else {
@@ -150,8 +146,6 @@ function Apply-Theme {
         $script:theme.TextLight    = [System.Drawing.Color]::FromArgb(50, 50, 55)
         $script:theme.TextMuted    = [System.Drawing.Color]::FromArgb(170, 170, 180)
         $script:theme.Border       = [System.Drawing.Color]::FromArgb(200, 200, 210)
-        $script:theme.SettingsBg   = [System.Drawing.Color]::FromArgb(235, 235, 240)
-        $script:theme.TrackBg      = [System.Drawing.Color]::FromArgb(215, 215, 220)
         $script:theme.SparkBg      = [System.Drawing.Color]::FromArgb(232, 232, 238)
         $script:theme.SparkGuide   = [System.Drawing.Color]::FromArgb(60, 60, 68)
     }
@@ -702,6 +696,11 @@ function Get-AccentColor {
     if ($null -ne $script:config -and $null -ne $script:config.AccentColorIndex) {
         $idx = [math]::Max(0, [math]::Min(7, [int]$script:config.AccentColorIndex))
     }
+    # White preset (#7) is near-invisible on the light pill/popup; swap in its
+    # monochrome twin - dark graphite - when the theme surface is light
+    if ($idx -eq 7 -and $null -ne $script:theme -and $script:theme.PillBg.R -gt 128) {
+        return [System.Drawing.Color]::FromArgb(90, 95, 105)
+    }
     return $script:accentPresets[$idx]
 }
 
@@ -1075,10 +1074,18 @@ function Invoke-CycleDisplayMode {
     $order = @("time", "percent", "both")
     $idx = [array]::IndexOf($order, [string]$script:config.DisplayMode)
     if ($idx -lt 0) { $idx = 0 }
-    $script:config.DisplayMode = $order[($idx + 1) % $order.Count]
+    $newIdx = ($idx + 1) % $order.Count
+    $script:config.DisplayMode = $order[$newIdx]
     Update-PillSize
     if ($null -ne $script:lastBatteryInfo) {
         Update-FloatingBar -BatteryInfo $script:lastBatteryInfo
+    }
+    # Keep an open Settings panel's Display combo in sync so touching it later
+    # can't write a stale mode back over this one
+    if ($null -ne $script:settingsDisplayCombo -and -not $script:settingsDisplayCombo.IsDisposed) {
+        if ($script:settingsDisplayCombo.SelectedIndex -ne $newIdx) {
+            $script:settingsDisplayCombo.SelectedIndex = $newIdx
+        }
     }
     Save-Config
 }
@@ -1118,7 +1125,6 @@ function New-FloatingBar {
     $script:lowBatBorderAlpha = 0
     $script:lowBatBorderDir = 1
     $script:lowBatOpacityPulse = $false
-    $script:lowBatShown15 = $false
     $script:lowBatShown10 = $false
     $script:lowBatShown5 = $false
 
@@ -2074,7 +2080,6 @@ function Update-FloatingBar {
     # Low battery warning logic — show once per threshold per discharge cycle
     if ($BatteryInfo.IsPluggedIn -or $BatteryInfo.IsCharging) {
         # Reset warning flags when plugged in
-        $script:lowBatShown15 = $false
         $script:lowBatShown10 = $false
         $script:lowBatShown5 = $false
         $script:lowBatPulseActive = $false
@@ -2572,6 +2577,7 @@ function Show-SettingsPanel {
         $settingsTooltip.Dispose()
         $labelFont.Dispose()
         $sectionFont.Dispose()
+        $script:settingsDisplayCombo = $null   # stop click-cycle sync once the panel closes
     })
 
     # --- Behavior section header ---
@@ -2712,6 +2718,7 @@ function Show-SettingsPanel {
     Set-DarkComboBox -Combo $displayCombo
     $settings.Controls.Add($displayCombo)
     $settingsTooltip.SetToolTip($displayCombo, "Choose what information appears on the pill")
+    $script:settingsDisplayCombo = $displayCombo   # let click-cycle keep this in sync while the panel is open
     $y += [int](42 * $ds)
 
     # --- Pill size section ---
