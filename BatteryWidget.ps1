@@ -384,6 +384,10 @@ function Get-BatteryInfo {
             }
         }
     }
+    # Sanity clamp: a tiny/glitchy rate can compute absurd estimates
+    # (56,270 mWh / 100 mW = 562h). Nothing with a battery runs 100h+;
+    # treat those as "no estimate yet" rather than displaying garbage.
+    if ($timeMinutes -gt 5999) { $timeMinutes = -1 }
     $info.TimeMinutes = $timeMinutes
 
     # Format time string
@@ -405,8 +409,9 @@ function Get-BatteryInfo {
         $info.TimeString = "Estimating..."
     }
 
-    # ETA
-    if ($timeMinutes -gt 0) {
+    # ETA - only when it lands within 12h; an "h:mm tt" more than half a day
+    # out is ambiguous ("ETA 2:56 PM" on a 27h estimate reads as today)
+    if ($timeMinutes -gt 0 -and $timeMinutes -le 720) {
         $eta = $Now.AddMinutes($timeMinutes)
         $info.ETA = $eta.ToString("h:mm tt")
     }
@@ -1791,7 +1796,8 @@ function New-BatteryPopupContent {
     } elseif ($BatteryInfo.TimeMinutes -gt 0) {
         $h = [math]::Floor($BatteryInfo.TimeMinutes / 60)
         $m = $BatteryInfo.TimeMinutes % 60
-        $shortTime = "{0}h {1:D2}m" -f $h, $m
+        # "42m" under an hour, not "0h 42m"
+        $shortTime = if ($h -gt 0) { "{0}h {1:D2}m" -f $h, $m } else { "{0}m" -f $m }
         if ($BatteryInfo.ETA) {
             $timeText = "$shortTime — ETA $($BatteryInfo.ETA)"
         } else {
