@@ -2223,7 +2223,7 @@ function Show-HoverPopup {
     $BatteryInfo = Get-BatteryInfo
 
     $popup = New-Object System.Windows.Forms.Form
-    $popup.Text = "Battery Widget"
+    $popup.Text = "BatteryPill"
     $popup.Size = New-Object System.Drawing.Size(420, 400)
     $popup.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $popup.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
@@ -2324,7 +2324,7 @@ function Show-BatteryPopup {
     param([hashtable]$BatteryInfo)
 
     $popup = New-Object System.Windows.Forms.Form
-    $popup.Text = "Battery Widget"
+    $popup.Text = "BatteryPill"
     $popup.Size = New-Object System.Drawing.Size(420, 400)
     $popup.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $popup.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
@@ -2445,7 +2445,7 @@ function Show-FirstRunTooltip {
     Enable-DoubleBuffering -Form $script:firstRunTip
 
     # Rounded region
-    $tr = 8; $td = $tr * 2
+    $tr = 10; $td = $tr * 2   # card radius matches notification/popup/About (was 8, the odd one out)
     $tPath = New-RoundedRectPath -Right ($ttW - $td - 2) -Bottom ($ttH - $td - 2) -Diameter $td
     $script:firstRunTip.Region = New-Object System.Drawing.Region($tPath)
     $tPath.Dispose()
@@ -2454,7 +2454,7 @@ function Show-FirstRunTooltip {
         param($sender, $e)
         $tg = $e.Graphics
         $tg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $br = 8; $bd = $br * 2
+        $br = 10; $bd = $br * 2   # matches the region radius above
         $bPath = New-RoundedRectPath -Right ($sender.Width - $bd - 2) -Bottom ($sender.Height - $bd - 2) -Diameter $bd
         $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, 45, 212, 100), 1)
         $tg.DrawPath($bPen, $bPath)
@@ -3156,7 +3156,7 @@ function Update-TrayIcon {
     if ($info.NoBattery) {
         $script:notifyIcon.Text = "BatteryPill - on AC power (no battery detected)"
     } else {
-        $tipText = "Battery: $($info.Percent)% - $($info.StatusText)"
+        $tipText = "BatteryPill: $($info.Percent)% - $($info.StatusText)"
         if ($info.TimeString -and $info.TimeString -ne "N/A (plugged in)") {
             $tipText += " | $($info.TimeString)"
         }
@@ -3217,7 +3217,7 @@ $script:mainForm = New-Object System.Windows.Forms.Form
 $script:mainForm.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
 $script:mainForm.ShowInTaskbar = $false
 $script:mainForm.Visible = $false
-$script:mainForm.Text = "BatteryWidget"
+$script:mainForm.Text = "BatteryPill"
 
 # NotifyIcon
 $script:notifyIcon = New-Object System.Windows.Forms.NotifyIcon
