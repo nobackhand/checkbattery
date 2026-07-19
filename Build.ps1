@@ -49,8 +49,8 @@ Invoke-PS2EXE -InputFile $inputFile `
               -noConsole `
               -STA `
               -DPIAware `
-              -title "Battery Widget" `
-              -description "System tray battery monitor" `
+              -title "BatteryPill" `
+              -description "BatteryPill - floating battery widget for Windows" `
               -version "$appVersion.0" `
               -copyright "(c) 2026"
 

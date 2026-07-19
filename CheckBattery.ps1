@@ -49,7 +49,7 @@ if ($noBattery) {
     $separator = "=" * 39
     Write-Host ""
     Write-Host "  $separator" -ForegroundColor DarkGray
-    Write-Host "         Battery Status Report" -ForegroundColor White
+    Write-Host "      BatteryPill - Battery Status" -ForegroundColor White
     Write-Host "  $separator" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "    No battery detected." -ForegroundColor Yellow
@@ -178,7 +178,7 @@ $separator = "=" * 39
 
 Write-Host ""
 Write-Host "  $separator" -ForegroundColor DarkGray
-Write-Host "         Battery Status Report" -ForegroundColor White
+Write-Host "      BatteryPill - Battery Status" -ForegroundColor White
 Write-Host "  $separator" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "    Battery Level:    " -NoNewline; Write-Host "$chargePercent%" -ForegroundColor $statusColor
