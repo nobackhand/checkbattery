@@ -11,6 +11,28 @@
     Auto-refreshes every 3 seconds with EMA-smoothed estimates.
 .EXAMPLE
     powershell -STA -File .\BatteryWidget.ps1
+.NOTES
+    File map (search for the ==== banner with the same name):
+      P/INVOKE + SINGLE INSTANCE ... Win32Icon class, DPI awareness, mutex guard
+      THEME ....................... $script:theme palette + Apply-Theme (dark/light/auto)
+      FULLSCREEN DETECTION ........ Test-FullscreenApp
+      BATTERY DATA ................ Get-BatteryInfo (WMI + .NET), EMA smoothing, rates
+      POWER PLANS ................. tray submenu for switching plans
+      STATUS COLOR & ACCENT ....... Get-StatusColor, accent presets, Get-AccentColor
+      DYNAMIC TRAY ICON ........... New-BatteryIcon
+      CONFIG ...................... Get-ConfigPath / Load-Config / Save-Config, autostart
+      GDI HELPERS ................. Enable-DoubleBuffering, New-RoundedRectPath
+      CACHED GDI+ BRUSHES/PENS .... Initialize-PillBrushes
+      FLOATING PILL ............... Get-PillDimensions, Update-PillSize,
+                                    Invoke-CycleDisplayMode, New-FloatingBar (paint+drag)
+      SPARKLINE ................... New-SparklinePanel
+      POPUP CONTENT ............... New-BatteryPopupContent (shared hover/tray builder)
+      NOTIFICATIONS ............... Show-BatteryNotification (per-card closure state)
+      HOVER POPUP ................. Show-HoverPopup / Close-HoverPopup, fade timers
+      TRAY POPUP .................. Show-BatteryPopup (modal)
+      SETTINGS / FIRST-RUN / ABOUT. Show-SettingsPanel, Show-FirstRunTooltip, Show-AboutDialog
+      UPDATE FUNCTIONS ............ Update-TrayIcon, Update-FloatingBar, pulse timers
+      MAIN APPLICATION SETUP ...... tray icon, menus, timers, message loop (bottom)
 #>
 
 # --- Load assemblies ---
@@ -727,13 +749,8 @@ function New-BatteryIcon {
     $radius = 3
 
     # Create rounded rectangle path
-    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
     $d = $radius * 2
-    $path.AddArc($pillX, $pillY, $d, $d, 180, 90)
-    $path.AddArc($pillX + $pillW - $d, $pillY, $d, $d, 270, 90)
-    $path.AddArc($pillX + $pillW - $d, $pillY + $pillH - $d, $d, $d, 0, 90)
-    $path.AddArc($pillX, $pillY + $pillH - $d, $d, $d, 90, 90)
-    $path.CloseFigure()
+    $path = New-RoundedRectPath -X $pillX -Y $pillY -Right ($pillX + $pillW - $d) -Bottom ($pillY + $pillH - $d) -Diameter $d
 
     # Dark background fill (matches floating pill)
     $bgBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(24, 24, 28))
@@ -985,6 +1002,29 @@ function Enable-DoubleBuffering {
     ).SetValue($Form, $true, $null)
 }
 
+function New-RoundedRectPath {
+    # The one rounded-rectangle primitive - every pill/popup/card region and
+    # border in this file is this shape. $Right/$Bottom are the x/y of the
+    # right/bottom corner arc boxes (i.e. AddArc's first two args), passed
+    # explicitly because the call sites use different inset conventions
+    # (-1 for regions vs -2 for cards) that must be preserved exactly.
+    # Caller owns disposal.
+    param(
+        [double]$X = 0,
+        [double]$Y = 0,
+        [double]$Right,
+        [double]$Bottom,
+        [double]$Diameter
+    )
+    $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $p.AddArc($X, $Y, $Diameter, $Diameter, 180, 90)
+    $p.AddArc($Right, $Y, $Diameter, $Diameter, 270, 90)
+    $p.AddArc($Right, $Bottom, $Diameter, $Diameter, 0, 90)
+    $p.AddArc($X, $Bottom, $Diameter, $Diameter, 90, 90)
+    $p.CloseFigure()
+    return $p
+}
+
 # ============================================================
 # CACHED GDI+ BRUSHES/PENS FOR PAINT HANDLER
 # ============================================================
@@ -1045,12 +1085,7 @@ function Update-PillSize {
     # Rebuild region — use pill radius capped at half height for fully rounded ends
     $script:pillRadius = [math]::Min(8, [int]($dims.Height / 2))
     $rd = $script:pillRadius * 2
-    $rPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $rPath.AddArc(0, 0, $rd, $rd, 180, 90)
-    $rPath.AddArc($dims.Width - $rd - 1, 0, $rd, $rd, 270, 90)
-    $rPath.AddArc($dims.Width - $rd - 1, $dims.Height - $rd - 1, $rd, $rd, 0, 90)
-    $rPath.AddArc(0, $dims.Height - $rd - 1, $rd, $rd, 90, 90)
-    $rPath.CloseFigure()
+    $rPath = New-RoundedRectPath -Right ($dims.Width - $rd - 1) -Bottom ($dims.Height - $rd - 1) -Diameter $rd
     $script:floatingBar.Region = New-Object System.Drawing.Region($rPath)
     $rPath.Dispose()
     # Update font
@@ -1162,13 +1197,8 @@ function New-FloatingBar {
 
     # Region-based clipping for rounded corners (no TransparencyKey = no purple fringe)
     $form.BackColor = $script:theme.PillBg  # themed: hardcoded dark left a fringe ring around the pill in Light theme
-    $regionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
     $rd = 16
-    $regionPath.AddArc(0, 0, $rd, $rd, 180, 90)
-    $regionPath.AddArc($dims.Width - $rd - 1, 0, $rd, $rd, 270, 90)
-    $regionPath.AddArc($dims.Width - $rd - 1, $dims.Height - $rd - 1, $rd, $rd, 0, 90)
-    $regionPath.AddArc(0, $dims.Height - $rd - 1, $rd, $rd, 90, 90)
-    $regionPath.CloseFigure()
+    $regionPath = New-RoundedRectPath -Right ($dims.Width - $rd - 1) -Bottom ($dims.Height - $rd - 1) -Diameter $rd
     $form.Region = New-Object System.Drawing.Region($regionPath)
     $regionPath.Dispose()
 
@@ -1186,13 +1216,8 @@ function New-FloatingBar {
         $radius = if ($null -ne $script:pillRadius) { $script:pillRadius } else { 8 }
 
         # --- Rounded rectangle path (full pill), 1px inset from region ---
-        $path = New-Object System.Drawing.Drawing2D.GraphicsPath
         $d = ($radius - 1) * 2
-        $path.AddArc(0, 0, $d, $d, 180, 90)
-        $path.AddArc($w - $d - 1, 0, $d, $d, 270, 90)
-        $path.AddArc($w - $d - 1, $h - $d - 1, $d, $d, 0, 90)
-        $path.AddArc(0, $h - $d - 1, $d, $d, 90, 90)
-        $path.CloseFigure()
+        $path = New-RoundedRectPath -Right ($w - $d - 1) -Bottom ($h - $d - 1) -Diameter $d
 
         # --- Background (entire pill, theme-aware — cached brush) ---
         $g.FillPath($script:pillBgBrush, $path)
@@ -1892,12 +1917,7 @@ function Show-BatteryNotification {
     # Rounded region (DPI-scaled)
     $nr = 10; $nd = $nr * 2
     $nrW = $nW - 2; $nrH = $nH - 2
-    $nPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $nPath.AddArc(0, 0, $nd, $nd, 180, 90)
-    $nPath.AddArc($nrW, 0, $nd, $nd, 270, 90)
-    $nPath.AddArc($nrW, $nrH, $nd, $nd, 0, 90)
-    $nPath.AddArc(0, $nrH, $nd, $nd, 90, 90)
-    $nPath.CloseFigure()
+    $nPath = New-RoundedRectPath -Right $nrW -Bottom $nrH -Diameter $nd
     $notif.Region = New-Object System.Drawing.Region($nPath)
     $nPath.Dispose()
 
@@ -1911,14 +1931,9 @@ function Show-BatteryNotification {
         $ng.FillRectangle($accentBrush, 0, 0, 4, $sender.Height)
         $accentBrush.Dispose()
         # Border
-        $bPath = New-Object System.Drawing.Drawing2D.GraphicsPath
         $br = 10; $bd = $br * 2
         $brW = $sender.Width - 2; $brH = $sender.Height - 2
-        $bPath.AddArc(0, 0, $bd, $bd, 180, 90)
-        $bPath.AddArc($brW, 0, $bd, $bd, 270, 90)
-        $bPath.AddArc($brW, $brH, $bd, $bd, 0, 90)
-        $bPath.AddArc(0, $brH, $bd, $bd, 90, 90)
-        $bPath.CloseFigure()
+        $bPath = New-RoundedRectPath -Right $brW -Bottom $brH -Diameter $bd
         $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, 255, 70, 70), 1)
         $ng.DrawPath($bPen, $bPath)
         $bPen.Dispose(); $bPath.Dispose()
@@ -2222,12 +2237,7 @@ function Show-HoverPopup {
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $r = 10; $rd2 = $r * 2
         $bw = $sender.Width - 1; $bh = $sender.Height - 1
-        $borderPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-        $borderPath.AddArc(0, 0, $rd2, $rd2, 180, 90)
-        $borderPath.AddArc($bw - $rd2, 0, $rd2, $rd2, 270, 90)
-        $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
-        $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
-        $borderPath.CloseFigure()
+        $borderPath = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
         $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
         $g.DrawPath($borderPen, $borderPath)
         $borderPen.Dispose(); $borderPath.Dispose()
@@ -2249,12 +2259,7 @@ function Show-HoverPopup {
 
     # Set rounded region to clip corners
     $prd = 20; $pw = $popup.ClientSize.Width; $ph = $popup.ClientSize.Height
-    $popupRegionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $popupRegionPath.AddArc(0, 0, $prd, $prd, 180, 90)
-    $popupRegionPath.AddArc($pw - $prd - 1, 0, $prd, $prd, 270, 90)
-    $popupRegionPath.AddArc($pw - $prd - 1, $ph - $prd - 1, $prd, $prd, 0, 90)
-    $popupRegionPath.AddArc(0, $ph - $prd - 1, $prd, $prd, 90, 90)
-    $popupRegionPath.CloseFigure()
+    $popupRegionPath = New-RoundedRectPath -Right ($pw - $prd - 1) -Bottom ($ph - $prd - 1) -Diameter $prd
     $popup.Region = New-Object System.Drawing.Region($popupRegionPath)
     $popupRegionPath.Dispose()
 
@@ -2333,12 +2338,7 @@ function Show-BatteryPopup {
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $r = 10; $rd2 = $r * 2
         $bw = $sender.Width - 1; $bh = $sender.Height - 1
-        $borderPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-        $borderPath.AddArc(0, 0, $rd2, $rd2, 180, 90)
-        $borderPath.AddArc($bw - $rd2, 0, $rd2, $rd2, 270, 90)
-        $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
-        $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
-        $borderPath.CloseFigure()
+        $borderPath = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
         $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
         $g.DrawPath($borderPen, $borderPath)
         $borderPen.Dispose(); $borderPath.Dispose()
@@ -2359,12 +2359,7 @@ function Show-BatteryPopup {
 
     # Set rounded region to clip corners
     $prd = 20; $pw = $popup.ClientSize.Width; $ph = $popup.ClientSize.Height
-    $popupRegionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $popupRegionPath.AddArc(0, 0, $prd, $prd, 180, 90)
-    $popupRegionPath.AddArc($pw - $prd - 1, 0, $prd, $prd, 270, 90)
-    $popupRegionPath.AddArc($pw - $prd - 1, $ph - $prd - 1, $prd, $prd, 0, 90)
-    $popupRegionPath.AddArc(0, $ph - $prd - 1, $prd, $prd, 90, 90)
-    $popupRegionPath.CloseFigure()
+    $popupRegionPath = New-RoundedRectPath -Right ($pw - $prd - 1) -Bottom ($ph - $prd - 1) -Diameter $prd
     $popup.Region = New-Object System.Drawing.Region($popupRegionPath)
     $popupRegionPath.Dispose()
 
@@ -2445,12 +2440,7 @@ function Show-FirstRunTooltip {
 
     # Rounded region
     $tr = 8; $td = $tr * 2
-    $tPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $tPath.AddArc(0, 0, $td, $td, 180, 90)
-    $tPath.AddArc($ttW - $td - 2, 0, $td, $td, 270, 90)
-    $tPath.AddArc($ttW - $td - 2, $ttH - $td - 2, $td, $td, 0, 90)
-    $tPath.AddArc(0, $ttH - $td - 2, $td, $td, 90, 90)
-    $tPath.CloseFigure()
+    $tPath = New-RoundedRectPath -Right ($ttW - $td - 2) -Bottom ($ttH - $td - 2) -Diameter $td
     $script:firstRunTip.Region = New-Object System.Drawing.Region($tPath)
     $tPath.Dispose()
 
@@ -2458,13 +2448,8 @@ function Show-FirstRunTooltip {
         param($sender, $e)
         $tg = $e.Graphics
         $tg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $bPath = New-Object System.Drawing.Drawing2D.GraphicsPath
         $br = 8; $bd = $br * 2
-        $bPath.AddArc(0, 0, $bd, $bd, 180, 90)
-        $bPath.AddArc($sender.Width - $bd - 2, 0, $bd, $bd, 270, 90)
-        $bPath.AddArc($sender.Width - $bd - 2, $sender.Height - $bd - 2, $bd, $bd, 0, 90)
-        $bPath.AddArc(0, $sender.Height - $bd - 2, $bd, $bd, 90, 90)
-        $bPath.CloseFigure()
+        $bPath = New-RoundedRectPath -Right ($sender.Width - $bd - 2) -Bottom ($sender.Height - $bd - 2) -Diameter $bd
         $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, 45, 212, 100), 1)
         $tg.DrawPath($bPen, $bPath)
         $bPen.Dispose(); $bPath.Dispose()
@@ -3024,12 +3009,7 @@ function Show-AboutDialog {
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $r = 10; $rd2 = $r * 2
         $bw = $sender.Width - 1; $bh = $sender.Height - 1
-        $borderPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-        $borderPath.AddArc(0, 0, $rd2, $rd2, 180, 90)
-        $borderPath.AddArc($bw - $rd2, 0, $rd2, $rd2, 270, 90)
-        $borderPath.AddArc($bw - $rd2, $bh - $rd2, $rd2, $rd2, 0, 90)
-        $borderPath.AddArc(0, $bh - $rd2, $rd2, $rd2, 90, 90)
-        $borderPath.CloseFigure()
+        $borderPath = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
         $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
         $g.DrawPath($borderPen, $borderPath)
         $borderPen.Dispose(); $borderPath.Dispose()
@@ -3117,12 +3097,7 @@ function Show-AboutDialog {
 
     # Rounded region
     $prd = 20; $pw = $about.ClientSize.Width; $ph = $about.ClientSize.Height
-    $regionPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $regionPath.AddArc(0, 0, $prd, $prd, 180, 90)
-    $regionPath.AddArc($pw - $prd - 1, 0, $prd, $prd, 270, 90)
-    $regionPath.AddArc($pw - $prd - 1, $ph - $prd - 1, $prd, $prd, 0, 90)
-    $regionPath.AddArc(0, $ph - $prd - 1, $prd, $prd, 90, 90)
-    $regionPath.CloseFigure()
+    $regionPath = New-RoundedRectPath -Right ($pw - $prd - 1) -Bottom ($ph - $prd - 1) -Diameter $prd
     $about.Region = New-Object System.Drawing.Region($regionPath)
 
     # Close on Escape
