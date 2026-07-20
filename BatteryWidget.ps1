@@ -132,7 +132,7 @@ $script:theme = @{
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.0"
+$script:appVersion = "1.1.1"
 
 function Get-SystemTheme {
     try {

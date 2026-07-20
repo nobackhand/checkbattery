@@ -82,6 +82,11 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-19 — v1.1.1 Release
+- Version bump 1.1.0 -> 1.1.1; exe metadata now reads "BatteryPill" in Task Manager (the rebrand only reaches users through a release build)
+- /unleash runs: ux 1 brand consistency (exe metadata, popup/main window titles, tray tooltip prefix, CLI header, first-run card radius); ux 7 first-timer flow (tooltip teaches click-to-cycle, "Pill hidden" breadcrumb on both hide paths via a new -Accent param on Show-BatteryNotification, website uninstall + autostart answers); code 10 input enforcement (per-field config parsing so one bad value can't discard the rest, history validated + capped on load, WMI null/255 percent rejected, pill shows "--" not "-1%")
+- Only the current release exe is kept in docs/ (older binaries stay available on their GitHub releases)
+
 ### 2026-07-19 — v1.1.0 Release
 - Version bump 1.0.0 -> 1.1.0; exe committed into docs/ so git-driven deploys serve the download
 - /unleash runs: New-RoundedRectPath primitive replaces 14 hand-rolled rounded rects (pixel-identical proof) + file map header; ugly-data hardening (100h+ estimate clamp, ETA suppressed beyond 12h, "42m" not "0h 42m"); deferred triage log burned down (white accent adapts on light theme, Settings combo syncs with click-cycle, dead keys/files removed)
