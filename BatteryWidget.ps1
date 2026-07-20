@@ -282,13 +282,30 @@ function Get-BatteryInfo {
         }
     }
 
-    # Charge percentage
+    # Charge percentage. Firmware lies here, so validate rather than trust:
+    # a null EstimatedChargeRemaining casts to 0 via [int] - a false "0%" that
+    # paints the pill critical-red and fires the 5% alarm - and 255 is the
+    # documented "unknown" sentinel. Anything outside 0-100 is treated as no
+    # reading so the .NET source can answer instead.
+    $wmiPct = $null
     if ($wmiBattery) {
-        $info.Percent = [int]$wmiBattery.EstimatedChargeRemaining
-        $info.PercentExact = [double]$wmiBattery.EstimatedChargeRemaining
+        try {
+            $rawPct = $wmiBattery.EstimatedChargeRemaining
+            if ($null -ne $rawPct) {
+                $candidate = [double]$rawPct
+                if ($candidate -ge 0 -and $candidate -le 100) { $wmiPct = $candidate }
+            }
+        } catch {}
+    }
+    if ($null -ne $wmiPct) {
+        $info.PercentExact = $wmiPct
+        $info.Percent = [int]$wmiPct
     } elseif ($dotnetPower) {
-        $info.PercentExact = [math]::Round($dotnetPower.BatteryLifePercent * 100, 1)
-        $info.Percent = [int]$info.PercentExact
+        $dnPct = [math]::Round($dotnetPower.BatteryLifePercent * 100, 1)
+        if ($dnPct -ge 0 -and $dnPct -le 100) {
+            $info.PercentExact = $dnPct
+            $info.Percent = [int]$dnPct
+        }
     }
 
     # Charging status from WMI
@@ -806,6 +823,27 @@ function Get-ConfigPath {
     return Join-Path $dir "BatteryWidget.config.json"
 }
 
+function Read-ConfigField {
+    # Parse ONE config field in isolation. Previously every field was parsed
+    # inside a single try block, so one malformed value (a string where a
+    # number belongs, a hand-edit typo) threw and silently discarded every
+    # field after it - the user's theme, accent, and size quietly reset.
+    # $Parse returning $null means "present but invalid" -> use the fallback.
+    param(
+        [AllowNull()]$Raw,
+        [scriptblock]$Parse,
+        [AllowNull()]$Fallback
+    )
+    if ($null -eq $Raw) { return $Fallback }
+    try {
+        $parsed = & $Parse $Raw
+        if ($null -eq $parsed) { return $Fallback }
+        return $parsed
+    } catch {
+        return $Fallback
+    }
+}
+
 function Load-Config {
     $configPath = Get-ConfigPath
     $default = @{
@@ -828,50 +866,52 @@ function Load-Config {
     if (Test-Path $configPath) {
         try {
             $json = Get-Content $configPath -Raw | ConvertFrom-Json
-            if ($null -ne $json.X -and $null -ne $json.Y) {
-                $default.X = [int]$json.X
-                $default.Y = [int]$json.Y
-            }
-            if ($null -ne $json.Opacity) {
-                $default.Opacity = [math]::Max(0.3, [math]::Min(1.0, [double]$json.Opacity))
-            }
-            if ($null -ne $json.RefreshInterval) {
-                # Clamp: 0/negative would throw at Timer.Interval assignment and leave
-                # the WinForms default of 100ms - a WMI query 10x/second
-                $default.RefreshInterval = [math]::Max(1000, [math]::Min(60000, [int]$json.RefreshInterval))
-            }
-            if ($null -ne $json.PositionLocked) {
-                $default.PositionLocked = [bool]$json.PositionLocked
-            }
-            if ($null -ne $json.DisplayMode -and $json.DisplayMode -in @("time", "percent", "both")) {
-                $default.DisplayMode = $json.DisplayMode
-            }
-            if ($null -ne $json.PillSize -and $json.PillSize -in @("compact", "normal", "expanded")) {
-                $default.PillSize = $json.PillSize
-            }
-            if ($null -ne $json.Theme -and $json.Theme -in @("dark", "light", "auto")) {
-                $default.Theme = $json.Theme
-            }
-            if ($null -ne $json.AccentColorIndex) {
-                $default.AccentColorIndex = [math]::Max(0, [math]::Min(7, [int]$json.AccentColorIndex))
-            }
-            if ($null -ne $json.AutoHideFullscreen) {
-                $default.AutoHideFullscreen = [bool]$json.AutoHideFullscreen
-            }
-            if ($null -ne $json.FirstRunShown) {
-                $default.FirstRunShown = [bool]$json.FirstRunShown
-            }
-            # Load battery history from config
+
+            # Position is a pair: take it only if BOTH coordinates parse
+            $xv = Read-ConfigField -Raw $json.X -Fallback $null -Parse { param($r) [int]$r }
+            $yv = Read-ConfigField -Raw $json.Y -Fallback $null -Parse { param($r) [int]$r }
+            if ($null -ne $xv -and $null -ne $yv) { $default.X = $xv; $default.Y = $yv }
+
+            $default.Opacity = Read-ConfigField -Raw $json.Opacity -Fallback $default.Opacity -Parse {
+                param($r) [math]::Max(0.3, [math]::Min(1.0, [double]$r)) }
+            # Clamp: 0/negative would throw at Timer.Interval assignment and leave
+            # the WinForms default of 100ms - a WMI query 10x/second
+            $default.RefreshInterval = Read-ConfigField -Raw $json.RefreshInterval -Fallback $default.RefreshInterval -Parse {
+                param($r) [math]::Max(1000, [math]::Min(60000, [int]$r)) }
+            $default.PositionLocked = Read-ConfigField -Raw $json.PositionLocked -Fallback $default.PositionLocked -Parse {
+                param($r) [bool]$r }
+            $default.DisplayMode = Read-ConfigField -Raw $json.DisplayMode -Fallback $default.DisplayMode -Parse {
+                param($r) if ([string]$r -in @("time", "percent", "both")) { [string]$r } else { $null } }
+            $default.PillSize = Read-ConfigField -Raw $json.PillSize -Fallback $default.PillSize -Parse {
+                param($r) if ([string]$r -in @("compact", "normal", "expanded")) { [string]$r } else { $null } }
+            $default.Theme = Read-ConfigField -Raw $json.Theme -Fallback $default.Theme -Parse {
+                param($r) if ([string]$r -in @("dark", "light", "auto")) { [string]$r } else { $null } }
+            $default.AccentColorIndex = Read-ConfigField -Raw $json.AccentColorIndex -Fallback $default.AccentColorIndex -Parse {
+                param($r) [math]::Max(0, [math]::Min(7, [int]$r)) }
+            $default.AutoHideFullscreen = Read-ConfigField -Raw $json.AutoHideFullscreen -Fallback $default.AutoHideFullscreen -Parse {
+                param($r) [bool]$r }
+            $default.FirstRunShown = Read-ConfigField -Raw $json.FirstRunShown -Fallback $default.FirstRunShown -Parse {
+                param($r) [bool]$r }
+
+            # Battery history: per-entry validation, percent range-checked, and
+            # capped at the same 2400 the recorder enforces - a corrupt or
+            # hand-grown file must not load an unbounded series into the
+            # sparkline's per-point paint loop.
             if ($null -ne $json.BatteryHistory -and $json.BatteryHistory.Count -gt 0) {
                 $loadedHistory = @()
                 foreach ($entry in $json.BatteryHistory) {
                     try {
+                        $pct = [int]$entry.Percent
+                        if ($pct -lt 0 -or $pct -gt 100) { continue }
                         $loadedHistory += @{
                             Time       = [DateTime]::Parse($entry.Time)
-                            Percent    = [int]$entry.Percent
+                            Percent    = $pct
                             IsCharging = [bool]$entry.IsCharging
                         }
                     } catch {}
+                }
+                if ($loadedHistory.Count -gt 2400) {
+                    $loadedHistory = $loadedHistory[($loadedHistory.Count - 2400)..($loadedHistory.Count - 1)]
                 }
                 $default.BatteryHistory = $loadedHistory
             }
@@ -2055,11 +2095,12 @@ function Update-FloatingBar {
         $h = [math]::Floor($BatteryInfo.TimeMinutes / 60)
         $m = $BatteryInfo.TimeMinutes % 60
         $timeStr = if ($h -gt 0) { "${h}h ${m}m" } else { "${m}m" }
-        $pctStr = "$($BatteryInfo.Percent)%"
+        # A rejected/unknown percent stays -1: show "--" rather than "-1%"
+        $pctStr = if ($BatteryInfo.Percent -ge 0) { "$($BatteryInfo.Percent)%" } else { "--" }
     } else {
         # Time not computed yet — fall back to the (real) percent instead of dead dashes
-        $timeStr = "$($BatteryInfo.Percent)%"
-        $pctStr = "$($BatteryInfo.Percent)%"
+        $pctStr = if ($BatteryInfo.Percent -ge 0) { "$($BatteryInfo.Percent)%" } else { "--" }
+        $timeStr = $pctStr
     }
 
     $displayMode = $script:config.DisplayMode
