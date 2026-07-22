@@ -82,6 +82,12 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-22 — v1.1.2 Release (magical first 30 seconds)
+- **Intro choreography** — pill rises into place (280ms ease-out) with its charge fill sweeping 0 -> real % (500ms), then the first-run tips appear in sequence; skipped when Windows animations are off (SPI_GETCLIENTAREAANIMATION); lands instantly if grabbed mid-intro
+- **Lean hover glance** — popup cut to status / big percent / time+ETA / sparkline (278px -> 172px, -38%); Capacity/Rate/Elapsed/Runtime/Wear and the power-source footer removed (Daniel picked Option A)
+- **Drag respect** — pressing the pill cancels the hover-popup timer and the tick guard checks leftPressed/isDragging, so dragging never summons the popup (Daniel's live report)
+- **HARD-WON GOTCHA**: a GetNewClosure() event handler resolves `$script:` against the CLOSURE MODULE's scope (null there) - closures suit handlers touching captured locals ONLY (notification cards); handlers needing app state must be plain scriptblocks + $script: state (intro, first-run tip pattern)
+
 ### 2026-07-19 — v1.1.1 Release
 - Version bump 1.1.0 -> 1.1.1; exe metadata now reads "BatteryPill" in Task Manager (the rebrand only reaches users through a release build)
 - /unleash runs: ux 1 brand consistency (exe metadata, popup/main window titles, tray tooltip prefix, CLI header, first-run card radius); ux 7 first-timer flow (tooltip teaches click-to-cycle, "Pill hidden" breadcrumb on both hide paths via a new -Accent param on Show-BatteryNotification, website uninstall + autostart answers); code 10 input enforcement (per-field config parsing so one bad value can't discard the rest, history validated + capped on load, WMI null/255 percent rejected, pill shows "--" not "-1%")
