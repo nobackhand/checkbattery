@@ -82,6 +82,12 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-22 — v1.1.4 Release (designer roast)
+- **The pill is finally a pill** — true capsule radius ((h-2)/2 per the path helper's inset: 13/16/20 for the three sizes), tray icon capsule to match (r=4)
+- **One duration format** — new Format-Duration ("3h 8m", no zero-pad) used by pill AND popup; they previously disagreed ("3h 8m" vs "3h 08m")
+- **Popup time is a sentence** — "3h 8m left — 6:42 PM" / "1h 3m to full — 5:10 PM" replaces the "Remaining:" label + right-aligned value row; "ETA" jargon dropped; Add-PopupRow and orphaned layout vars deleted; website mock synced
+- **Settings**: sentence-case muted section headers (were spaced-caps accent green - screen readers spelled them letter by letter); Close button neutral (was the app's only green CTA, on a dismissal)
+
 ### 2026-07-22 — v1.1.3 Release (embarrassing three)
 - **Settings fits every screen** — vertical rhythm tightened (~75px at 1x, was overflowing 1080p @ 125% scaling with Close unreachable) plus a working-area clamp with AutoScroll on short displays (force-tested at 700px: clamps to 692, Close scrolls into view)
 - **About dialog DPI fix** — font sizes were multiplied by the DPI scale on top of point-size auto-scaling (24pt-nominal title at 200%); now plain point sizes, verified 12/8.5/7 at a 1.75x session
