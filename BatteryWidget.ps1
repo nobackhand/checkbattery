@@ -87,6 +87,16 @@ public class Win32Icon {
         }
     }
 
+    // Respect the user's "Show animations in Windows" setting (SPI_GETCLIENTAREAANIMATION)
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref bool pvParam, uint fWinIni);
+
+    public static bool AnimationsEnabled() {
+        bool enabled = true;
+        if (SystemParametersInfo(0x1042, 0, ref enabled, 0)) { return enabled; }
+        return true;
+    }
+
     // Dark title bar for standard (chromed) windows so they don't clash with a dark body
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
@@ -132,7 +142,7 @@ $script:theme = @{
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.1"
+$script:appVersion = "1.1.2"
 
 function Get-SystemTheme {
     try {
@@ -1382,7 +1392,8 @@ function New-FloatingBar {
     $script:hoverTimer.Interval = 500
     $script:hoverTimer.Add_Tick({
         $script:hoverTimer.Stop()
-        if (-not $script:hoverPopupVisible -and -not $script:floatingBar.ContextMenuStrip.Visible) {
+        if (-not $script:hoverPopupVisible -and -not $script:floatingBar.ContextMenuStrip.Visible -and
+            -not $script:isDragging -and -not $script:leftPressed) {
             Show-HoverPopup
         }
     })
@@ -1447,6 +1458,8 @@ function New-FloatingBar {
             $script:leftPressed = $true
             $script:didDrag = $false
             $script:dragOffset = $e.Location
+            # A press is manipulation, not a hover - never let the popup interrupt a drag
+            $script:hoverTimer.Stop()
             if (-not $script:positionLocked) {
                 $script:isDragging = $true
                 $script:floatingBar.Cursor = [System.Windows.Forms.Cursors]::SizeAll
@@ -1795,42 +1808,7 @@ function New-BatteryPopupContent {
         return $val
     }
 
-    # Row 1: Capacity (hidden when N/A) - the old Percent row is replaced by the hero above
-    if ($BatteryInfo.FullChargeCapacity -gt 0 -and $BatteryInfo.PercentExact -ge 0) {
-        $currentCharge = [math]::Round($BatteryInfo.FullChargeCapacity * ($BatteryInfo.PercentExact / 100))
-        $capText = "{0:N0} / {1:N0} mWh" -f $currentCharge, $BatteryInfo.FullChargeCapacity
-    } elseif ($BatteryInfo.FullChargeCapacity -gt 0) {
-        $capText = "{0:N0} mWh" -f $BatteryInfo.FullChargeCapacity
-    } else {
-        $capText = "N/A"
-    }
-    if ($capText -ne "N/A") {
-        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Capacity:" -Value $capText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
-        $y += $rh
-    }
-
-    # Row 2: Discharge/Charge Rate (hidden when N/A)
-    if ($BatteryInfo.IsCharging -and $BatteryInfo.ChargeRate -gt 0) {
-        $rateText = "+{0:N0} mW" -f $BatteryInfo.ChargeRate
-        # Darker green on the light popup background for contrast
-        $rateColor = if ($script:theme.PopupBg.GetBrightness() -gt 0.5) {
-            [System.Drawing.Color]::FromArgb(27, 131, 62)
-        } else {
-            [System.Drawing.Color]::FromArgb(45, 212, 100)
-        }
-    } elseif (-not $BatteryInfo.IsCharging -and $BatteryInfo.DischargeRate -gt 0) {
-        $rateText = "-{0:N0} mW" -f $BatteryInfo.DischargeRate
-        $rateColor = $lightGray
-    } else {
-        $rateText = "N/A"
-        $rateColor = $dimGray
-    }
-    if ($rateText -ne "N/A") {
-        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Rate:" -Value $rateText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $rateColor -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
-        $y += $rh
-    }
-
-    # Row 3: Time Remaining with ETA (hero row)
+    # Time remaining / to full - the headline, right under the percent
     if ($BatteryInfo.IsFullyCharged) {
         $timeText = "Fully Charged"
     } elseif ($BatteryInfo.TimeMinutes -gt 0) {
@@ -1853,40 +1831,8 @@ function New-BatteryPopupContent {
     if ($timeText -eq "Estimating...") { $script:estimatingLabel = $timeValLabel }
     $y += $heroRh
 
-    # Group gap (replaces separator line)
-    $y += [int](6 * $DpiScale)
-
-    # Row 4: Elapsed Time
-    $elapsedText = "$($BatteryInfo.ElapsedTime) (from $($BatteryInfo.ElapsedSince))"
-    $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Elapsed:" -Value $elapsedText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
-    $y += $rh
-
-    # Row 5: Full Runtime (hidden when N/A)
-    if ($BatteryInfo.FullRuntimeMinutes -gt 0) {
-        $frH = [math]::Floor($BatteryInfo.FullRuntimeMinutes / 60)
-        $frM = $BatteryInfo.FullRuntimeMinutes % 60
-        $fullRtText = "~{0}h {1:D2}m full" -f $frH, $frM
-    } else {
-        $fullRtText = "N/A"
-    }
-    if ($fullRtText -ne "N/A") {
-        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Runtime:" -Value $fullRtText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
-        $y += $rh
-    }
-
-    # Row 6: Battery Wear (hidden when N/A)
-    if ($BatteryInfo.BatteryWearPercent -ge 0 -and $BatteryInfo.DesignCapacity -gt 0) {
-        $wearText = "{0:N1}%" -f $BatteryInfo.BatteryWearPercent
-    } else {
-        $wearText = "N/A"
-    }
-    if ($wearText -ne "N/A") {
-        $null = Add-PopupRow -TargetForm $Form -RowY $y -Label "Wear:" -Value $wearText -LFont $labelFont -VFont $valueFont -DColor $script:theme.TextMuted -VColor $lightGray -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $rh
-        $y += $rh
-    }
-
     # Spacer before sparkline
-    $y += [int](6 * $DpiScale)
+    $y += [int](10 * $DpiScale)
 
     # Battery history sparkline (40px tall)
     $sparkAccent = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
@@ -1896,19 +1842,7 @@ function New-BatteryPopupContent {
     $y += 40
 
     # Spacer after sparkline
-    $y += [int](4 * $DpiScale)
-
-    # Power source with icon
-    $powerIcon = if ($BatteryInfo.IsPluggedIn) { [char]0x26A1 } else { [char]0x2022 }
-    $powerLabel = New-Object System.Windows.Forms.Label
-    $powerLabel.Text = "$powerIcon $($BatteryInfo.PowerSource)"
-    $powerLabel.Font = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
-    $powerLabel.ForeColor = $dimGray
-    $powerLabel.Location = New-Object System.Drawing.Point(20, $y)
-    $powerLabel.AutoSize = $true
-    $powerLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
-    $Form.Controls.Add($powerLabel)
-    $y += 16
+    $y += [int](6 * $DpiScale)
 
     # Close hint (skip when empty — hover popup passes "")
     if ($CloseHintText) {
@@ -1923,7 +1857,7 @@ function New-BatteryPopupContent {
         $y += [int](14 * $DpiScale)   # account for the hint's height so it doesn't clip the bottom edge
     }
 
-    $fontsToDispose = @($labelFont, $valueFont, $heroValueFont, $heroPctFont, $titleLabel.Font, $powerLabel.Font)
+    $fontsToDispose = @($labelFont, $valueFont, $heroValueFont, $heroPctFont, $titleLabel.Font)
     if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
         TotalHeight = $y + 8
@@ -2472,6 +2406,83 @@ function Set-DarkComboBox {
         $text = $sender.Items[$e.Index].ToString()
         [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $e.Bounds, $fgColor, [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter)
     })
+}
+
+function Start-IntroAnimation {
+    # First-launch choreography: the pill rises into place (280ms ease-out),
+    # its charge fill sweeps up to the real level (500ms), then the first-run
+    # tips appear - in that order. Skipped entirely (instant appear, tips
+    # immediately) when Windows animations are turned off, and lands instantly
+    # if the user grabs the pill mid-intro.
+    # NOTE: plain scriptblock + $script: state on purpose. A GetNewClosure()
+    # handler resolves $script: against the CLOSURE MODULE's scope, where
+    # $script:floatingBar is $null - the closure pattern only suits handlers
+    # that touch captured locals exclusively (like the notification cards).
+    if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed -or -not $script:floatingBar.Visible) {
+        Show-FirstRunTooltip
+        return
+    }
+    if (-not [Win32Icon]::AnimationsEnabled()) {
+        $script:floatingBar.Opacity = $script:config.Opacity
+        Show-FirstRunTooltip
+        return
+    }
+    $script:introState = @{
+        Phase         = "rise"
+        Start         = Get-Date
+        TargetTop     = $script:floatingBar.Top
+        TargetOpacity = $script:config.Opacity
+        TargetPct     = [math]::Max(0, $script:barDisplayPercent)   # unknown/no battery (-1) -> skip the sweep
+    }
+    $script:floatingBar.Top = $script:introState.TargetTop + 14
+    $script:introTimer = New-Object System.Windows.Forms.Timer
+    $script:introTimer.Interval = 16
+    $script:introTimer.Add_Tick({
+        if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) {
+            $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null; return
+        }
+        $st = $script:introState
+        # User grabbed it mid-intro: land everything instantly, get out of the way
+        if ($script:leftPressed -or $script:isDragging) {
+            $script:floatingBar.Opacity = $st.TargetOpacity
+            $script:floatingBar.Top = $st.TargetTop
+            $script:barDisplayPercent = $st.TargetPct
+            $script:floatingBar.Invalidate()
+            $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
+            Show-FirstRunTooltip
+            return
+        }
+        $ms = ((Get-Date) - $st.Start).TotalMilliseconds
+        if ($st.Phase -eq "rise") {
+            $t = [math]::Min(1.0, $ms / 280.0)
+            $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
+            $script:floatingBar.Opacity = $st.TargetOpacity * $eased
+            $script:floatingBar.Top = [int]($st.TargetTop + 14 * (1.0 - $eased))
+            if ($t -ge 1.0) {
+                $script:floatingBar.Opacity = $st.TargetOpacity
+                $script:floatingBar.Top = $st.TargetTop
+                if ($st.TargetPct -gt 0) {
+                    $script:barDisplayPercent = 0
+                    $st.Phase = "sweep"; $st.Start = Get-Date
+                } else {
+                    $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
+                    Show-FirstRunTooltip
+                }
+            }
+        } elseif ($st.Phase -eq "sweep") {
+            $t = [math]::Min(1.0, $ms / 500.0)
+            $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
+            $script:barDisplayPercent = [int]($st.TargetPct * $eased)
+            $script:floatingBar.Invalidate()
+            if ($t -ge 1.0) {
+                $script:barDisplayPercent = $st.TargetPct
+                $script:floatingBar.Invalidate()
+                $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
+                Show-FirstRunTooltip
+            }
+        }
+    })
+    $script:introTimer.Start()
 }
 
 function Show-FirstRunTooltip {
@@ -3274,12 +3285,14 @@ $script:mainForm.Text = "BatteryPill"
 $script:notifyIcon = New-Object System.Windows.Forms.NotifyIcon
 $script:notifyIcon.Visible = $true
 
-# Floating bar
+# Floating bar. Starts invisible when animations are on - Start-IntroAnimation
+# (after the first real battery read) raises it into place, sweeps the fill,
+# then shows the first-run tips in sequence instead of racing them.
 $script:floatingBar = New-FloatingBar
+if ([Win32Icon]::AnimationsEnabled()) {
+    $script:floatingBar.Opacity = 0
+}
 $script:floatingBar.Show()
-
-# First-run welcome tooltip
-Show-FirstRunTooltip
 
 # Register sleep/wake event - reset EMA state on resume from sleep/hibernate
 $script:powerModeHandler = {
@@ -3556,6 +3569,10 @@ $script:mainForm.Add_FormClosing({
     $script:pulseTimer.Dispose()
     $script:fullscreenTimer.Stop()
     $script:fullscreenTimer.Dispose()
+    if ($null -ne $script:introTimer) {
+        $script:introTimer.Stop()
+        $script:introTimer.Dispose()
+    }
     # Clean up hover timers
     if ($null -ne $script:hoverTimer) {
         $script:hoverTimer.Stop()
@@ -3599,8 +3616,9 @@ $script:mainForm.Add_FormClosing({
     $script:mutex.Dispose()
 })
 
-# Initial update and start
+# Initial update, then the intro choreography (rise -> fill sweep -> tips)
 Update-TrayIcon
+Start-IntroAnimation
 $script:timer.Start()
 
 # Run the application message loop
