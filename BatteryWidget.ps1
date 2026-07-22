@@ -142,7 +142,7 @@ $script:theme = @{
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.3"
+$script:appVersion = "1.1.4"
 
 function Get-SystemTheme {
     try {
@@ -778,7 +778,7 @@ function New-BatteryIcon {
     $pillY = 4
     $pillW = 14
     $pillH = 8
-    $radius = 3
+    $radius = 4   # capsule: half the pill height, matching the widget
 
     # Create rounded rectangle path
     $d = $radius * 2
@@ -1138,7 +1138,9 @@ function Update-PillSize {
     $script:floatingBar.MinimumSize = $sz
     $script:floatingBar.MaximumSize = $sz
     # Rebuild region — use pill radius capped at half height for fully rounded ends
-    $script:pillRadius = [math]::Min(8, [int]($dims.Height / 2))
+    # True capsule: radius = half the height (minus the path helper's -1 inset).
+    # The app is named after this shape - it should draw it.
+    $script:pillRadius = [int](($dims.Height - 2) / 2)
     $rd = $script:pillRadius * 2
     $rPath = New-RoundedRectPath -Right ($dims.Width - $rd - 1) -Bottom ($dims.Height - $rd - 1) -Diameter $rd
     $script:floatingBar.Region = New-Object System.Drawing.Region($rPath)
@@ -1252,7 +1254,7 @@ function New-FloatingBar {
 
     # Region-based clipping for rounded corners (no TransparencyKey = no purple fringe)
     $form.BackColor = $script:theme.PillBg  # themed: hardcoded dark left a fringe ring around the pill in Light theme
-    $rd = 16
+    $rd = ($dims.Height - 2)   # capsule: corner diameter spans the pill height
     $regionPath = New-RoundedRectPath -Right ($dims.Width - $rd - 1) -Bottom ($dims.Height - $rd - 1) -Diameter $rd
     $form.Region = New-Object System.Drawing.Region($regionPath)
     $regionPath.Dispose()
@@ -1657,6 +1659,17 @@ function New-SparklinePanel {
     return $panel
 }
 
+function Format-Duration {
+    # The one way a duration is written anywhere in the app: "3h 8m" / "42m".
+    # No zero-padding - the pill and popup previously formatted the same
+    # value two different ways ("3h 8m" vs "3h 08m").
+    param([int]$Minutes)
+    $h = [math]::Floor($Minutes / 60)
+    $m = $Minutes % 60
+    if ($h -gt 0) { return "{0}h {1}m" -f $h, $m }
+    return "{0}m" -f $m
+}
+
 function New-BatteryPopupContent {
     param(
         [hashtable]$BatteryInfo,
@@ -1670,9 +1683,7 @@ function New-BatteryPopupContent {
 
     $statusColor = Get-StatusColor -Status $BatteryInfo.StatusText
     $lightGray = $script:theme.TextLight
-    $dimGray   = $script:theme.TextDim
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
-    $valueFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
     # Hero fonts for top section (Time — the data users care about most)
     $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
 
@@ -1754,17 +1765,13 @@ function New-BatteryPopupContent {
 
         return @{
             TotalHeight = $ny + [int](8 * $DpiScale)
-            Fonts = @($labelFont, $valueFont, $heroValueFont, $titleLabel.Font) + $emptyFonts
+            Fonts = @($labelFont, $heroValueFont, $titleLabel.Font) + $emptyFonts
         }
     }
 
-    # --- Row layout (DPI-aware) ---
-    $rh = [int](18 * $DpiScale)
+    # --- Layout (DPI-aware) ---
     $heroRh = [int](24 * $DpiScale)
     $lx = 20
-    $lw = [int](74 * $DpiScale)
-    $vx = $lx + $lw + [int](6 * $DpiScale)   # value column starts AFTER the label column so labels never collide with values at any DPI
-    $vw = $PopupWidth - $vx - 20
     $y = [int](40 * $DpiScale)
 
     # --- Hero percent: the number users came for, big and status-colored ---
@@ -1790,44 +1797,30 @@ function New-BatteryPopupContent {
         $y += [int](40 * $DpiScale)
     }
 
-    # Helper to add a label+value row (value right-aligned)
-    function Add-PopupRow {
-        param($TargetForm, $RowY, $Label, $Value, $LFont, $VFont, $DColor, $VColor, $RLx, $RVx, $RLw, $RVw, $RowHeight)
-        $lbl = New-Object System.Windows.Forms.Label
-        $lbl.Text = $Label; $lbl.Font = $LFont; $lbl.ForeColor = $DColor
-        $lbl.Location = New-Object System.Drawing.Point($RLx, $RowY)
-        $lbl.AutoSize = $true; $lbl.MaximumSize = New-Object System.Drawing.Size($RLw, 0)
-        $TargetForm.Controls.Add($lbl)
-        $val = New-Object System.Windows.Forms.Label
-        $val.Text = $Value; $val.Font = $VFont; $val.ForeColor = $VColor
-        $val.Location = New-Object System.Drawing.Point($RVx, $RowY)
-        $val.AutoSize = $false
-        $val.Size = New-Object System.Drawing.Size($RVw, $RowHeight)
-        $val.TextAlign = [System.Drawing.ContentAlignment]::TopRight
-        $TargetForm.Controls.Add($val)
-        return $val
-    }
-
-    # Time remaining / to full - the headline, right under the percent
+    # Time - a sentence under the hero, not a labeled form row.
+    # "3h 8m left — 6:42 PM" / "1h 3m to full — 5:10 PM" / "Fully charged"
     if ($BatteryInfo.IsFullyCharged) {
-        $timeText = "Fully Charged"
+        $timeText = "Fully charged"
     } elseif ($BatteryInfo.TimeMinutes -gt 0) {
-        $h = [math]::Floor($BatteryInfo.TimeMinutes / 60)
-        $m = $BatteryInfo.TimeMinutes % 60
-        # "42m" under an hour, not "0h 42m"
-        $shortTime = if ($h -gt 0) { "{0}h {1:D2}m" -f $h, $m } else { "{0}m" -f $m }
+        $dur = Format-Duration -Minutes $BatteryInfo.TimeMinutes
+        $suffix = if ($BatteryInfo.IsCharging) { "to full" } else { "left" }
         if ($BatteryInfo.ETA) {
-            $timeText = "$shortTime — ETA $($BatteryInfo.ETA)"
+            $timeText = "$dur $suffix — $($BatteryInfo.ETA)"
         } else {
-            $timeText = $shortTime
+            $timeText = "$dur $suffix"
         }
     } else {
         $timeText = "Estimating..."
     }
-    $timeRowLabel = if ($BatteryInfo.IsCharging) { "To Full:" } else { "Remaining:" }
-    # Spacer before time row
     $y += [int](4 * $DpiScale)
-    $timeValLabel = Add-PopupRow -TargetForm $Form -RowY $y -Label $timeRowLabel -Value $timeText -LFont $labelFont -VFont $heroValueFont -DColor $dimGray -VColor $script:theme.TextPrimary -RLx $lx -RVx $vx -RLw $lw -RVw $vw -RowHeight $heroRh
+    $timeValLabel = New-Object System.Windows.Forms.Label
+    $timeValLabel.Text = $timeText
+    $timeValLabel.Font = $heroValueFont
+    $timeValLabel.ForeColor = $script:theme.TextPrimary
+    $timeValLabel.Location = New-Object System.Drawing.Point($lx, $y)
+    $timeValLabel.AutoSize = $true
+    $timeValLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+    $Form.Controls.Add($timeValLabel)
     if ($timeText -eq "Estimating...") { $script:estimatingLabel = $timeValLabel }
     $y += $heroRh
 
@@ -1857,7 +1850,7 @@ function New-BatteryPopupContent {
         $y += [int](14 * $DpiScale)   # account for the hint's height so it doesn't clip the bottom edge
     }
 
-    $fontsToDispose = @($labelFont, $valueFont, $heroValueFont, $heroPctFont, $titleLabel.Font)
+    $fontsToDispose = @($labelFont, $heroValueFont, $heroPctFont, $titleLabel.Font)
     if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
         TotalHeight = $y + 8
@@ -2026,9 +2019,7 @@ function Update-FloatingBar {
         $timeStr = "Full"
         $pctStr = "100%"
     } elseif ($BatteryInfo.TimeMinutes -gt 0) {
-        $h = [math]::Floor($BatteryInfo.TimeMinutes / 60)
-        $m = $BatteryInfo.TimeMinutes % 60
-        $timeStr = if ($h -gt 0) { "${h}h ${m}m" } else { "${m}m" }
+        $timeStr = Format-Duration -Minutes $BatteryInfo.TimeMinutes
         # A rejected/unknown percent stays -1: show "--" rather than "-1%"
         $pctStr = if ($BatteryInfo.Percent -ge 0) { "$($BatteryInfo.Percent)%" } else { "--" }
     } else {
@@ -2616,7 +2607,8 @@ function Show-SettingsPanel {
 
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
     $sectionFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
-    $sectionColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
+    # Muted neutral: section headers are wayfinding, not accents
+    $sectionColor = [System.Drawing.Color]::FromArgb(150, 150, 160)
     $m = [int](20 * $ds)
     $cw = [int](280 * $ds)
     $bh = [int](34 * $ds)
@@ -2641,7 +2633,7 @@ function Show-SettingsPanel {
     $settings.Controls.Add($bhvSep)
     $y += [int](8 * $ds)
     $bhvHeader = New-Object System.Windows.Forms.Label
-    $bhvHeader.Text = "B E H A V I O R"
+    $bhvHeader.Text = "Behavior"
     $bhvHeader.Font = $sectionFont
     $bhvHeader.ForeColor = $sectionColor
     $bhvHeader.Location = New-Object System.Drawing.Point($m, $y)
@@ -2729,7 +2721,7 @@ function Show-SettingsPanel {
     $settings.Controls.Add($appSep)
     $y += [int](8 * $ds)
     $appHeader = New-Object System.Windows.Forms.Label
-    $appHeader.Text = "A P P E A R A N C E"
+    $appHeader.Text = "Appearance"
     $appHeader.Font = $sectionFont
     $appHeader.ForeColor = $sectionColor
     $appHeader.Location = New-Object System.Drawing.Point($m, $y)
@@ -2921,7 +2913,7 @@ function Show-SettingsPanel {
     $settings.Controls.Add($advSep)
     $y += [int](8 * $ds)
     $advHeader = New-Object System.Windows.Forms.Label
-    $advHeader.Text = "A D V A N C E D"
+    $advHeader.Text = "Advanced"
     $advHeader.Font = $sectionFont
     $advHeader.ForeColor = $sectionColor
     $advHeader.Location = New-Object System.Drawing.Point($m, $y)
@@ -3044,8 +3036,8 @@ function Show-SettingsPanel {
     $closeBtn.Location = New-Object System.Drawing.Point($m, $y)
     $closeBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $closeBtn.FlatAppearance.BorderSize = 0
-    $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
-    $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(10, 10, 12)
+    $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
+    $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
     $closeBtn.Add_Click({ $settings.Close() })
     $settings.Controls.Add($closeBtn)
 
