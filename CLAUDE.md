@@ -82,6 +82,11 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-22 — v1.1.3 Release (embarrassing three)
+- **Settings fits every screen** — vertical rhythm tightened (~75px at 1x, was overflowing 1080p @ 125% scaling with Close unreachable) plus a working-area clamp with AutoScroll on short displays (force-tested at 700px: clamps to 692, Close scrolls into view)
+- **About dialog DPI fix** — font sizes were multiplied by the DPI scale on top of point-size auto-scaling (24pt-nominal title at 200%); now plain point sizes, verified 12/8.5/7 at a 1.75x session
+- **Website mock synced to the lean glance** — removed the six telemetry rows deleted in v1.1.2, fixed the features blurb ("A glance, not a readout"), dead CSS cleaned
+
 ### 2026-07-22 — v1.1.2 Release (magical first 30 seconds)
 - **Intro choreography** — pill rises into place (280ms ease-out) with its charge fill sweeping 0 -> real % (500ms), then the first-run tips appear in sequence; skipped when Windows animations are off (SPI_GETCLIENTAREAANIMATION); lands instantly if grabbed mid-intro
 - **Lean hover glance** — popup cut to status / big percent / time+ETA / sparkline (278px -> 172px, -38%); Capacity/Rate/Elapsed/Runtime/Wear and the power-source footer removed (Daniel picked Option A)

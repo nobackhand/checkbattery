@@ -142,7 +142,7 @@ $script:theme = @{
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.2"
+$script:appVersion = "1.1.3"
 
 function Get-SystemTheme {
     try {
@@ -2719,7 +2719,7 @@ function Show-SettingsPanel {
     })
     $settings.Controls.Add($autoHideCheck)
     $settingsTooltip.SetToolTip($autoHideCheck, "Hide pill when fullscreen apps are active (games, videos)")
-    $y += [int](46 * $ds)
+    $y += [int](36 * $ds)
 
     # --- Appearance section header ---
     $appSep = New-Object System.Windows.Forms.Label
@@ -2772,7 +2772,7 @@ function Show-SettingsPanel {
     $settings.Controls.Add($displayCombo)
     $settingsTooltip.SetToolTip($displayCombo, "Choose what information appears on the pill")
     $script:settingsDisplayCombo = $displayCombo   # let click-cycle keep this in sync while the panel is open
-    $y += [int](42 * $ds)
+    $y += [int](36 * $ds)
 
     # --- Pill size section ---
     $sizeLabel = New-Object System.Windows.Forms.Label
@@ -2808,7 +2808,7 @@ function Show-SettingsPanel {
     Set-DarkComboBox -Combo $sizeCombo
     $settings.Controls.Add($sizeCombo)
     $settingsTooltip.SetToolTip($sizeCombo, "Adjust the size of the floating pill")
-    $y += [int](42 * $ds)
+    $y += [int](36 * $ds)
 
     # --- Accent color section ---
     $accentLabel = New-Object System.Windows.Forms.Label
@@ -2875,7 +2875,7 @@ function Show-SettingsPanel {
         $colorPanel.Cursor = [System.Windows.Forms.Cursors]::Hand
         $settings.Controls.Add($colorPanel)
     }
-    $y += [int](36 * $ds)
+    $y += [int](30 * $ds)
 
     # --- Theme section ---
     $themeLabel = New-Object System.Windows.Forms.Label
@@ -2911,7 +2911,7 @@ function Show-SettingsPanel {
     Set-DarkComboBox -Combo $themeCombo
     $settings.Controls.Add($themeCombo)
     $settingsTooltip.SetToolTip($themeCombo, "Color scheme (Auto follows Windows theme)")
-    $y += [int](54 * $ds)
+    $y += [int](40 * $ds)
 
     # --- Advanced section header ---
     $advSep = New-Object System.Windows.Forms.Label
@@ -2965,7 +2965,7 @@ function Show-SettingsPanel {
     })
     $opacitySlider.Add_MouseUp({ Save-Config })
     $settings.Controls.Add($opacitySlider)
-    $y += [int](67 * $ds)
+    $y += [int](52 * $ds)
 
     # --- Refresh rate section ---
 
@@ -3004,7 +3004,7 @@ function Show-SettingsPanel {
     Set-DarkComboBox -Combo $refreshCombo
     $settings.Controls.Add($refreshCombo)
     $settingsTooltip.SetToolTip($refreshCombo, "How often battery data refreshes (lower = more CPU)")
-    $y += [int](54 * $ds)
+    $y += [int](40 * $ds)
 
     # --- Buttons section ---
 
@@ -3034,7 +3034,7 @@ function Show-SettingsPanel {
     })
     $settings.Controls.Add($resetBtn)
     $settingsTooltip.SetToolTip($resetBtn, "Move pill back to default position (bottom-right)")
-    $y += [int](38 * $ds)
+    $y += [int](34 * $ds)
 
     # Close button (accent green)
     $closeBtn = New-Object System.Windows.Forms.Button
@@ -3051,6 +3051,15 @@ function Show-SettingsPanel {
 
     # Auto-size form to fit content
     $settings.ClientSize = New-Object System.Drawing.Size(($cw + $m * 2), ($y + $bh + $m))
+
+    # Never taller than the screen: on short displays (1080p at 125% scaling)
+    # the panel used to run past the bottom, putting Close out of reach.
+    $waHeight = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position).WorkingArea.Height
+    if ($settings.Height -gt $waHeight) {
+        $settings.AutoScroll = $true
+        $overflow = $settings.Height - $waHeight
+        $settings.ClientSize = New-Object System.Drawing.Size(($cw + $m * 2 + 18), ($settings.ClientSize.Height - $overflow - 8))
+    }
 
     $settings.ShowDialog() | Out-Null
     $settings.Dispose()
@@ -3095,7 +3104,7 @@ function Show-AboutDialog {
     # Title
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Text = "BatteryPill"
-    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI Semibold", (12 * $ds), [System.Drawing.FontStyle]::Bold)
+    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 12, [System.Drawing.FontStyle]::Bold)
     $titleLabel.ForeColor = $script:theme.TextPrimary
     $titleLabel.AutoSize = $true
     $titleLabel.Location = New-Object System.Drawing.Point($m, $y)
@@ -3105,7 +3114,7 @@ function Show-AboutDialog {
     # Version
     $versionLabel = New-Object System.Windows.Forms.Label
     $versionLabel.Text = "Version $script:appVersion"
-    $versionLabel.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
+    $versionLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $versionLabel.ForeColor = $script:theme.TextDim
     $versionLabel.AutoSize = $true
     $versionLabel.Location = New-Object System.Drawing.Point($m, $y)
@@ -3115,7 +3124,7 @@ function Show-AboutDialog {
     # Description
     $descLabel = New-Object System.Windows.Forms.Label
     $descLabel.Text = "Windows battery monitor with floating pill"
-    $descLabel.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
+    $descLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $descLabel.ForeColor = $script:theme.TextLight
     $descLabel.AutoSize = $true
     $descLabel.MaximumSize = New-Object System.Drawing.Size(($fw - $m * 2), 0)
@@ -3126,7 +3135,7 @@ function Show-AboutDialog {
     # Website link
     $siteLink = New-Object System.Windows.Forms.LinkLabel
     $siteLink.Text = "batterypill.com"
-    $siteLink.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
+    $siteLink.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     # Link colors adapt: About follows the theme, so light bg needs darker links for contrast
     $aboutIsLight = ($script:theme.PopupBg.R -gt 128)
     $siteLink.LinkColor = if ($aboutIsLight) { [System.Drawing.Color]::FromArgb(0, 102, 204) } else { [System.Drawing.Color]::FromArgb(100, 149, 237) }
@@ -3140,7 +3149,7 @@ function Show-AboutDialog {
     # Donate link
     $donateLink = New-Object System.Windows.Forms.LinkLabel
     $donateLink.Text = "Buy me a coffee"
-    $donateLink.Font = New-Object System.Drawing.Font("Segoe UI", (8.5 * $ds))
+    $donateLink.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $donateLink.LinkColor = if ($aboutIsLight) { [System.Drawing.Color]::FromArgb(153, 102, 0) } else { [System.Drawing.Color]::FromArgb(255, 200, 60) }
     $donateLink.ActiveLinkColor = if ($aboutIsLight) { [System.Drawing.Color]::FromArgb(122, 82, 0) } else { [System.Drawing.Color]::FromArgb(255, 220, 100) }
     $donateLink.AutoSize = $true
@@ -3152,7 +3161,7 @@ function Show-AboutDialog {
     # Footer
     $footerLabel = New-Object System.Windows.Forms.Label
     $footerLabel.Text = "Built with PowerShell + WinForms"
-    $footerLabel.Font = New-Object System.Drawing.Font("Segoe UI", (7 * $ds))
+    $footerLabel.Font = New-Object System.Drawing.Font("Segoe UI", 7)
     $footerLabel.ForeColor = $script:theme.TextMuted
     $footerLabel.AutoSize = $true
     $footerLabel.Location = New-Object System.Drawing.Point($m, $y)
