@@ -82,6 +82,10 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-24 — v1.1.6 Release (embarrassing three — overnight loop 2/12)
+- **Tray icon redesign** — the always-visible face of the app had two glaring failures: at critical (<=10%) it was a near-invisible dark pill (you couldn't tell your battery was dying), and charging looked identical to a full battery (no bolt). Now: critical gets a red outline + faint-red body so the whole pill reads "low"; charging draws a white lightning bolt; fill is full-opacity; outline brightened to (150,150,160) so it survives a dark taskbar. Verified by pixel-counting: critical 31 red px (healthy 0), charging 6 white-bolt px (non-charging 0).
+- **Custom opacity slider** — the settings Opacity control was a stock WinForms TrackBar (light track, system-blue thumb, tick marks): the one un-themed control on the dark panel. Replaced with a custom-painted Panel slider (dark track, accent fill, white thumb). Verified end-to-end: far-right click -> 100/1.0, far-left -> 30, no TrackBar remains.
+
 ### 2026-07-24 — v1.1.5 Release (first-time user — overnight loop 1/12)
 - **Dark right-click menus** — both the pill and tray context menus were the stock light-gray Windows menu, jarring against the otherwise-dark app (and right-click is one of the four first-run tips). Now a DarkMenuColorTable + ToolStripProfessionalRenderer; Power Plan submenu re-themed after its dynamic rebuild. Verified by showing the real menus and pixel-sampling: 50/50 and 48/48 dark, zero light.
 - **Tip copy** — "Click to switch time / percent view" understated the gesture (it cycles time/percent/both); now "Click to change what it shows"
