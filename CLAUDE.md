@@ -82,6 +82,9 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-24 — v1.1.8 Release (dead states — overnight loop 4/12)
+- **No more stock gray dialogs** — the app's three `MessageBox.Show` calls were the one un-themed surface: light-gray Windows dialogs with system icons, jarring against the all-dark app. The most-seen is "already running" (every accidental double-launch). New self-contained `Show-AppDialog` — a themed modal (dark bg, accent top strip, lightning glyph, "Got it" button, Escape/Enter to close) that works this early in startup (WinForms/Drawing only, before the theme table exists). The two auto-start dialogs (script-mode info, shortcut-creation error) became themed `Show-BatteryNotification` toasts, consistent with the existing "Config Save Failed" feedback. Empty/loading states audited and already delightful from prior passes (sparkline "Charting your battery...", no-battery popup + health card, CLI no-battery, pill percent-fallback while estimating). Verified: dialog renders dark with accent strip (24,24,28 bg), auto-start error path toasts without blocking, zero MessageBox calls remain, render-states 8/8.
+
 ### 2026-07-24 — v1.1.7 Release (screenshot-worthy — overnight loop 3/12)
 - **Battery Health card** (`Show-BatteryHealthCard`) — a CoconutBattery-style circular health ring (FullChargeCapacity/DesignCapacity), big % in the center, status word (Good/Fair/Worn) + capacity + wear below. Genuinely shareable — battery health is the thing people screenshot. Added "Battery Health" to both context menus (above Settings). Light-theme ring darkened for contrast; friendly no-battery empty state. Verified: 94% for 70100/74496, 54% worn, correct colors, empty state, zero paint errors, menu items in both menus.
 
