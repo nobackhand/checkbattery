@@ -82,6 +82,9 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-24 — v1.1.7 Release (screenshot-worthy — overnight loop 3/12)
+- **Battery Health card** (`Show-BatteryHealthCard`) — a CoconutBattery-style circular health ring (FullChargeCapacity/DesignCapacity), big % in the center, status word (Good/Fair/Worn) + capacity + wear below. Genuinely shareable — battery health is the thing people screenshot. Added "Battery Health" to both context menus (above Settings). Light-theme ring darkened for contrast; friendly no-battery empty state. Verified: 94% for 70100/74496, 54% worn, correct colors, empty state, zero paint errors, menu items in both menus.
+
 ### 2026-07-24 — v1.1.6 Release (embarrassing three — overnight loop 2/12)
 - **Tray icon redesign** — the always-visible face of the app had two glaring failures: at critical (<=10%) it was a near-invisible dark pill (you couldn't tell your battery was dying), and charging looked identical to a full battery (no bolt). Now: critical gets a red outline + faint-red body so the whole pill reads "low"; charging draws a white lightning bolt; fill is full-opacity; outline brightened to (150,150,160) so it survives a dark taskbar. Verified by pixel-counting: critical 31 red px (healthy 0), charging 6 white-bolt px (non-charging 0).
 - **Custom opacity slider** — the settings Opacity control was a stock WinForms TrackBar (light track, system-blue thumb, tick marks): the one un-themed control on the dark panel. Replaced with a custom-painted Panel slider (dark track, accent fill, white thumb). Verified end-to-end: far-right click -> 100/1.0, far-left -> 30, no TrackBar remains.
