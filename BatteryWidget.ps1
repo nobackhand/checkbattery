@@ -168,7 +168,7 @@ $script:theme = @{
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.6"
+$script:appVersion = "1.1.7"
 
 function Get-SystemTheme {
     try {
@@ -3163,6 +3163,137 @@ function Show-SettingsPanel {
     $settings.Dispose()
 }
 
+function Show-BatteryHealthCard {
+    # A screenshot-worthy battery-health card: a circular health ring (the
+    # CoconutBattery pattern people share) surfacing wear/capacity that the
+    # lean popup no longer shows.
+    $info = Get-BatteryInfo
+    $gDpi = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $ds = $gDpi.DpiX / 96.0
+    $gDpi.Dispose()
+
+    $hasData = (-not $info.NoBattery) -and ($info.DesignCapacity -gt 0) -and ($info.FullChargeCapacity -gt 0)
+    $health = 0; $word = ""
+    $hcol = [System.Drawing.Color]::FromArgb(45, 212, 100)
+    if ($hasData) {
+        $health = [int][math]::Round(($info.FullChargeCapacity / $info.DesignCapacity) * 100)
+        $health = [math]::Max(0, [math]::Min(100, $health))
+        if ($health -ge 80)     { $hcol = [System.Drawing.Color]::FromArgb(45, 212, 100);  $word = "Good condition" }
+        elseif ($health -ge 60) { $hcol = [System.Drawing.Color]::FromArgb(255, 200, 0);   $word = "Fair condition" }
+        else                    { $hcol = [System.Drawing.Color]::FromArgb(255, 120, 45);  $word = "Worn - consider replacing" }
+    }
+    # light theme: darken the ring/status color for contrast
+    if ($script:theme.PopupBg.GetBrightness() -gt 0.5) {
+        $hcol = [System.Drawing.Color]::FromArgb([int]($hcol.R * 0.62), [int]($hcol.G * 0.62), [int]($hcol.B * 0.62))
+    }
+    $script:hcPct = $health
+    $script:hcColor = $hcol
+    $script:hcHasData = $hasData
+    $script:hcDs = $ds
+
+    $fw = [int](300 * $ds)
+    $fh = if ($hasData) { [int](332 * $ds) } else { [int](232 * $ds) }
+
+    $card = New-Object System.Windows.Forms.Form
+    $card.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $card.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+    $card.ShowInTaskbar = $false
+    $card.TopMost = $true
+    $card.BackColor = $script:theme.PopupBg
+    $card.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+    $card.KeyPreview = $true
+    $card.ClientSize = New-Object System.Drawing.Size($fw, $fh)
+    Enable-DoubleBuffering -Form $card
+    $card.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($card.Handle) })
+
+    $card.Add_Paint({
+        param($sender, $e)
+        $g = $e.Graphics
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+        $dds = $script:hcDs
+        # rounded border
+        $rd2 = 24
+        $bw = $sender.Width - 1; $bh = $sender.Height - 1
+        $bp = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
+        $bpen = New-Object System.Drawing.Pen($script:theme.Border, 1)
+        $g.DrawPath($bpen, $bp); $bpen.Dispose(); $bp.Dispose()
+        if (-not $script:hcHasData) { return }
+        # health ring
+        $ringD = [int](144 * $dds); $thick = [int](14 * $dds)
+        $ringX = [int](($sender.Width - $ringD) / 2); $ringY = [int](58 * $dds)
+        $inset = [int]($thick / 2) + 1
+        $rect = New-Object System.Drawing.Rectangle(($ringX + $inset), ($ringY + $inset), ($ringD - $inset*2), ($ringD - $inset*2))
+        $tpen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(52, 52, 60), $thick)
+        $tpen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $tpen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $g.DrawArc($tpen, $rect, -90, 359.9); $tpen.Dispose()
+        $sweep = ($script:hcPct / 100.0) * 360.0
+        if ($sweep -gt 0.5) {
+            $hpen = New-Object System.Drawing.Pen($script:hcColor, $thick)
+            $hpen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $hpen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $g.DrawArc($hpen, $rect, -90, $sweep); $hpen.Dispose()
+        }
+        # center: big % + HEALTH
+        $fmt = New-Object System.Drawing.StringFormat
+        $fmt.Alignment = [System.Drawing.StringAlignment]::Center
+        $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center   # y = vertical center of text
+        $cx = [single]($ringX + $ringD / 2)
+        $cy = $ringY + $ringD / 2
+        $pctFont = New-Object System.Drawing.Font("Segoe UI Semibold", (26 * $dds), [System.Drawing.FontStyle]::Bold)
+        $pctBrush = New-Object System.Drawing.SolidBrush($script:theme.TextPrimary)
+        $g.DrawString(("{0}%" -f $script:hcPct), $pctFont, $pctBrush, $cx, ([single]($cy - 9 * $dds)), $fmt)
+        $pctFont.Dispose(); $pctBrush.Dispose()
+        $lblFont = New-Object System.Drawing.Font("Segoe UI", (8 * $dds))
+        $lblBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
+        $g.DrawString("HEALTH", $lblFont, $lblBrush, $cx, ([single]($cy + 24 * $dds)), $fmt)
+        $lblFont.Dispose(); $lblBrush.Dispose(); $fmt.Dispose()
+    })
+
+    $fontsToDispose = @()
+    function Add-CenterLabel {
+        param($Text, $YPos, $FontSize, $Bold, $Color)
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Text = $Text
+        $style = if ($Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
+        $fn = if ($Bold) { "Segoe UI Semibold" } else { "Segoe UI" }
+        $lbl.Font = New-Object System.Drawing.Font($fn, ($FontSize * $ds), $style)
+        $lbl.ForeColor = $Color
+        $lbl.AutoSize = $false
+        $lbl.Size = New-Object System.Drawing.Size($fw, [int](($FontSize + 12) * $ds))
+        $lbl.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+        $lbl.Location = New-Object System.Drawing.Point(0, [int]($YPos * $ds))
+        $card.Controls.Add($lbl)
+        return $lbl
+    }
+
+    $null = Add-CenterLabel -Text "Battery Health" -YPos 22 -FontSize 11 -Bold $true -Color $script:theme.TextPrimary
+    if ($hasData) {
+        $fontsToDispose += (Add-CenterLabel -Text $word -YPos 214 -FontSize 11 -Bold $true -Color $hcol).Font
+        $fullTxt = "{0:N0} mWh of {1:N0}" -f $info.FullChargeCapacity, $info.DesignCapacity
+        $fontsToDispose += (Add-CenterLabel -Text $fullTxt -YPos 250 -FontSize 8.5 -Bold $false -Color $script:theme.TextLight).Font
+        $wearTxt = "{0:N1}% wear" -f $info.BatteryWearPercent
+        $fontsToDispose += (Add-CenterLabel -Text $wearTxt -YPos 274 -FontSize 8.5 -Bold $false -Color $script:theme.TextDim).Font
+    } else {
+        $glyph = Add-CenterLabel -Text ([string][char]0x26A1) -YPos 60 -FontSize 26 -Bold $false -Color ([System.Drawing.Color]::FromArgb(45, 212, 100))
+        $glyph.Font = New-Object System.Drawing.Font("Segoe UI Symbol", (26 * $ds), [System.Drawing.FontStyle]::Regular)
+        $fontsToDispose += $glyph.Font
+        $fontsToDispose += (Add-CenterLabel -Text "No battery to report on" -YPos 120 -FontSize 11 -Bold $true -Color $script:theme.TextPrimary).Font
+        $fontsToDispose += (Add-CenterLabel -Text "This PC is running on AC power." -YPos 150 -FontSize 8.5 -Bold $false -Color $script:theme.TextDim).Font
+    }
+
+    # rounded region
+    $prd = 22; $pw = $card.ClientSize.Width; $ph = $card.ClientSize.Height
+    $card.Region = New-Object System.Drawing.Region((New-RoundedRectPath -Right ($pw - $prd - 1) -Bottom ($ph - $prd - 1) -Diameter $prd))
+
+    $card.Add_KeyDown({ param($s, $e) if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $card.Close() } })
+    $card.Add_Deactivate({ $card.Close() })
+    $card.Add_Click({ $card.Close() })
+    $card.ShowDialog() | Out-Null
+    foreach ($f in $fontsToDispose) { if ($null -ne $f) { $f.Dispose() } }
+    foreach ($ctrl in $card.Controls) { if ($null -ne $ctrl.Font) { $ctrl.Font.Dispose() } }
+    $card.Dispose()
+}
+
 function Show-AboutDialog {
     $about = New-Object System.Windows.Forms.Form
     $about.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
@@ -3483,6 +3614,9 @@ $pillHideItem.Add_Click({
     Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
 })
 
+$pillHealthItem = New-Object System.Windows.Forms.ToolStripMenuItem("Battery Health")
+$pillHealthItem.Add_Click({ Show-BatteryHealthCard })
+
 $pillSettingsItem = New-Object System.Windows.Forms.ToolStripMenuItem("Settings...")
 $pillSettingsItem.Add_Click({ Show-SettingsPanel })
 
@@ -3508,6 +3642,7 @@ $pillExitItem.Add_Click({
 })
 
 $pillContextMenu.Items.Add($pillHideItem) | Out-Null
+$pillContextMenu.Items.Add($pillHealthItem) | Out-Null
 $pillContextMenu.Items.Add($pillSettingsItem) | Out-Null
 $pillContextMenu.Items.Add($pillPowerItem) | Out-Null
 $pillContextMenu.Items.Add($pillSeparator1) | Out-Null
@@ -3534,6 +3669,9 @@ $toggleBarItem.Add_Click({
         $toggleBarItem.Text = "Hide Bar"
     }
 })
+
+$healthItem = New-Object System.Windows.Forms.ToolStripMenuItem("Battery Health")
+$healthItem.Add_Click({ Show-BatteryHealthCard })
 
 $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem("Settings...")
 $settingsItem.Add_Click({ Show-SettingsPanel })
@@ -3562,6 +3700,7 @@ $contextMenu.Add_Opening({
 })
 
 $contextMenu.Items.Add($toggleBarItem) | Out-Null
+$contextMenu.Items.Add($healthItem) | Out-Null
 $contextMenu.Items.Add($settingsItem) | Out-Null
 $contextMenu.Items.Add($trayPowerItem) | Out-Null
 $contextMenu.Items.Add($refreshItem) | Out-Null
