@@ -82,6 +82,10 @@ powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 
 ## Changelog
 
+### 2026-07-24 — v1.1.5 Release (first-time user — overnight loop 1/12)
+- **Dark right-click menus** — both the pill and tray context menus were the stock light-gray Windows menu, jarring against the otherwise-dark app (and right-click is one of the four first-run tips). Now a DarkMenuColorTable + ToolStripProfessionalRenderer; Power Plan submenu re-themed after its dynamic rebuild. Verified by showing the real menus and pixel-sampling: 50/50 and 48/48 dark, zero light.
+- **Tip copy** — "Click to switch time / percent view" understated the gesture (it cycles time/percent/both); now "Click to change what it shows"
+
 ### 2026-07-22 — v1.1.4 Release (designer roast)
 - **The pill is finally a pill** — true capsule radius ((h-2)/2 per the path helper's inset: 13/16/20 for the three sizes), tray icon capsule to match (r=4)
 - **One duration format** — new Format-Duration ("3h 8m", no zero-pad) used by pill AND popup; they previously disagreed ("3h 8m" vs "3h 08m")

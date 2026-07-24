@@ -111,6 +111,32 @@ public class Win32Icon {
 }
 "@
 
+# Dark palette for the right-click menus - without this they render as the
+# stock light-gray Windows menu, which clashes hard with the otherwise-dark app.
+Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing @"
+using System.Drawing;
+using System.Windows.Forms;
+public class DarkMenuColorTable : ProfessionalColorTable {
+    static readonly Color Bg  = Color.FromArgb(32, 32, 36);
+    static readonly Color Sel = Color.FromArgb(52, 52, 60);
+    static readonly Color Sep = Color.FromArgb(64, 64, 72);
+    public DarkMenuColorTable() { this.UseSystemColors = false; }
+    public override Color ToolStripDropDownBackground   { get { return Bg;  } }
+    public override Color ImageMarginGradientBegin      { get { return Bg;  } }
+    public override Color ImageMarginGradientMiddle     { get { return Bg;  } }
+    public override Color ImageMarginGradientEnd        { get { return Bg;  } }
+    public override Color MenuBorder                    { get { return Sep; } }
+    public override Color MenuItemBorder                { get { return Sel; } }
+    public override Color MenuItemSelected              { get { return Sel; } }
+    public override Color MenuItemSelectedGradientBegin { get { return Sel; } }
+    public override Color MenuItemSelectedGradientEnd   { get { return Sel; } }
+    public override Color MenuItemPressedGradientBegin  { get { return Bg;  } }
+    public override Color MenuItemPressedGradientEnd    { get { return Bg;  } }
+    public override Color SeparatorDark                 { get { return Sep; } }
+    public override Color SeparatorLight                { get { return Sep; } }
+}
+"@
+
 # Declare DPI awareness before any forms are created
 [Win32Icon]::SetProcessDPIAware() | Out-Null
 
@@ -142,7 +168,7 @@ $script:theme = @{
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.4"
+$script:appVersion = "1.1.5"
 
 function Get-SystemTheme {
     try {
@@ -692,6 +718,8 @@ function Update-PowerPlanMenu {
         $noItem.Enabled = $false
         $MenuItem.DropDownItems.Add($noItem) | Out-Null
     }
+    # Re-apply dark theming to the freshly-rebuilt submenu items
+    if (Get-Command Set-DarkMenuItem -ErrorAction SilentlyContinue) { Set-DarkMenuItem -Item $MenuItem }
 }
 
 # ============================================================
@@ -1055,6 +1083,32 @@ function Enable-DoubleBuffering {
     $Form.GetType().GetProperty("DoubleBuffered",
         [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
     ).SetValue($Form, $true, $null)
+}
+
+$script:darkMenuRenderer = $null
+
+function Set-DarkMenu {
+    # Dark-theme a ContextMenuStrip (and its submenus) to match the app.
+    param([System.Windows.Forms.ToolStrip]$Menu)
+    if ($null -eq $script:darkMenuRenderer) {
+        $script:darkMenuRenderer = New-Object System.Windows.Forms.ToolStripProfessionalRenderer((New-Object DarkMenuColorTable))
+    }
+    $Menu.Renderer = $script:darkMenuRenderer
+    $Menu.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 36)
+    $Menu.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    foreach ($item in $Menu.Items) { Set-DarkMenuItem -Item $item }
+}
+
+function Set-DarkMenuItem {
+    param($Item)
+    if ($Item -is [System.Windows.Forms.ToolStripMenuItem]) {
+        $Item.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+        if ($Item.HasDropDownItems) {
+            $Item.DropDown.Renderer = $script:darkMenuRenderer
+            $Item.DropDown.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 36)
+            foreach ($sub in $Item.DropDownItems) { Set-DarkMenuItem -Item $sub }
+        }
+    }
 }
 
 function New-RoundedRectPath {
@@ -2520,7 +2574,7 @@ function Show-FirstRunTooltip {
     $pad = [int](14 * $ds)
     $tips = @(
         "Hover over the pill for details"
-        "Click to switch time / percent view"
+        "Click to change what it shows"
         "Drag to move, snaps to screen edges"
         "Right-click for settings & options"
     )
@@ -3409,6 +3463,7 @@ $pillContextMenu.Items.Add($pillRefreshItem) | Out-Null
 $pillContextMenu.Items.Add($pillAboutItem) | Out-Null
 $pillContextMenu.Items.Add($pillSeparator2) | Out-Null
 $pillContextMenu.Items.Add($pillExitItem) | Out-Null
+Set-DarkMenu -Menu $pillContextMenu
 
 $script:floatingBar.ContextMenuStrip = $pillContextMenu
 
@@ -3461,6 +3516,7 @@ $contextMenu.Items.Add($refreshItem) | Out-Null
 $contextMenu.Items.Add($aboutItem) | Out-Null
 $contextMenu.Items.Add($separatorItem) | Out-Null
 $contextMenu.Items.Add($exitItem) | Out-Null
+Set-DarkMenu -Menu $contextMenu
 
 $script:notifyIcon.ContextMenuStrip = $contextMenu
 
