@@ -140,18 +140,103 @@ public class DarkMenuColorTable : ProfessionalColorTable {
 # Declare DPI awareness before any forms are created
 [Win32Icon]::SetProcessDPIAware() | Out-Null
 
+# --- Themed modal dialog (matches the app instead of a stock gray MessageBox) ---
+# Self-contained: uses only WinForms/Drawing (loaded above) so it works this early,
+# before the theme table and notification system exist. Colors mirror $script:theme.
+function Show-AppDialog {
+    param(
+        [string]$Title,
+        [string]$Message,
+        [string]$Glyph = ([string][char]0x26A1),
+        [System.Drawing.Color]$Accent = ([System.Drawing.Color]::FromArgb(45, 212, 100)),
+        [string]$ButtonText = "Got it"
+    )
+    $bg    = [System.Drawing.Color]::FromArgb(24, 24, 28)
+    $fg    = [System.Drawing.Color]::FromArgb(245, 245, 250)
+    $dim   = [System.Drawing.Color]::FromArgb(170, 170, 180)
+    $btnBg = [System.Drawing.Color]::FromArgb(44, 44, 50)
+
+    $f = New-Object System.Windows.Forms.Form
+    $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $f.StartPosition   = [System.Windows.Forms.FormStartPosition]::CenterScreen
+    $f.BackColor       = $bg
+    $f.TopMost         = $true
+    $f.ShowInTaskbar   = $true
+    $f.Text            = "BatteryPill"
+    $f.KeyPreview      = $true
+    $tmpG = $f.CreateGraphics(); $ds = $tmpG.DpiX / 96.0; $tmpG.Dispose()
+    $f.ClientSize = New-Object System.Drawing.Size([int](360 * $ds), [int](172 * $ds))
+
+    $f.Add_Paint({
+        param($s, $e)
+        $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(64, 64, 72), 1)
+        $e.Graphics.DrawRectangle($pen, 0, 0, $s.ClientSize.Width - 1, $s.ClientSize.Height - 1)
+        $pen.Dispose()
+    })
+
+    # Accent strip along the top edge — the app's signature
+    $strip = New-Object System.Windows.Forms.Panel
+    $strip.BackColor = $Accent
+    $strip.Location  = New-Object System.Drawing.Point(0, 0)
+    $strip.Size      = New-Object System.Drawing.Size($f.ClientSize.Width, [int](4 * $ds))
+    $f.Controls.Add($strip)
+
+    $glyphFont = New-Object System.Drawing.Font("Segoe UI Symbol", 22, [System.Drawing.FontStyle]::Regular)
+    $gl = New-Object System.Windows.Forms.Label
+    $gl.Text = $Glyph; $gl.Font = $glyphFont; $gl.ForeColor = $Accent
+    $gl.AutoSize = $false
+    $gl.Size = New-Object System.Drawing.Size([int](48 * $ds), [int](48 * $ds))
+    $gl.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $gl.Location = New-Object System.Drawing.Point([int](22 * $ds), [int](30 * $ds))
+    $f.Controls.Add($gl)
+
+    $titleFont = New-Object System.Drawing.Font("Segoe UI Semibold", 12, [System.Drawing.FontStyle]::Bold)
+    $tl = New-Object System.Windows.Forms.Label
+    $tl.Text = $Title; $tl.Font = $titleFont; $tl.ForeColor = $fg
+    $tl.AutoSize = $false
+    $tl.Location = New-Object System.Drawing.Point([int](84 * $ds), [int](30 * $ds))
+    $tl.Size = New-Object System.Drawing.Size([int](256 * $ds), [int](26 * $ds))
+    $f.Controls.Add($tl)
+
+    $bodyFont = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
+    $bl = New-Object System.Windows.Forms.Label
+    $bl.Text = $Message; $bl.Font = $bodyFont; $bl.ForeColor = $dim
+    $bl.AutoSize = $false
+    $bl.Location = New-Object System.Drawing.Point([int](84 * $ds), [int](58 * $ds))
+    $bl.Size = New-Object System.Drawing.Size([int](256 * $ds), [int](60 * $ds))
+    $f.Controls.Add($bl)
+
+    $btnFont = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5, [System.Drawing.FontStyle]::Regular)
+    $btn = New-Object System.Windows.Forms.Button
+    $btn.Text = $ButtonText; $btn.Font = $btnFont
+    $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btn.BackColor = $btnBg; $btn.ForeColor = $fg
+    $btn.FlatAppearance.BorderColor = $Accent
+    $btn.FlatAppearance.BorderSize = 1
+    $btn.Size = New-Object System.Drawing.Size([int](100 * $ds), [int](32 * $ds))
+    $btn.Location = New-Object System.Drawing.Point(
+        ($f.ClientSize.Width - [int](100 * $ds) - [int](20 * $ds)),
+        ($f.ClientSize.Height - [int](32 * $ds) - [int](18 * $ds)))
+    $btn.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $f.Controls.Add($btn)
+    $f.AcceptButton = $btn
+
+    $f.Add_KeyDown({ param($s, $e) if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $s.Close() } })
+
+    $f.ShowDialog() | Out-Null
+    $glyphFont.Dispose(); $titleFont.Dispose(); $bodyFont.Dispose(); $btnFont.Dispose()
+    $f.Dispose()
+}
+
 # --- Single-instance guard ---
 $script:mutexName = "Global\BatteryWidgetSingleInstance"
 $script:createdNew = $false
 $script:mutex = New-Object System.Threading.Mutex($true, $script:mutexName, [ref]$script:createdNew)
 
 if (-not $script:createdNew) {
-    [System.Windows.Forms.MessageBox]::Show(
-        "BatteryPill is already running.`n`nLook for the pill on your desktop, or its icon in the system tray (bottom-right).",
-        "BatteryPill",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Information
-    ) | Out-Null
+    Show-AppDialog -Title "Already running" `
+        -Message "Look for the pill on your desktop, or the battery icon in your system tray (bottom-right)." `
+        -Glyph ([string][char]0x26A1)
     exit
 }
 
@@ -168,7 +253,7 @@ $script:theme = @{
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.7"
+$script:appVersion = "1.1.8"
 
 function Get-SystemTheme {
     try {
@@ -1055,12 +1140,9 @@ function Set-AutoStart {
     if ($Enable) {
         $exePath = Get-ExePath
         if ($null -eq $exePath) {
-            [System.Windows.Forms.MessageBox]::Show(
-                "Auto-start is only available when running the compiled .exe version.",
-                "BatteryPill",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Information
-            ) | Out-Null
+            Show-BatteryNotification -Message "Auto-start needs the .exe" `
+                -SubMessage "This works when you run the compiled BatteryPill.exe, not the script." `
+                -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
             return $false
         }
 
@@ -1073,12 +1155,9 @@ function Set-AutoStart {
             $shortcut.Save()
             return $true
         } catch {
-            [System.Windows.Forms.MessageBox]::Show(
-                "Failed to create startup shortcut: $_",
-                "BatteryPill",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            ) | Out-Null
+            Show-BatteryNotification -Message "Couldn't enable auto-start" `
+                -SubMessage "Windows blocked the startup shortcut. Try launching BatteryPill once as administrator." `
+                -Accent ([System.Drawing.Color]::FromArgb(255, 170, 60))
             return $false
         }
     } else {
