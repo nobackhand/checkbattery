@@ -137,6 +137,72 @@ public class DarkMenuColorTable : ProfessionalColorTable {
 }
 "@
 
+# Custom dark checkbox — the stock WinForms CheckBox draws an OS-default light
+# square with a system-blue check, the one control that still looked bolted-on
+# against the themed Settings panel (same problem the opacity slider had). This
+# owner-paints a rounded box with an accent fill + white check when on.
+Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing @"
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+public class DarkCheckBox : CheckBox {
+    public Color AccentColor = Color.FromArgb(45, 212, 100);
+    public DarkCheckBox() {
+        this.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
+            | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+        this.BackColor = Color.Transparent;
+        this.FlatStyle = FlatStyle.Flat;
+        this.Cursor = Cursors.Hand;
+    }
+    protected override void OnCheckedChanged(EventArgs e) { base.OnCheckedChanged(e); this.Invalidate(); }
+    protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); this.Invalidate(); }
+    protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); this.Invalidate(); }
+    protected override void OnPaint(PaintEventArgs e) {
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+        int box = this.Font.Height;                 // scales with DPI/font
+        if (box < 14) box = 14;
+        int top = (this.Height - box) / 2;
+        float u = box / 16f;
+        Rectangle r = new Rectangle(0, top, box, box);
+        bool hot = this.ClientRectangle.Contains(this.PointToClient(Control.MousePosition));
+        using (GraphicsPath path = Rounded(r, (int)(4 * u))) {
+            if (this.Checked) {
+                using (SolidBrush b = new SolidBrush(AccentColor)) g.FillPath(b, path);
+                using (Pen p = new Pen(Color.FromArgb(22, 22, 26), Math.Max(2f, 2f * u))) {
+                    p.StartCap = LineCap.Round; p.EndCap = LineCap.Round; p.LineJoin = LineJoin.Round;
+                    g.DrawLines(p, new PointF[] {
+                        new PointF(r.X + 4f * u,   r.Y + 8.5f * u),
+                        new PointF(r.X + 6.8f * u, r.Y + 11.3f * u),
+                        new PointF(r.X + 12f * u,  r.Y + 5f * u)
+                    });
+                }
+            } else {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(44, 44, 50))) g.FillPath(b, path);
+                Color bc = hot ? Color.FromArgb(130, 130, 142) : Color.FromArgb(92, 92, 102);
+                using (Pen p = new Pen(bc, 1.3f)) g.DrawPath(p, path);
+            }
+        }
+        Rectangle textRect = new Rectangle(box + (int)(9 * u), 0, this.Width - box - (int)(9 * u), this.Height);
+        TextRenderer.DrawText(g, this.Text, this.Font, textRect, this.ForeColor,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+    }
+    static GraphicsPath Rounded(Rectangle b, int radius) {
+        int d = radius * 2;
+        GraphicsPath p = new GraphicsPath();
+        if (d <= 0) { p.AddRectangle(b); p.CloseFigure(); return p; }
+        p.AddArc(b.X, b.Y, d, d, 180, 90);
+        p.AddArc(b.Right - d, b.Y, d, d, 270, 90);
+        p.AddArc(b.Right - d, b.Bottom - d, d, d, 0, 90);
+        p.AddArc(b.X, b.Bottom - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+}
+"@
+
 # Declare DPI awareness before any forms are created
 [Win32Icon]::SetProcessDPIAware() | Out-Null
 
@@ -253,7 +319,7 @@ $script:theme = @{
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.8"
+$script:appVersion = "1.1.9"
 
 function Get-SystemTheme {
     try {
@@ -1720,15 +1786,17 @@ function New-SparklinePanel {
         $sw = $sender.Width
         $sh = $sender.Height
 
-        # Background (theme-aware)
+        # Rounded background — the sparkline was the one sharp-cornered box in an
+        # app built on rounded corners. Round it with the shared primitive and
+        # clip the graph inside so nothing squares off the corners.
+        $d = 6
+        $rPath = New-RoundedRectPath -Right ($sw - $d - 1) -Bottom ($sh - $d - 1) -Diameter $d
         $bgBrush = New-Object System.Drawing.SolidBrush($script:theme.SparkBg)
-        $sg.FillRectangle($bgBrush, 0, 0, $sw, $sh)
+        $sg.FillPath($bgBrush, $rPath)
         $bgBrush.Dispose()
 
-        # Border
-        $bdrPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
-        $sg.DrawRectangle($bdrPen, 0, 0, $sw - 1, $sh - 1)
-        $bdrPen.Dispose()
+        $clipState = $sg.Save()
+        $sg.SetClip($rPath)
 
         $guide = $script:theme.SparkGuide
 
@@ -1747,67 +1815,73 @@ function New-SparklinePanel {
             $noDataFmt.LineAlignment = [System.Drawing.StringAlignment]::Center
             $sg.DrawString("Charting your battery...", $noDataFont, $noDataBrush, (New-Object System.Drawing.RectangleF(0, 0, $sw, ($sh - 6))), $noDataFmt)
             $noDataFmt.Dispose(); $noDataBrush.Dispose(); $noDataFont.Dispose()
-            return
-        }
+        } else {
+            $count = $history.Count
+            $acColor = $sender.Tag.AccentColor
 
-        $count = $history.Count
-        $acColor = $sender.Tag.AccentColor
-
-        # Draw charging background bands (green tinted regions)
-        $chargeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(15, 45, 212, 100))
-        for ($i = 0; $i -lt $count; $i++) {
-            if ($history[$i].IsCharging) {
-                $x1 = [int](($i / [math]::Max(1, $count - 1)) * $sw)
-                $sg.FillRectangle($chargeBrush, $x1, 0, [math]::Max(2, [int]($sw / $count) + 1), $sh)
+            # Draw charging background bands (green tinted regions)
+            $chargeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(15, 45, 212, 100))
+            for ($i = 0; $i -lt $count; $i++) {
+                if ($history[$i].IsCharging) {
+                    $x1 = [int](($i / [math]::Max(1, $count - 1)) * $sw)
+                    $sg.FillRectangle($chargeBrush, $x1, 0, [math]::Max(2, [int]($sw / $count) + 1), $sh)
+                }
             }
-        }
-        $chargeBrush.Dispose()
+            $chargeBrush.Dispose()
 
-        # Draw sparkline
-        $linePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(200, $acColor.R, $acColor.G, $acColor.B), 1.5)
-        $points = New-Object System.Drawing.PointF[] $count
-        for ($i = 0; $i -lt $count; $i++) {
-            $px = ($i / [math]::Max(1, $count - 1)) * $sw
-            $py = $sh - (($history[$i].Percent / 100.0) * ($sh - 4)) - 2
-            $points[$i] = New-Object System.Drawing.PointF($px, $py)
-        }
-        if ($count -ge 2) {
-            $sg.DrawLines($linePen, $points)
-        }
-        $linePen.Dispose()
+            # Draw sparkline
+            $linePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(200, $acColor.R, $acColor.G, $acColor.B), 1.5)
+            $points = New-Object System.Drawing.PointF[] $count
+            for ($i = 0; $i -lt $count; $i++) {
+                $px = ($i / [math]::Max(1, $count - 1)) * $sw
+                $py = $sh - (($history[$i].Percent / 100.0) * ($sh - 4)) - 2
+                $points[$i] = New-Object System.Drawing.PointF($px, $py)
+            }
+            if ($count -ge 2) {
+                $sg.DrawLines($linePen, $points)
+            }
+            $linePen.Dispose()
 
-        # Current value dot at the end of the sparkline
-        if ($count -ge 2) {
-            $lastPt = $points[$count - 1]
-            $dotBrush = New-Object System.Drawing.SolidBrush(
-                [System.Drawing.Color]::FromArgb(255, $acColor.R, $acColor.G, $acColor.B))
-            $sg.FillEllipse($dotBrush, $lastPt.X - 3, $lastPt.Y - 3, 6, 6)
-            $dotBrush.Dispose()
+            # Current value dot at the end of the sparkline
+            if ($count -ge 2) {
+                $lastPt = $points[$count - 1]
+                $dotBrush = New-Object System.Drawing.SolidBrush(
+                    [System.Drawing.Color]::FromArgb(255, $acColor.R, $acColor.G, $acColor.B))
+                $sg.FillEllipse($dotBrush, $lastPt.X - 3, $lastPt.Y - 3, 6, 6)
+                $dotBrush.Dispose()
+            }
+
+            # 50% dashed guide line
+            $halfY = $sh - ((50.0 / 100.0) * ($sh - 4)) - 2
+            $dashPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50, $guide.R, $guide.G, $guide.B), 1)
+            $dashPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+            $sg.DrawLine($dashPen, 0, [int]$halfY, $sw, [int]$halfY)
+            $dashPen.Dispose()
+            $guideFont = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
+            $guideBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
+            $sg.DrawString("50%", $guideFont, $guideBrush, 4, [int]$halfY - 12)
+            $guideBrush.Dispose()
+
+            # Time range label (right edge)
+            if ($count -ge 2) {
+                $firstTime = $history[0].Time
+                $lastTime = $history[$count - 1].Time
+                $spanMin = [int](($lastTime - $firstTime).TotalMinutes)
+                $spanText = if ($spanMin -ge 60) { "{0}h" -f [math]::Round($spanMin / 60.0, 1) } else { "{0} min" -f $spanMin }
+                $spanSize = $sg.MeasureString($spanText, $guideFont)
+                $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
+                $sg.DrawString($spanText, $guideFont, $spanBrush, ($sw - $spanSize.Width - 5), ($sh - $spanSize.Height - 2))
+                $spanBrush.Dispose()
+            }
+            $guideFont.Dispose()
         }
 
-        # 50% dashed guide line
-        $halfY = $sh - ((50.0 / 100.0) * ($sh - 4)) - 2
-        $dashPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50, $guide.R, $guide.G, $guide.B), 1)
-        $dashPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
-        $sg.DrawLine($dashPen, 0, [int]$halfY, $sw, [int]$halfY)
-        $dashPen.Dispose()
-        $guideFont = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
-        $guideBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
-        $sg.DrawString("50%", $guideFont, $guideBrush, 2, [int]$halfY - 12)
-        $guideBrush.Dispose()
-
-        # Time range label (right edge)
-        if ($count -ge 2) {
-            $firstTime = $history[0].Time
-            $lastTime = $history[$count - 1].Time
-            $spanMin = [int](($lastTime - $firstTime).TotalMinutes)
-            $spanText = if ($spanMin -ge 60) { "{0}h" -f [math]::Round($spanMin / 60.0, 1) } else { "{0} min" -f $spanMin }
-            $spanSize = $sg.MeasureString($spanText, $guideFont)
-            $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
-            $sg.DrawString($spanText, $guideFont, $spanBrush, ($sw - $spanSize.Width - 2), ($sh - $spanSize.Height - 1))
-            $spanBrush.Dispose()
-        }
-        $guideFont.Dispose()
+        # Restore clip and stroke a soft rounded border on top
+        $sg.Restore($clipState)
+        $bdrPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(150, $script:theme.Border.R, $script:theme.Border.G, $script:theme.Border.B), 1)
+        $sg.DrawPath($bdrPen, $rPath)
+        $bdrPen.Dispose()
+        $rPath.Dispose()
     })
     return $panel
 }
@@ -2795,12 +2869,13 @@ function Show-SettingsPanel {
     $y += [int](24 * $ds)
 
     # Auto-start checkbox
-    $autoStartCheck = New-Object System.Windows.Forms.CheckBox
+    $autoStartCheck = New-Object DarkCheckBox
     $autoStartCheck.Text = "Start with Windows"
     $autoStartCheck.Font = $labelFont
     $autoStartCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
     $autoStartCheck.Location = New-Object System.Drawing.Point($m, $y)
-    $autoStartCheck.AutoSize = $true
+    $autoStartCheck.AutoSize = $false
+    $autoStartCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
     $autoStartCheck.Checked = Get-AutoStartEnabled
     $autoStartCheck.Add_CheckedChanged({
         $result = Set-AutoStart -Enable $autoStartCheck.Checked
@@ -2813,12 +2888,13 @@ function Show-SettingsPanel {
     $y += [int](30 * $ds)
 
     # Show floating pill checkbox
-    $showBarCheck = New-Object System.Windows.Forms.CheckBox
+    $showBarCheck = New-Object DarkCheckBox
     $showBarCheck.Text = "Show floating pill"
     $showBarCheck.Font = $labelFont
     $showBarCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
     $showBarCheck.Location = New-Object System.Drawing.Point($m, $y)
-    $showBarCheck.AutoSize = $true
+    $showBarCheck.AutoSize = $false
+    $showBarCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
     $showBarCheck.Checked = ($null -ne $script:floatingBar -and $script:floatingBar.Visible)
     $showBarCheck.Add_CheckedChanged({
         if ($showBarCheck.Checked) {
@@ -2834,12 +2910,13 @@ function Show-SettingsPanel {
     $y += [int](30 * $ds)
 
     # Lock position checkbox
-    $lockPosCheck = New-Object System.Windows.Forms.CheckBox
+    $lockPosCheck = New-Object DarkCheckBox
     $lockPosCheck.Text = "Lock pill position"
     $lockPosCheck.Font = $labelFont
     $lockPosCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
     $lockPosCheck.Location = New-Object System.Drawing.Point($m, $y)
-    $lockPosCheck.AutoSize = $true
+    $lockPosCheck.AutoSize = $false
+    $lockPosCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
     $lockPosCheck.Checked = $script:positionLocked
     $lockPosCheck.Add_CheckedChanged({
         $script:positionLocked = $lockPosCheck.Checked
@@ -2851,12 +2928,13 @@ function Show-SettingsPanel {
     $y += [int](30 * $ds)
 
     # Auto-hide in fullscreen checkbox
-    $autoHideCheck = New-Object System.Windows.Forms.CheckBox
+    $autoHideCheck = New-Object DarkCheckBox
     $autoHideCheck.Text = "Auto-hide in fullscreen"
     $autoHideCheck.Font = $labelFont
     $autoHideCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
     $autoHideCheck.Location = New-Object System.Drawing.Point($m, $y)
-    $autoHideCheck.AutoSize = $true
+    $autoHideCheck.AutoSize = $false
+    $autoHideCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
     $autoHideCheck.Checked = $script:config.AutoHideFullscreen
     $autoHideCheck.Add_CheckedChanged({
         $script:config.AutoHideFullscreen = $autoHideCheck.Checked
@@ -2995,11 +3073,22 @@ function Show-SettingsPanel {
                 $cg.FillEllipse($brush, 2, 2, $sender.Width - 5, $sender.Height - 5)
             }
             $brush.Dispose()
-            # Selection ring (accent-colored glow)
+            # Selection ring — a contrasting ring with a gap, so the active swatch
+            # is unmistakable. (An accent-hued ring on an accent dot was invisible.)
             if ($idx -eq $script:config.AccentColorIndex) {
-                $ringColor = [System.Drawing.Color]::FromArgb(200, $color.R, $color.G, $color.B)
+                # Gap: punch the panel-bg between dot and ring so they read separately
+                $gapPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(32, 32, 36), 2)
+                $cg.DrawEllipse($gapPen, 1, 1, $sender.Width - 3, $sender.Height - 3)
+                $gapPen.Dispose()
+                # Ring: light on dark swatches, dark on light ones (e.g. the white preset)
+                $lum = ($color.R * 0.299) + ($color.G * 0.587) + ($color.B * 0.114)
+                $ringColor = if ($lum -gt 180) {
+                    [System.Drawing.Color]::FromArgb(120, 120, 130)
+                } else {
+                    [System.Drawing.Color]::FromArgb(240, 240, 245)
+                }
                 $ringPen = New-Object System.Drawing.Pen($ringColor, 2)
-                $cg.DrawEllipse($ringPen, 1, 1, $sender.Width - 3, $sender.Height - 3)
+                $cg.DrawEllipse($ringPen, 0, 0, $sender.Width - 1, $sender.Height - 1)
                 $ringPen.Dispose()
             }
         })
