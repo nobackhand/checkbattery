@@ -168,7 +168,7 @@ $script:theme = @{
     SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.5"
+$script:appVersion = "1.1.6"
 
 function Get-SystemTheme {
     try {
@@ -812,31 +812,51 @@ function New-BatteryIcon {
     $d = $radius * 2
     $path = New-RoundedRectPath -X $pillX -Y $pillY -Right ($pillX + $pillW - $d) -Bottom ($pillY + $pillH - $d) -Diameter $d
 
-    # Dark background fill (matches floating pill)
-    $bgBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(24, 24, 28))
+    $isCharging = ($Status -eq "Charging")
+    # Critical = the whole pill should scream "low" even though the charge bar
+    # is a tiny sliver. Previously a 10% icon was a near-invisible dark pill.
+    $isCritical = ($Percent -ge 0 -and $Percent -le 10 -and -not $isCharging)
+
+    # Empty body: faint red when critical, otherwise a mid-dark that stays
+    # visible against a dark taskbar (the old 24,24,28 vanished into it)
+    $bodyColor = if ($isCritical) { [System.Drawing.Color]::FromArgb(72, 26, 28) } else { [System.Drawing.Color]::FromArgb(44, 44, 50) }
+    $bgBrush = New-Object System.Drawing.SolidBrush($bodyColor)
     $g.FillPath($bgBrush, $path)
     $bgBrush.Dispose()
 
-    # Accent fill (from left, proportional to percent)
+    # Charge fill (from left, proportional) - now vivid full-opacity
     $pct = [math]::Max(0, [math]::Min(100, $Percent))
     $fillWidth = [math]::Max(0, [int](($pct / 100) * $pillW))
     if ($fillWidth -gt 0) {
         $oldClip = $g.Clip
         $g.SetClip($path)
-
-        # Get accent color based on battery level and charging state
-        $baseColor = Get-AccentColor -Percent $Percent -IsCharging ($Status -eq "Charging")
-        $accentColor = [System.Drawing.Color]::FromArgb(180, $baseColor.R, $baseColor.G, $baseColor.B)
-
-        $fillBrush = New-Object System.Drawing.SolidBrush($accentColor)
+        $accent = Get-AccentColor -Percent $Percent -IsCharging $isCharging
+        $fillBrush = New-Object System.Drawing.SolidBrush($accent)
         $g.FillRectangle($fillBrush, $pillX, $pillY, $fillWidth, $pillH)
         $fillBrush.Dispose()
-
         $g.Clip = $oldClip
     }
 
-    # Border (slightly brighter than pill for visibility at small size)
-    $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, 80, 86), 1)
+    # Charging bolt overlay so charging never looks like a plain full battery
+    if ($isCharging) {
+        [System.Drawing.PointF[]]$bolt = @(
+            (New-Object System.Drawing.PointF(9.7, 3.8)),
+            (New-Object System.Drawing.PointF(5.2, 8.9)),
+            (New-Object System.Drawing.PointF(7.8, 8.9)),
+            (New-Object System.Drawing.PointF(6.5, 12.2)),
+            (New-Object System.Drawing.PointF(10.8, 6.8)),
+            (New-Object System.Drawing.PointF(8.4, 6.8))
+        )
+        $boltPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(170, 0, 0, 0), 1.6)  # dark edge for contrast on amber
+        $g.DrawPolygon($boltPen, $bolt); $boltPen.Dispose()
+        $boltBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+        $g.FillPolygon($boltBrush, $bolt); $boltBrush.Dispose()
+    }
+
+    # Outline: red when critical (visible even nearly empty), otherwise a bright
+    # neutral that survives both light and dark taskbars (old 80,80,86 did not)
+    $outlineColor = if ($isCritical) { [System.Drawing.Color]::FromArgb(255, 80, 80) } else { [System.Drawing.Color]::FromArgb(150, 150, 160) }
+    $borderPen = New-Object System.Drawing.Pen($outlineColor, 1)
     $g.DrawPath($borderPen, $path)
     $borderPen.Dispose()
 
@@ -2994,24 +3014,56 @@ function Show-SettingsPanel {
     $settings.Controls.Add($opacityValueLabel)
     $y += [int](24 * $ds)
 
-    # Opacity slider (30-100 maps to 0.3-1.0)
-    $opacitySlider = New-Object System.Windows.Forms.TrackBar
-    $opacitySlider.Minimum = 30
-    $opacitySlider.Maximum = 100
-    $opacitySlider.Value = [int]($script:config.Opacity * 100)
-    $opacitySlider.TickFrequency = 10
+    # Opacity slider - custom-drawn (30-100 -> 0.3-1.0). A stock WinForms
+    # TrackBar can't be themed (light track, system-blue thumb, tick marks) and
+    # was the one un-dark control on the panel; this one matches the app.
+    $script:opacityVal = [int]($script:config.Opacity * 100)
+    $script:opacityDragging = $false
+    $sliderH = [int](24 * $ds)
+    $opacitySlider = New-Object System.Windows.Forms.Panel
     $opacitySlider.Location = New-Object System.Drawing.Point($m, $y)
-    $opacitySlider.Size = New-Object System.Drawing.Size($cw, [int](30 * $ds))
+    $opacitySlider.Size = New-Object System.Drawing.Size($cw, $sliderH)
     $opacitySlider.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 36)
-    $opacitySlider.Add_ValueChanged({
-        $newOpacity = $opacitySlider.Value / 100.0
-        $script:floatingBar.Opacity = $newOpacity
-        $script:config.Opacity = $newOpacity
-        $opacityValueLabel.Text = "{0}%" -f $opacitySlider.Value
+    $opacitySlider.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $sTx0 = [int](9 * $ds); $sThumbR = [int](7 * $ds)
+    $opacitySlider.Add_Paint({
+        param($sender, $e)
+        $sg = $e.Graphics
+        $sg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $tx0 = $sTx0; $tx1 = $sender.Width - $sTx0; $tw = $tx1 - $tx0
+        $cy = [int]($sender.Height / 2)
+        $frac = ($script:opacityVal - 30) / 70.0
+        $thumbX = [int]($tx0 + $frac * $tw)
+        # track
+        $trkPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(64, 64, 72), 3)
+        $sg.DrawLine($trkPen, $tx0, $cy, $tx1, $cy); $trkPen.Dispose()
+        # filled portion (accent)
+        $accent = $script:accentPresets[[math]::Max(0, [math]::Min(7, [int]$script:config.AccentColorIndex))]
+        $filPen = New-Object System.Drawing.Pen($accent, 3)
+        $sg.DrawLine($filPen, $tx0, $cy, $thumbX, $cy); $filPen.Dispose()
+        # thumb
+        $thBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(238, 238, 244))
+        $sg.FillEllipse($thBrush, ($thumbX - $sThumbR), ($cy - $sThumbR), ($sThumbR * 2), ($sThumbR * 2)); $thBrush.Dispose()
+        $thPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(32, 32, 36), 1)
+        $sg.DrawEllipse($thPen, ($thumbX - $sThumbR), ($cy - $sThumbR), ($sThumbR * 2), ($sThumbR * 2)); $thPen.Dispose()
     })
-    $opacitySlider.Add_MouseUp({ Save-Config })
+    $setOpacityFromX = {
+        param($px)
+        $tx0 = $sTx0; $tx1 = $opacitySlider.Width - $sTx0; $tw = $tx1 - $tx0
+        $frac = ([math]::Max($tx0, [math]::Min($tx1, $px)) - $tx0) / [double]$tw
+        $val = [int][math]::Round(30 + $frac * 70)
+        $val = [math]::Max(30, [math]::Min(100, $val))
+        $script:opacityVal = $val
+        $script:floatingBar.Opacity = $val / 100.0
+        $script:config.Opacity = $val / 100.0
+        $opacityValueLabel.Text = "$val%"
+        $opacitySlider.Invalidate()
+    }
+    $opacitySlider.Add_MouseDown({ param($s, $e) $script:opacityDragging = $true; & $setOpacityFromX $e.X }.GetNewClosure())
+    $opacitySlider.Add_MouseMove({ param($s, $e) if ($script:opacityDragging) { & $setOpacityFromX $e.X } }.GetNewClosure())
+    $opacitySlider.Add_MouseUp({ $script:opacityDragging = $false; Save-Config }.GetNewClosure())
     $settings.Controls.Add($opacitySlider)
-    $y += [int](52 * $ds)
+    $y += [int](40 * $ds)
 
     # --- Refresh rate section ---
 
