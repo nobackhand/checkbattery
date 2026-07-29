@@ -24,10 +24,15 @@ function Import-WidgetFunction {
         BatteryWidget.ps1. Dot-source the result to bring them into scope.
     #>
     [OutputType([scriptblock])]
-    param([Parameter(Mandatory = $true)][string[]]$Name)
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Name,
+        # Repo-relative file to lift from. CheckBattery.ps1 ships standalone and
+        # carries its own copy of some helpers, so its copies get tested too.
+        [string]$Source = 'BatteryWidget.ps1'
+    )
 
     $repoRoot = Split-Path -Parent $PSScriptRoot
-    $source = Join-Path $repoRoot 'BatteryWidget.ps1'
+    $source = Join-Path $repoRoot $Source
     if (-not (Test-Path $source)) { throw "not found: $source" }
 
     $errs = $null

@@ -20,9 +20,36 @@ if ($PSVersionTable.PSVersion.Major -ge 6 -and -not $IsWindows) {
     exit 1
 }
 
+# --- Validated read of one firmware-supplied number ---
+# Win32_Battery values come from the OEM's firmware, and PowerShell's casts turn
+# bad ones into crashes or lies: [int]4294967295 (the UInt32 "unknown" pattern)
+# THROWS, [int]$null is a silent 0%, and [int] of the array a dual-battery
+# laptop returns THROWS. Returns $null - "no reading" - for anything that is not
+# a finite number inside [Min, Max].
+function Read-DeviceNumber {
+    [OutputType([object])]
+    param(
+        # any-typed: one raw WMI property - number, string, $null, or an array.
+        [AllowNull()][object]$Raw,
+        [double]$Min = 0,
+        [double]$Max = 2147483647
+    )
+    if ($null -eq $Raw) { return $null }
+    # The cast is the shape check too: [double] throws for a collection (the
+    # dual-battery array) and for a non-numeric string alike.
+    $value = 0.0
+    try { $value = [double]$Raw } catch { return $null }
+    if ([double]::IsNaN($value) -or [double]::IsInfinity($value)) { return $null }
+    if ($value -lt $Min -or $value -gt $Max) { return $null }
+    return $value
+}
+
 # --- Query battery data from WMI (primary source) ---
+# A dual-battery laptop returns an ARRAY here; member access on it yields arrays
+# that used to crash every [int] cast below, so take the first pack (an empty
+# array pipes to $null, preserving the no-battery path).
 try {
-    $wmiBattery = Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop
+    $wmiBattery = @(Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop) | Select-Object -First 1
 } catch {
     Write-Verbose "WMI query failed: $_"
     $wmiBattery = $null
@@ -39,8 +66,9 @@ try {
 
 # --- Handle no battery ---
 $noBattery = $false
+$dnChargeStatus = if ($dotnetPower) { Read-DeviceNumber -Raw $dotnetPower.BatteryChargeStatus -Min 0 -Max 255 } else { $null }
 if ($null -eq $wmiBattery) {
-    if ($null -eq $dotnetPower -or ([int]$dotnetPower.BatteryChargeStatus -band 128) -eq 128) {
+    if ($null -eq $dotnetPower -or ($null -ne $dnChargeStatus -and ([int]$dnChargeStatus -band 128) -eq 128)) {
         $noBattery = $true
     }
 }
@@ -64,12 +92,16 @@ if ($noBattery) {
 }
 
 # --- Extract charge percentage ---
-if ($wmiBattery) {
-    $chargePercent = [int]$wmiBattery.EstimatedChargeRemaining
-} elseif ($dotnetPower) {
-    $chargePercent = [int]($dotnetPower.BatteryLifePercent * 100)
-} else {
-    $chargePercent = -1
+# 255 is the documented WMI "unknown" sentinel and a null casts to a false 0%,
+# so anything outside 0-100 is treated as no reading and the .NET source
+# (itself 255 when unknown, hence the 0-1 range check) answers instead.
+$chargePercent = -1
+$wmiPct = if ($wmiBattery) { Read-DeviceNumber -Raw $wmiBattery.EstimatedChargeRemaining -Min 0 -Max 100 } else { $null }
+$dnFraction = if ($dotnetPower) { Read-DeviceNumber -Raw $dotnetPower.BatteryLifePercent -Min 0 -Max 1 } else { $null }
+if ($null -ne $wmiPct) {
+    $chargePercent = [int]$wmiPct
+} elseif ($null -ne $dnFraction) {
+    $chargePercent = [int]($dnFraction * 100)
 }
 
 # --- Determine charging status ---
@@ -81,17 +113,18 @@ $isPluggedIn = $false
 $isFullyCharged = $false
 
 if ($wmiBattery) {
-    $batteryStatus = $wmiBattery.BatteryStatus
+    # A UInt16 code 1-11; anything else means "unknown", not a state.
+    $batteryStatus = Read-DeviceNumber -Raw $wmiBattery.BatteryStatus -Min 1 -Max 11
     $isCharging = $batteryStatus -in @(2, 6, 7, 8, 9)
     $isPluggedIn = $batteryStatus -in @(2, 3, 6, 7, 8, 9, 11)
-    $isFullyCharged = $batteryStatus -eq 3
+    $isFullyCharged = ($null -ne $batteryStatus -and $batteryStatus -eq 3)
 }
 
 if ($dotnetPower) {
     if ($dotnetPower.PowerLineStatus -eq 'Online') {
         $isPluggedIn = $true
     }
-    if (([int]$dotnetPower.BatteryChargeStatus -band 8) -eq 8) {
+    if ($null -ne $dnChargeStatus -and ([int]$dnChargeStatus -band 8) -eq 8) {
         $isCharging = $true
     }
 }
@@ -105,17 +138,18 @@ if ($chargePercent -ge 100 -and $isPluggedIn) {
 $timeMinutes = -1
 
 if (-not $isCharging -and -not $isFullyCharged) {
-    # Discharging: get estimated run time
-    if ($wmiBattery -and $wmiBattery.EstimatedRunTime -and $wmiBattery.EstimatedRunTime -ne 71582788) {
-        $timeMinutes = [int]$wmiBattery.EstimatedRunTime
-    } elseif ($dotnetPower -and $dotnetPower.BatteryLifeRemaining -gt 0) {
-        $timeMinutes = [math]::Round($dotnetPower.BatteryLifeRemaining / 60)
+    # Discharging: get estimated run time (71582788 is the "unknown" sentinel)
+    $runTime = if ($wmiBattery) { Read-DeviceNumber -Raw $wmiBattery.EstimatedRunTime -Min 1 } else { $null }
+    $dnRemaining = if ($dotnetPower) { Read-DeviceNumber -Raw $dotnetPower.BatteryLifeRemaining -Min 1 } else { $null }
+    if ($null -ne $runTime -and $runTime -ne 71582788) {
+        $timeMinutes = [int]$runTime
+    } elseif ($null -ne $dnRemaining) {
+        $timeMinutes = [math]::Round($dnRemaining / 60)
     }
 } elseif ($isCharging) {
     # Charging: get time to full
-    if ($wmiBattery -and $wmiBattery.TimeToFullCharge -and $wmiBattery.TimeToFullCharge -ne 0) {
-        $timeMinutes = [int]$wmiBattery.TimeToFullCharge
-    }
+    $toFull = if ($wmiBattery) { Read-DeviceNumber -Raw $wmiBattery.TimeToFullCharge -Min 1 } else { $null }
+    if ($null -ne $toFull) { $timeMinutes = [int]$toFull }
 }
 
 # --- Format time as hours and minutes ---
@@ -145,19 +179,23 @@ if ($filledWidth -gt $barWidth) { $filledWidth = $barWidth }
 if ($filledWidth -lt 0) { $filledWidth = 0 }
 
 $bar = ("|" * $filledWidth) + (" " * ($barWidth - $filledWidth))
-$batteryBar = "    [$bar] $chargePercent%"
+# "--" not "-1%": -1 is the app's no-reading marker, not a charge level.
+$percentText = if ($chargePercent -ge 0) { "$chargePercent%" } else { "--" }
+$batteryBar = "    [$bar] $percentText"
 
 # --- Determine status text and color ---
+# The `-ge 0` guards below are load-bearing: -1 means NO source gave a reading,
+# and "-1 is <= 10" reported an unreadable battery as Critical.
 if ($isFullyCharged) {
     $statusText = "Fully Charged"
     $statusColor = "Green"
 } elseif ($isCharging) {
     $statusText = "Charging"
     $statusColor = "Yellow"
-} elseif ($chargePercent -le 10) {
+} elseif ($chargePercent -ge 0 -and $chargePercent -le 10) {
     $statusText = "Critical"
     $statusColor = "Red"
-} elseif ($chargePercent -le 20) {
+} elseif ($chargePercent -ge 0 -and $chargePercent -le 20) {
     $statusText = "Low"
     $statusColor = "DarkYellow"
 } else {
@@ -181,7 +219,7 @@ Write-Host "  $separator" -ForegroundColor DarkGray
 Write-Host "      BatteryPill - Battery Status" -ForegroundColor White
 Write-Host "  $separator" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "    Battery Level:    " -NoNewline; Write-Host "$chargePercent%" -ForegroundColor $statusColor
+Write-Host "    Battery Level:    " -NoNewline; Write-Host $percentText -ForegroundColor $statusColor
 Write-Host "    Status:           " -NoNewline; Write-Host $statusText -ForegroundColor $statusColor
 Write-Host "    Power Source:     $powerSourceText"
 Write-Host "    $timeLabel" -NoNewline
@@ -197,10 +235,10 @@ Write-Host $batteryBar -ForegroundColor $statusColor
 Write-Host ""
 
 # --- Warnings ---
-if ($chargePercent -le 10 -and -not $isCharging -and -not $isPluggedIn) {
+if ($chargePercent -ge 0 -and $chargePercent -le 10 -and -not $isCharging -and -not $isPluggedIn) {
     Write-Host "    WARNING: Battery critically low! Plug in immediately." -ForegroundColor Red
     Write-Host ""
-} elseif ($chargePercent -le 20 -and -not $isCharging -and -not $isPluggedIn) {
+} elseif ($chargePercent -ge 0 -and $chargePercent -le 20 -and -not $isCharging -and -not $isPluggedIn) {
     Write-Host "    Battery is low. Consider plugging in." -ForegroundColor Yellow
     Write-Host ""
 }
