@@ -47,6 +47,31 @@ or
 .\CheckBattery.ps1
 ```
 
+## Verify
+
+`scripts/verify.sh` is the single gate for this repo: it runs lint, the full test suite, and a real build, and exits nonzero if any stage fails. Run it before committing.
+
+```bash
+./scripts/verify.sh
+```
+
+It runs (cheapest signal first, each with a wall-clock timeout so the whole run stays well under 10 minutes):
+
+1. **Lint** — `tools/check-source.ps1`: verifies `BatteryWidget.ps1` still carries its UTF-8 BOM and parse-checks every shipped `.ps1`.
+2. **Tests** — `scripts/run-tests.ps1`: runs every `tests/*.Tests.ps1`, each in its own `powershell.exe`.
+3. **Build** — `Build.ps1`: compiles `BatteryWidget.ps1` to `BatteryPill-<version>.exe` with ps2exe.
+
+Requires Windows PowerShell 5.1 (`powershell.exe` on PATH) and a bash shell (Git Bash works). Typical runtime on a dev machine is a few seconds.
+
+To run just the tests, or one file:
+
+```powershell
+.\scripts\run-tests.ps1
+.\scripts\run-tests.ps1 -Filter Formatting
+```
+
+Tests dot-source individual functions out of `BatteryWidget.ps1` via the PowerShell AST (`Import-WidgetFunction` in `tests/_harness.ps1`) — the script itself ends in a WinForms message loop, so it can never be dot-sourced whole.
+
 ## Configuration
 
 - **Position Persistence**: The widget saves its bar position to `BatteryWidget.config.json` on drag and exit.
@@ -64,5 +89,7 @@ or
 - `BatteryWidget.ps1`: Main widget logic and UI code.
 - `Build.ps1`: Script to compile the widget into a standalone `.exe` using `ps2exe`.
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
+- `scripts/`: `verify.sh` (the lint + tests + build gate) and `run-tests.ps1` (test runner).
+- `tests/`: Test suite - `_harness.ps1` (assertions + AST function loader) plus `*.Tests.ps1` files.
 - `tools/`: Dev harness - `check-source.ps1` (BOM + parse gate) and `render-states.ps1` (headless renderer of popup/pill/settings states).
 - `docs/`: Website files for the project landing page.
