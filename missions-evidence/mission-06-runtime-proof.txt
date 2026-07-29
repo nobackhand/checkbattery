@@ -1,0 +1,15 @@
+--- retyped [Nullable[datetime]]$Now params, called explicitly ---
+Get-CapacityDerivedRate -Now $t0        : -1
+Get-CapacityDerivedRate 1h later, -5%    : 3700
+--- called with the parameter omitted (default $null -> Get-Date) ---
+Get-CapacityDerivedRate (no -Now)        : -1
+Get-SmoothedTimeRemaining -Now $t0       : 1233
+Get-SmoothedTimeRemaining (no -Now)      : 667
+--- explicit $null still accepted ---
+Get-SmoothedTimeRemaining -Now $null     : 479
+--- unchanged helpers still behave ---
+Format-Duration 188                      : 3h 8m
+Get-AccentColor -Percent 5 (discharging) : Color [A=255, R=255, G=70, B=70]
+Get-StatusColor 'Charging'               : Color [A=255, R=255, G=200, B=0]
+--- a wrong-typed argument is now rejected at the boundary ---
+rejected: Cannot process argument transformation on parameter 'Now'. Cannot convert value "not a date" to type "System.DateTime". Error: "The string was not recognized as a valid DateTime. There is an unknown word starting at index 0."
