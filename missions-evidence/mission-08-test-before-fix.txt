@@ -1,0 +1,14 @@
+Estimation.Tests.ps1
+  PASS  Update-EMARate seeds from the first reading instead of easing up from zero
+  PASS  Update-EMARate smooths a jump instead of snapping to it
+  PASS  computes time remaining from the smoothed discharge rate
+  PASS  holds the last valid rate through a momentary WMI dropout
+  PASS  suppresses the estimate during the post-plug hysteresis window
+  FAIL  does not reuse the pre-unplug discharge rate as a charge rate
+        expected -1 [Int32] but got 150 [Int32]
+  PASS  uses the real charge rate once the charger reports one
+  FAIL  unplugging does not reuse the charge rate as a discharge rate either
+        expected -1 [Int32] but got 60 [Int32]
+  PASS  drops a held rate that has gone stale (older than 60s)
+  --- 9 run, 2 failed
+exit=1
