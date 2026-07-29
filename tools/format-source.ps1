@@ -65,6 +65,7 @@ $formatSettings = @{
 # remaining token must match byte-for-byte, casing included: with
 # PSUseCorrectCasing off, formatting can only move whitespace around.
 function Get-TokenSignature {
+    [OutputType([string])]
     param([string]$Text)
     $tokens = $null
     $errors = $null

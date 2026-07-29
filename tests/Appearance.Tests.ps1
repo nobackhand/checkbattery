@@ -12,34 +12,35 @@ Add-Type -AssemblyName System.Drawing
 Write-Host 'Appearance.Tests.ps1'
 
 function Assert-Color {
-    param([int]$R, [int]$G, [int]$B, $Actual)
+    [OutputType([void])]
+    param([int]$R, [int]$G, [int]$B, [System.Drawing.Color]$Actual)
     Assert-Equal ("{0},{1},{2}" -f $R, $G, $B) ("{0},{1},{2}" -f $Actual.R, $Actual.G, $Actual.B)
 }
 
 # ---- Get-AccentColor ----
 
 Test-Case 'no battery (-1) is neutral slate, not critical red' {
-    Assert-Color 120 130 140 (Get-AccentColor -Percent -1 -IsCharging $false)
+    Assert-Color -R 120 -G 130 -B 140 -Actual (Get-AccentColor -Percent -1 -IsCharging $false)
 }
 
 Test-Case 'charging is yellow at any level' {
-    Assert-Color 255 200 0 (Get-AccentColor -Percent 5  -IsCharging $true)
-    Assert-Color 255 200 0 (Get-AccentColor -Percent 95 -IsCharging $true)
+    Assert-Color -R 255 -G 200 -B 0 -Actual (Get-AccentColor -Percent 5  -IsCharging $true)
+    Assert-Color -R 255 -G 200 -B 0 -Actual (Get-AccentColor -Percent 95 -IsCharging $true)
 }
 
 Test-Case 'critical (<=10%) is red' {
-    Assert-Color 255 70 70 (Get-AccentColor -Percent 10 -IsCharging $false)
-    Assert-Color 255 70 70 (Get-AccentColor -Percent 1  -IsCharging $false)
+    Assert-Color -R 255 -G 70 -B 70 -Actual (Get-AccentColor -Percent 10 -IsCharging $false)
+    Assert-Color -R 255 -G 70 -B 70 -Actual (Get-AccentColor -Percent 1  -IsCharging $false)
 }
 
 Test-Case 'low (11-20%) is orange' {
-    Assert-Color 255 140 0 (Get-AccentColor -Percent 11 -IsCharging $false)
-    Assert-Color 255 140 0 (Get-AccentColor -Percent 20 -IsCharging $false)
+    Assert-Color -R 255 -G 140 -B 0 -Actual (Get-AccentColor -Percent 11 -IsCharging $false)
+    Assert-Color -R 255 -G 140 -B 0 -Actual (Get-AccentColor -Percent 20 -IsCharging $false)
 }
 
 Test-Case 'medium (21-50%) is yellow' {
-    Assert-Color 255 200 0 (Get-AccentColor -Percent 21 -IsCharging $false)
-    Assert-Color 255 200 0 (Get-AccentColor -Percent 50 -IsCharging $false)
+    Assert-Color -R 255 -G 200 -B 0 -Actual (Get-AccentColor -Percent 21 -IsCharging $false)
+    Assert-Color -R 255 -G 200 -B 0 -Actual (Get-AccentColor -Percent 50 -IsCharging $false)
 }
 
 # ---- New-RoundedRectPath ----

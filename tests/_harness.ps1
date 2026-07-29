@@ -23,6 +23,7 @@ function Import-WidgetFunction {
         Returns a scriptblock defining the named top-level functions from
         BatteryWidget.ps1. Dot-source the result to bring them into scope.
     #>
+    [OutputType([scriptblock])]
     param([Parameter(Mandatory = $true)][string[]]$Name)
 
     $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -44,6 +45,7 @@ function Import-WidgetFunction {
 }
 
 function Test-Case {
+    [OutputType([void])]
     param([string]$Name, [scriptblock]$Body)
     $script:TestsRun++
     # A non-terminating error inside a test body (a failing cmdlet, a bad path)
@@ -71,7 +73,9 @@ $script:AssertNumericTypes = @(
 
 function Format-AssertValue {
     <# Renders a value unambiguously for assertion messages. #>
-    param([AllowNull()]$Value)
+    [OutputType([string])]
+    # any-typed: renders whatever an assertion was handed, of any type.
+    param([AllowNull()][object]$Value)
     if ($null -eq $Value) { return '$null' }
     if ($Value -is [string]) { return "'$Value'" }
     if ($Value -is [bool]) { return $(if ($Value) { '$true' } else { '$false' }) }
@@ -93,7 +97,13 @@ function Test-AssertValueEqual {
         a category (bool/string/collection/numeric) and calls a cross-category
         comparison unequal.
     #>
-    param([AllowNull()]$Expected, [AllowNull()]$Actual)
+    [OutputType([bool])]
+    param(
+        # any-typed: the point of this function is comparing values of any type.
+        [AllowNull()][object]$Expected,
+        # any-typed: ditto - the actual value, whatever type it came back as.
+        [AllowNull()][object]$Actual
+    )
 
     if ($null -eq $Expected -and $null -eq $Actual) { return $true }
     if ($null -eq $Expected -or $null -eq $Actual) { return $false }
@@ -128,7 +138,14 @@ function Test-AssertValueEqual {
 }
 
 function Assert-Equal {
-    param([AllowNull()]$Expected, [AllowNull()]$Actual, [string]$Because = '')
+    [OutputType([void])]
+    param(
+        # any-typed: assertions compare values of any type (see Test-AssertValueEqual).
+        [AllowNull()][object]$Expected,
+        # any-typed: ditto - the actual value, whatever type it came back as.
+        [AllowNull()][object]$Actual,
+        [string]$Because = ''
+    )
     if (-not (Test-AssertValueEqual $Expected $Actual)) {
         throw ("expected {0} but got {1}{2}" -f (Format-AssertValue $Expected),
             (Format-AssertValue $Actual),
@@ -137,11 +154,13 @@ function Assert-Equal {
 }
 
 function Assert-True {
+    [OutputType([void])]
     param([bool]$Condition, [string]$Because = 'condition was false')
     if (-not $Condition) { throw $Because }
 }
 
 function Assert-Throws {
+    [OutputType([void])]
     param([scriptblock]$Body, [string]$Because = 'expected an exception, none thrown')
     $threw = $false
     try { & $Body } catch { $threw = $true }
@@ -150,6 +169,8 @@ function Assert-Throws {
 
 function Complete-Tests {
     <# Prints the per-file summary and returns the exit code (0 = all green). #>
+    [OutputType([int])]
+    param()
     Write-Host "  --- $script:TestsRun run, $script:TestsFailed failed"
     # A file that asserted nothing is not a passing file - it is a file whose
     # tests never ran (an early return, a bad filter, a deleted block). Reporting

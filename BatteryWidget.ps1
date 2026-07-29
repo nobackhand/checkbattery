@@ -210,6 +210,7 @@ public class DarkCheckBox : CheckBox {
 # Self-contained: uses only WinForms/Drawing (loaded above) so it works this early,
 # before the theme table and notification system exist. Colors mirror $script:theme.
 function Show-AppDialog {
+    [OutputType([void])]
     param(
         [string]$Title,
         [string]$Message,
@@ -322,6 +323,8 @@ $script:theme = @{
 $script:appVersion = "1.1.9"
 
 function Get-SystemTheme {
+    [OutputType([bool])]
+    param()
     try {
         $regPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
         $val = Get-ItemPropertyValue -Path $regPath -Name "AppsUseLightTheme" -ErrorAction Stop
@@ -332,6 +335,8 @@ function Get-SystemTheme {
 }
 
 function Set-Theme {
+    [OutputType([void])]
+    param()
     $useDark = $true
     $themeSetting = $script:config.Theme
     if ($themeSetting -eq "light") { $useDark = $false }
@@ -374,6 +379,8 @@ function Set-Theme {
 $script:isFullscreenHidden = $false
 
 function Test-FullscreenApp {
+    [OutputType([bool])]
+    param()
     try {
         $hwnd = [Win32Icon]::GetForegroundWindow()
         if ($hwnd -eq [IntPtr]::Zero) { return $false }
@@ -421,7 +428,8 @@ $script:hysteresisSeconds = 2  # Dead time after AC plug/unplug to ignore rate s
 # ============================================================
 
 function Get-BatteryInfo {
-    param([Parameter(Mandatory = $false)][object]$Now = $null)
+    [OutputType([hashtable])]
+    param([Parameter(Mandatory = $false)][AllowNull()][Nullable[datetime]]$Now = $null)
     if ($null -eq $Now) { $Now = Get-Date }
     $info = @{
         Percent            = -1
@@ -670,6 +678,7 @@ function Get-BatteryInfo {
 # ============================================================
 
 function Update-EMARate {
+    [OutputType([int])]
     param([int]$RawRate)
 
     # Track recent rates for volatility detection
@@ -707,7 +716,8 @@ function Update-EMARate {
 }
 
 function Get-CapacityDerivedRate {
-    param([int]$FullChargeCapacity, [double]$PercentExact, [object]$Now = $null)
+    [OutputType([int])]
+    param([int]$FullChargeCapacity, [double]$PercentExact, [AllowNull()][Nullable[datetime]]$Now = $null)
     if ($null -eq $Now) { $Now = Get-Date }
     $currentCapacity = $FullChargeCapacity * ($PercentExact / 100)
 
@@ -735,13 +745,14 @@ function Get-CapacityDerivedRate {
 }
 
 function Get-SmoothedTimeRemaining {
+    [OutputType([int])]
     param(
         [int]$RawRate,
         [int]$FullChargeCapacity,
         [double]$PercentExact,
         [bool]$IsCharging,
         [bool]$IsPluggedIn,
-        [object]$Now = $null
+        [AllowNull()][Nullable[datetime]]$Now = $null
     )
     if ($null -eq $Now) { $Now = Get-Date }
 
@@ -822,6 +833,8 @@ function Get-SmoothedTimeRemaining {
 # ============================================================
 
 function Get-PowerPlans {
+    [OutputType([hashtable[]])]
+    param()
     try {
         $output = & powercfg /list 2>&1
         if ($LASTEXITCODE -ne 0) { return @() }
@@ -840,6 +853,7 @@ function Get-PowerPlans {
 }
 
 function Set-ActivePowerPlan {
+    [OutputType([bool])]
     param([string]$PlanGUID)
     try {
         & powercfg /setactive $PlanGUID 2>&1 | Out-Null
@@ -848,6 +862,7 @@ function Set-ActivePowerPlan {
 }
 
 function Update-PowerPlanMenu {
+    [OutputType([void])]
     param([System.Windows.Forms.ToolStripMenuItem]$MenuItem)
     $MenuItem.DropDownItems.Clear()
     $plans = Get-PowerPlans
@@ -878,6 +893,7 @@ function Update-PowerPlanMenu {
 # ============================================================
 
 function Get-StatusColor {
+    [OutputType([System.Drawing.Color])]
     param([string]$Status)
     switch ($Status) {
         "Fully Charged" { [System.Drawing.Color]::FromArgb(0, 200, 0) }
@@ -902,6 +918,7 @@ $script:accentPresets = @(
 )
 
 function Get-AccentColor {
+    [OutputType([System.Drawing.Color])]
     param(
         [int]$Percent,
         [bool]$IsCharging
@@ -942,6 +959,7 @@ function Get-AccentColor {
 # ============================================================
 
 function New-BatteryIcon {
+    [OutputType([hashtable])]
     param(
         [int]$Percent,
         [string]$Status
@@ -1026,6 +1044,8 @@ function New-BatteryIcon {
 # ============================================================
 
 function Get-ConfigPath {
+    [OutputType([string])]
+    param()
     $dir = $PSScriptRoot
     if (-not $dir) { $dir = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) }
     if (-not $dir) { $dir = $PWD.Path }
@@ -1038,10 +1058,13 @@ function Read-ConfigField {
     # number belongs, a hand-edit typo) threw and silently discarded every
     # field after it - the user's theme, accent, and size quietly reset.
     # $Parse returning $null means "present but invalid" -> use the fallback.
+    [OutputType([object])]
     param(
-        [AllowNull()]$Raw,
+        # any-typed: one raw JSON field - string, number, bool or $null.
+        [AllowNull()][object]$Raw,
         [scriptblock]$Parse,
-        [AllowNull()]$Fallback
+        # any-typed: the caller's default for this field, whatever its type.
+        [AllowNull()][object]$Fallback
     )
     if ($null -eq $Raw) { return $Fallback }
     try {
@@ -1054,6 +1077,8 @@ function Read-ConfigField {
 }
 
 function Import-Config {
+    [OutputType([hashtable])]
+    param()
     $configPath = Get-ConfigPath
     $default = @{
         X                  = -1
@@ -1140,6 +1165,8 @@ function Import-Config {
 }
 
 function Save-Config {
+    [OutputType([void])]
+    param()
     $configPath = Get-ConfigPath
     try {
         # Serialize last 200 history entries (timestamps as ISO8601)
@@ -1182,6 +1209,8 @@ function Save-Config {
 # ============================================================
 
 function Get-ExePath {
+    [OutputType([string])]
+    param()
     # Get the path of the current executable or script
     $process = [System.Diagnostics.Process]::GetCurrentProcess()
     $exePath = $process.MainModule.FileName
@@ -1193,12 +1222,15 @@ function Get-ExePath {
 }
 
 function Get-AutoStartEnabled {
+    [OutputType([bool])]
+    param()
     $startupPath = [Environment]::GetFolderPath('Startup')
     $shortcutPath = Join-Path $startupPath "BatteryPill.lnk"
     return (Test-Path $shortcutPath)
 }
 
 function Set-AutoStart {
+    [OutputType([bool])]
     param([bool]$Enable)
     $startupPath = [Environment]::GetFolderPath('Startup')
     $shortcutPath = Join-Path $startupPath "BatteryPill.lnk"
@@ -1244,6 +1276,7 @@ function Set-AutoStart {
 # ============================================================
 
 function Enable-DoubleBuffering {
+    [OutputType([void])]
     param([System.Windows.Forms.Form]$Form)
     $Form.GetType().GetProperty("DoubleBuffered",
         [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
@@ -1254,6 +1287,7 @@ $script:darkMenuRenderer = $null
 
 function Set-DarkMenu {
     # Dark-theme a ContextMenuStrip (and its submenus) to match the app.
+    [OutputType([void])]
     param([System.Windows.Forms.ToolStrip]$Menu)
     if ($null -eq $script:darkMenuRenderer) {
         $script:darkMenuRenderer = New-Object System.Windows.Forms.ToolStripProfessionalRenderer((New-Object DarkMenuColorTable))
@@ -1265,7 +1299,8 @@ function Set-DarkMenu {
 }
 
 function Set-DarkMenuItem {
-    param($Item)
+    [OutputType([void])]
+    param([System.Windows.Forms.ToolStripItem]$Item)
     if ($Item -is [System.Windows.Forms.ToolStripMenuItem]) {
         $Item.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
         if ($Item.HasDropDownItems) {
@@ -1283,6 +1318,7 @@ function New-RoundedRectPath {
     # explicitly because the call sites use different inset conventions
     # (-1 for regions vs -2 for cards) that must be preserved exactly.
     # Caller owns disposal.
+    [OutputType([System.Drawing.Drawing2D.GraphicsPath])]
     param(
         [double]$X = 0,
         [double]$Y = 0,
@@ -1309,6 +1345,8 @@ $script:pillBorderPen = $null
 $script:pillBorderHoverPen = $null
 
 function Initialize-PillBrushes {
+    [OutputType([void])]
+    param()
     # Dispose old cached objects
     if ($null -ne $script:pillBgBrush) { $script:pillBgBrush.Dispose() }
     if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
@@ -1330,6 +1368,8 @@ function Initialize-PillBrushes {
 # ============================================================
 
 function Get-PillDimensions {
+    [OutputType([hashtable])]
+    param()
     # Returns @{ Width, Height, FontSize } based on PillSize and DisplayMode
     $mode = $script:config.DisplayMode
     $size = $script:config.PillSize
@@ -1347,6 +1387,8 @@ function Get-PillDimensions {
 }
 
 function Update-PillSize {
+    [OutputType([void])]
+    param()
     # Rebuild pill dimensions and region without recreating the form
     if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) { return }
     $dims = Get-PillDimensions
@@ -1381,6 +1423,8 @@ function Update-PillSize {
 }
 
 function Invoke-CycleDisplayMode {
+    [OutputType([void])]
+    param()
     # Left-click on the pill cycles what it shows: time -> percent -> both -> time
     $order = @("time", "percent", "both")
     $idx = [array]::IndexOf($order, [string]$script:config.DisplayMode)
@@ -1402,6 +1446,7 @@ function Invoke-CycleDisplayMode {
 }
 
 function Test-PositionOnScreen {
+    [OutputType([bool])]
     param([int]$X, [int]$Y, [int]$Width, [int]$Height)
     # Check if the center of the pill falls within any connected screen's working area
     $centerX = $X + [int]($Width / 2)
@@ -1413,6 +1458,8 @@ function Test-PositionOnScreen {
 }
 
 function New-FloatingBar {
+    [OutputType([System.Windows.Forms.Form])]
+    param()
     # Paint state — updated by Update-FloatingBar, read by Paint handler
     $script:barAccentColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
     $script:barDisplayText = "..."
@@ -1772,6 +1819,7 @@ function New-FloatingBar {
 }
 
 function New-SparklinePanel {
+    [OutputType([System.Windows.Forms.Panel])]
     param([int]$Y, [System.Drawing.Color]$AccentColor)
     # Creates a 380x40 panel that draws battery history sparkline
     $panel = New-Object System.Windows.Forms.Panel
@@ -1890,6 +1938,7 @@ function Format-Duration {
     # The one way a duration is written anywhere in the app: "3h 8m" / "42m".
     # No zero-padding - the pill and popup previously formatted the same
     # value two different ways ("3h 8m" vs "3h 08m").
+    [OutputType([string])]
     param([int]$Minutes)
     $h = [math]::Floor($Minutes / 60)
     $m = $Minutes % 60
@@ -1898,6 +1947,7 @@ function Format-Duration {
 }
 
 function New-BatteryPopupContent {
+    [OutputType([hashtable])]
     param(
         [hashtable]$BatteryInfo,
         [System.Windows.Forms.Form]$Form,
@@ -2085,6 +2135,7 @@ function New-BatteryPopupContent {
 }
 
 function Show-BatteryNotification {
+    [OutputType([void])]
     param(
         [string]$Message,
         [string]$SubMessage,
@@ -2230,6 +2281,7 @@ function Show-BatteryNotification {
 }
 
 function Update-FloatingBar {
+    [OutputType([void])]
     param([hashtable]$BatteryInfo)
 
     if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) { return }
@@ -2358,6 +2410,7 @@ function Update-FloatingBar {
 # ============================================================
 
 function Get-EaseInOutCubic {
+    [OutputType([double])]
     param([double]$t)
     # Cubic ease-in-out: smooth acceleration then deceleration, $t in [0,1]
     if ($t -lt 0.5) { return 4.0 * $t * $t * $t }
@@ -2365,6 +2418,8 @@ function Get-EaseInOutCubic {
 }
 
 function Close-HoverPopup {
+    [OutputType([void])]
+    param()
     if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed) {
         # Start eased fade-out (100ms duration) FROM the popup's current opacity -
         # interrupting a fade-in used to restart at full brightness (visible flash)
@@ -2407,6 +2462,8 @@ function Close-HoverPopup {
 }
 
 function Show-HoverPopup {
+    [OutputType([void])]
+    param()
     # Close any existing popup immediately (no fade when reopening)
     if ($null -ne $script:fadeOutTimer) { $script:fadeOutTimer.Stop() }
     if ($null -ne $script:fadeInTimer) { $script:fadeInTimer.Stop() }
@@ -2522,6 +2579,7 @@ function Show-HoverPopup {
 # ============================================================
 
 function Show-BatteryPopup {
+    [OutputType([void])]
     param([hashtable]$BatteryInfo)
 
     $popup = New-Object System.Windows.Forms.Form
@@ -2606,6 +2664,7 @@ function Show-BatteryPopup {
 
 function Set-DarkComboBox {
     # Apply owner-draw dark theme to a ComboBox
+    [OutputType([void])]
     param([System.Windows.Forms.ComboBox]$Combo)
     $Combo.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
     $Combo.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -2626,6 +2685,8 @@ function Set-DarkComboBox {
 }
 
 function Start-IntroAnimation {
+    [OutputType([void])]
+    param()
     # First-launch choreography: the pill rises into place (280ms ease-out),
     # its charge fill sweeps up to the real level (500ms), then the first-run
     # tips appear - in that order. Skipped entirely (instant appear, tips
@@ -2703,6 +2764,8 @@ function Start-IntroAnimation {
 }
 
 function Show-FirstRunTooltip {
+    [OutputType([void])]
+    param()
     if ($script:config.FirstRunShown) { return }
     $script:config.FirstRunShown = $true
     Save-Config
@@ -2814,6 +2877,8 @@ function Show-FirstRunTooltip {
 }
 
 function Show-SettingsPanel {
+    [OutputType([void])]
+    param()
     # Manual DPI scaling — WinForms AutoScaleMode doesn't work reliably with SetProcessDPIAware()
     $g = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
     $ds = $g.DpiX / 96.0
@@ -3330,6 +3395,8 @@ function Show-SettingsPanel {
 }
 
 function Show-BatteryHealthCard {
+    [OutputType([void])]
+    param()
     # A screenshot-worthy battery-health card: a circular health ring (the
     # CoconutBattery pattern people share) surfacing wear/capacity that the
     # lean popup no longer shows.
@@ -3417,7 +3484,14 @@ function Show-BatteryHealthCard {
 
     $fontsToDispose = @()
     function Add-CenterLabel {
-        param($Text, $YPos, $FontSize, $Bold, $Color)
+        [OutputType([System.Windows.Forms.Label])]
+        param(
+            [string]$Text,
+            [int]$YPos,
+            [double]$FontSize,
+            [bool]$Bold,
+            [System.Drawing.Color]$Color
+        )
         $lbl = New-Object System.Windows.Forms.Label
         $lbl.Text = $Text
         $style = if ($Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
@@ -3461,6 +3535,8 @@ function Show-BatteryHealthCard {
 }
 
 function Show-AboutDialog {
+    [OutputType([void])]
+    param()
     $about = New-Object System.Windows.Forms.Form
     $about.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $about.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
@@ -3594,6 +3670,8 @@ function Show-AboutDialog {
 # ============================================================
 
 function Update-TrayIcon {
+    [OutputType([void])]
+    param()
     $now = Get-Date
     $info = Get-BatteryInfo -Now $now
 
@@ -3940,6 +4018,8 @@ $script:pulseTimer.Add_Tick({
 # Timer starts idle — Update-PulseTimerState will start it when animations are active
 
 function Update-PulseTimerState {
+    [OutputType([void])]
+    param()
     # Start pulse timer only when animations need it, stop when idle
     $anyActive = $script:barIsCharging -or ($script:flashAlpha -gt 0) -or ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed)
     if ($anyActive) {

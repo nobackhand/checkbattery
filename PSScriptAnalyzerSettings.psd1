@@ -9,7 +9,12 @@
 # analyzer starts reporting a new warning, fix it - do not extend this list
 # without a real justification.
 @{
-    Severity = @('Error', 'Warning')  # Information-level style hints are advisory, not build warnings.
+    # Information-level rules are enforced too (they were advisory-only before).
+    # That turns on PSUseOutputTypeCorrectly - the analyzer's return-type rule,
+    # which checks a declared [OutputType] against what a function actually
+    # emits - and PSAvoidUsingPositionalParameters, which makes a call site
+    # name the parameters it is binding to instead of relying on position.
+    Severity = @('Error', 'Warning', 'Information')
 
     ExcludeRules = @(
         # BatteryPill is a console/GUI app: Write-Host IS the CLI's user-facing output channel (CheckBattery.ps1, build + dev tooling), not stray debug logging.

@@ -15,6 +15,8 @@
 #      in the repo, using PSScriptAnalyzerSettings.psd1 (which documents the
 #      one-line justification for each rule that is switched off).
 #   6. Every .ps1 is already autoformatted (tools\format-source.ps1 -Check).
+#   7. Typing holds repo-wide (tools\check-types.ps1): no untyped parameter, no
+#      function without a declared [OutputType], no blanket [object].
 # Exit code: 0 = all checks pass, 1 = any failure OR any warning.
 #            Warnings are fatal on purpose: the build log must stay clean, so a
 #            new non-ASCII string literal has to be written as [char]0xNNNN.
@@ -161,6 +163,19 @@ if (-not (Test-Path $formatScript)) {
         Write-Host 'PASS: every .ps1 is autoformatted'
     } else {
         Write-Host 'FAIL: unformatted .ps1 file(s) - run: powershell -ExecutionPolicy Bypass -File tools\format-source.ps1'
+        $failures++
+    }
+}
+
+# ---- 7) Typing: typed parameters + declared return types, repo-wide ----
+$typeScript = Join-Path $PSScriptRoot 'check-types.ps1'
+if (-not (Test-Path $typeScript)) {
+    Write-Host "FAIL: not found: $typeScript"
+    $failures++
+} else {
+    & $typeScript
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'FAIL: typing violations - see the type check output above'
         $failures++
     }
 }

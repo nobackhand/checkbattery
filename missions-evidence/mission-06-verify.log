@@ -1,0 +1,91 @@
+
+==============================================================
+== lint (tools/check-source.ps1)
+==============================================================
+=== BatteryPill source check (C:\myprojects\checkbattery) ===
+PASS: BatteryWidget.ps1 has a UTF-8 BOM
+PASS: BatteryWidget.ps1 parses with 0 errors
+INFO: no non-ASCII characters inside string tokens
+PASS: CheckBattery.ps1 parses with 0 errors
+PASS: Build.ps1 parses with 0 errors
+PASS: PSScriptAnalyzer reports 0 error/warning finding(s)
+=== BatteryPill format (C:\myprojects\checkbattery) [check] ===
+---
+13 file(s) scanned, 0 unformatted
+RESULT: PASS
+PASS: every .ps1 is autoformatted
+=== BatteryPill type check (C:\myprojects\checkbattery) ===
+INFO: checked 13 file(s), 64 function(s), 92 parameter(s)
+PASS: every function has typed parameters and a declared [OutputType]
+RESULT: PASS
+---
+RESULT: PASS (0 warning(s))
+-- lint (tools/check-source.ps1) OK in 7s
+
+==============================================================
+== tests (scripts/run-tests.ps1)
+==============================================================
+=== BatteryPill tests (C:\myprojects\checkbattery\tests) ===
+Appearance.Tests.ps1
+  PASS  no battery (-1) is neutral slate, not critical red
+  PASS  charging is yellow at any level
+  PASS  critical (<=10%) is red
+  PASS  low (11-20%) is orange
+  PASS  medium (21-50%) is yellow
+  PASS  New-RoundedRectPath returns a closed four-arc path
+  PASS  New-RoundedRectPath honours a non-zero origin
+  --- 7 run, 0 failed
+Formatting.Tests.ps1
+  PASS  Format-Duration writes hours and minutes without zero-padding
+  PASS  Format-Duration drops the hour part below 60 minutes
+  PASS  Format-Duration renders zero as 0m
+  PASS  Format-Duration renders an exact hour as Xh 0m
+  PASS  Format-Duration handles multi-day estimates
+  PASS  Read-ConfigField returns the fallback when the value is absent
+  PASS  Read-ConfigField returns the fallback when parsing throws
+  PASS  Read-ConfigField returns the fallback when the parser rejects the value
+  PASS  Read-ConfigField returns the parsed value when it is valid
+  --- 9 run, 0 failed
+Harness.Tests.ps1
+  PASS  a body that emits a non-terminating error fails the file
+  PASS  a clean body still reports PASS
+  PASS  Assert-Equal rejects a bool matched against a truthy non-bool
+  PASS  Assert-Equal rejects a number matched against its string form
+  PASS  Assert-Equal still matches equal numbers across widths
+  PASS  Assert-Equal compares collections element-wise
+  PASS  Assert-Equal reports collections readably, not as System.Object[]
+  PASS  Assert-Equal handles null on either side
+  PASS  a file that runs zero tests fails instead of reporting a hollow PASS
+  PASS  Import-WidgetFunction throws for a function that does not exist
+  PASS  Import-WidgetFunction returns a usable definition
+  --- 11 run, 0 failed
+---
+RESULT: PASS (3 test file(s))
+-- tests (scripts/run-tests.ps1) OK in 5s
+
+==============================================================
+== build (Build.ps1)
+==============================================================
+Removing previous build: BatteryPill-1.1.9.exe...
+Compiling BatteryWidget.ps1 -> BatteryPill-1.1.9.exe
+PS2EXE-GUI v0.5.0.34 by Ingo Karstein, reworked and GUI support by Markus Scholtes
+
+
+Reading input file C:\myprojects\checkbattery\BatteryWidget.ps1
+Compiling file...
+
+Output file C:\myprojects\checkbattery\BatteryPill-1.1.9.exe written
+
+Build successful!
+  Output: C:\myprojects\checkbattery\BatteryPill-1.1.9.exe
+  Size:   221 KB
+-- build (Build.ps1) OK in 3s
+
+==============================================================
+== verify summary
+==============================================================
+  ok    lint (tools/check-source.ps1) (7s)
+  ok    tests (scripts/run-tests.ps1) (5s)
+  ok    build (Build.ps1) (3s)
+  total: 15s
+RESULT: PASS

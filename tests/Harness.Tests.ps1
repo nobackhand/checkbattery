@@ -30,6 +30,7 @@ function Invoke-HarnessFile {
         out of this process: PS 5.1 wraps native stderr in a NativeCommandError,
         which the harness's ErrorActionPreference=Stop would turn terminating.
     #>
+    [OutputType([pscustomobject])]
     param([Parameter(Mandatory = $true)][string]$Body)
 
     $dir = Join-Path $env:TEMP ('batterypill-harness-' + [guid]::NewGuid().ToString('N'))
