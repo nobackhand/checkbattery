@@ -14,13 +14,13 @@
 .NOTES
     File map (search for the ==== banner with the same name):
       P/INVOKE + SINGLE INSTANCE ... Win32Icon class, DPI awareness, mutex guard
-      THEME ....................... $script:theme palette + Apply-Theme (dark/light/auto)
+      THEME ....................... $script:theme palette + Set-Theme (dark/light/auto)
       FULLSCREEN DETECTION ........ Test-FullscreenApp
       BATTERY DATA ................ Get-BatteryInfo (WMI + .NET), EMA smoothing, rates
       POWER PLANS ................. tray submenu for switching plans
       STATUS COLOR & ACCENT ....... Get-StatusColor, accent presets, Get-AccentColor
       DYNAMIC TRAY ICON ........... New-BatteryIcon
-      CONFIG ...................... Get-ConfigPath / Load-Config / Save-Config, autostart
+      CONFIG ...................... Get-ConfigPath / Import-Config / Save-Config, autostart
       GDI HELPERS ................. Enable-DoubleBuffering, New-RoundedRectPath
       CACHED GDI+ BRUSHES/PENS .... Initialize-PillBrushes
       FLOATING PILL ............... Get-PillDimensions, Update-PillSize,
@@ -331,7 +331,7 @@ function Get-SystemTheme {
     }
 }
 
-function Apply-Theme {
+function Set-Theme {
     $useDark = $true
     $themeSetting = $script:config.Theme
     if ($themeSetting -eq "light") { $useDark = $false }
@@ -1053,7 +1053,7 @@ function Read-ConfigField {
     }
 }
 
-function Load-Config {
+function Import-Config {
     $configPath = Get-ConfigPath
     $default = @{
         X = -1
@@ -1909,7 +1909,6 @@ function New-BatteryPopupContent {
     # Returns @{ TotalHeight; Fonts (array for disposal) }
 
     $statusColor = Get-StatusColor -Status $BatteryInfo.StatusText
-    $lightGray = $script:theme.TextLight
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
     # Hero fonts for top section (Time — the data users care about most)
     $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
@@ -2032,7 +2031,7 @@ function New-BatteryPopupContent {
         $dur = Format-Duration -Minutes $BatteryInfo.TimeMinutes
         $suffix = if ($BatteryInfo.IsCharging) { "to full" } else { "left" }
         if ($BatteryInfo.ETA) {
-            $timeText = "$dur $suffix — $($BatteryInfo.ETA)"
+            $timeText = "$dur $suffix $([char]0x2014) $($BatteryInfo.ETA)"
         } else {
             $timeText = "$dur $suffix"
         }
@@ -3043,7 +3042,6 @@ function Show-SettingsPanel {
     $settings.Controls.Add($accentLabel)
     $y += [int](26 * $ds)
 
-    $colorNames = @("Green", "Blue", "Purple", "Cyan", "Pink", "Teal", "Orange", "White")
     $circleSize = [int](24 * $ds)
     $circleSpacing = [int](32 * $ds)
     for ($ci = 0; $ci -lt 8; $ci++) {
@@ -3139,7 +3137,7 @@ function Show-SettingsPanel {
     $themeCombo.Add_SelectedIndexChanged({
         $themeMap = @("dark", "light", "auto")
         $script:config.Theme = $themeMap[$themeCombo.SelectedIndex]
-        Apply-Theme
+        Set-Theme
         Save-Config
     })
     Set-DarkComboBox -Combo $themeCombo
@@ -3657,8 +3655,8 @@ function Update-TrayIcon {
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:config = Load-Config
-Apply-Theme
+$script:config = Import-Config
+Set-Theme
 $script:positionLocked = $script:config.PositionLocked
 
 # Restore battery history from config (gives immediate sparkline data on restart)

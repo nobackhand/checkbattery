@@ -11,7 +11,14 @@
 #   3. Inventory of non-ASCII characters inside string tokens (WARN only -
 #      these are exactly the characters that depend on the BOM to survive).
 #   4. CheckBattery.ps1 and Build.ps1 also parse cleanly.
-# Exit code: 0 = all checks pass, 1 = any failure.
+#   5. PSScriptAnalyzer reports zero Error/Warning findings across every .ps1
+#      in the repo, using PSScriptAnalyzerSettings.psd1 (which documents the
+#      one-line justification for each rule that is switched off).
+# Exit code: 0 = all checks pass, 1 = any failure OR any warning.
+#            Warnings are fatal on purpose: the build log must stay clean, so a
+#            new non-ASCII string literal has to be written as [char]0xNNNN.
+# Run with -ExecutionPolicy Bypass (as verify.sh does) - the default policy
+# blocks PSScriptAnalyzer's format data from loading.
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -108,10 +115,42 @@ foreach ($name in @('CheckBattery.ps1', 'Build.ps1')) {
     }
 }
 
+# ---- 5) Static analysis: zero Error/Warning findings ----
+# Bootstrap the module the same way Build.ps1 bootstraps ps2exe, so a fresh
+# machine can run the gate without a manual install step.
+if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+    Write-Host 'INFO: installing PSScriptAnalyzer (one-time)...'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    if (-not (Get-PackageProvider -ListAvailable -Name NuGet -ErrorAction SilentlyContinue)) {
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+    }
+    Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
+}
+Import-Module PSScriptAnalyzer -ErrorAction Stop
+$settingsPath = Join-Path $repoRoot 'PSScriptAnalyzerSettings.psd1'
+if (-not (Test-Path $settingsPath)) {
+    Write-Host "FAIL: not found: $settingsPath"
+    $failures++
+} else {
+    $findings = @(Invoke-ScriptAnalyzer -Path $repoRoot -Recurse -Settings $settingsPath)
+    if ($findings.Count -eq 0) {
+        Write-Host 'PASS: PSScriptAnalyzer reports 0 error/warning finding(s)'
+    } else {
+        Write-Host "FAIL: PSScriptAnalyzer reports $($findings.Count) error/warning finding(s):"
+        $shown = 0
+        foreach ($f in $findings) {
+            if ($shown -ge 30) { Write-Host "      ... and $($findings.Count - 30) more"; break }
+            Write-Host ("      {0} {1} - {2}:{3} {4}" -f $f.Severity, $f.RuleName, (Split-Path $f.ScriptName -Leaf), $f.Line, $f.Message)
+            $shown++
+        }
+        $failures++
+    }
+}
+
 # ---- Summary ----
 Write-Host '---'
-if ($failures -eq 0) {
-    Write-Host "RESULT: PASS ($warnings warning(s))"
+if ($failures -eq 0 -and $warnings -eq 0) {
+    Write-Host 'RESULT: PASS (0 warning(s))'
     exit 0
 } else {
     Write-Host "RESULT: FAIL - $failures failing check(s), $warnings warning(s)"

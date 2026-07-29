@@ -1,0 +1,20 @@
+Mission 04 negative control - proof the new warning gate can actually report red.
+
+Injected one unused variable into BatteryWidget.ps1 (Format-Duration), then ran
+the lint gate directly:
+
+  $ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/check-source.ps1
+
+  === BatteryPill source check (C:\myprojects\checkbattery) ===
+  PASS: BatteryWidget.ps1 has a UTF-8 BOM
+  PASS: BatteryWidget.ps1 parses with 0 errors
+  INFO: no non-ASCII characters inside string tokens
+  PASS: CheckBattery.ps1 parses with 0 errors
+  PASS: Build.ps1 parses with 0 errors
+  FAIL: PSScriptAnalyzer reports 1 error/warning finding(s):
+        Warning PSUseDeclaredVarsMoreThanAssignments - BatteryWidget.ps1:1890 The variable 'deliberatelyUnusedNegativeControl' is assigned but never used.
+  ---
+  RESULT: FAIL - 1 failing check(s), 0 warning(s)
+  check-source exit=1
+
+Injection reverted; mission-04-verify.log is the clean run of the same tree.
