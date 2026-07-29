@@ -11,7 +11,7 @@ param([string]$Filter = '*')
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$testDir  = Join-Path $repoRoot 'tests'
+$testDir = Join-Path $repoRoot 'tests'
 
 Write-Host "=== BatteryPill tests ($testDir) ==="
 
@@ -24,11 +24,11 @@ if (-not (Test-Path $testDir)) {
 # filter against BaseName alone made the documented `-Filter Formatting` match
 # nothing. Match the suite name (BaseName minus the ".Tests" suffix) as well.
 $files = @(Get-ChildItem -Path $testDir -Filter '*.Tests.ps1' -File |
-           Where-Object {
-               $suite = $_.BaseName -replace '\.Tests$', ''
-               ($_.BaseName -like $Filter) -or ($suite -like $Filter)
-           } |
-           Sort-Object Name)
+        Where-Object {
+            $suite = $_.BaseName -replace '\.Tests$', ''
+            ($_.BaseName -like $Filter) -or ($suite -like $Filter)
+        } |
+        Sort-Object Name)
 
 if ($files.Count -eq 0) {
     Write-Host "FAIL: no test files matched '$Filter' in $testDir"

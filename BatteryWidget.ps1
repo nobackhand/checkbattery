@@ -217,34 +217,34 @@ function Show-AppDialog {
         [System.Drawing.Color]$Accent = ([System.Drawing.Color]::FromArgb(45, 212, 100)),
         [string]$ButtonText = "Got it"
     )
-    $bg    = [System.Drawing.Color]::FromArgb(24, 24, 28)
-    $fg    = [System.Drawing.Color]::FromArgb(245, 245, 250)
-    $dim   = [System.Drawing.Color]::FromArgb(170, 170, 180)
+    $bg = [System.Drawing.Color]::FromArgb(24, 24, 28)
+    $fg = [System.Drawing.Color]::FromArgb(245, 245, 250)
+    $dim = [System.Drawing.Color]::FromArgb(170, 170, 180)
     $btnBg = [System.Drawing.Color]::FromArgb(44, 44, 50)
 
     $f = New-Object System.Windows.Forms.Form
     $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
-    $f.StartPosition   = [System.Windows.Forms.FormStartPosition]::CenterScreen
-    $f.BackColor       = $bg
-    $f.TopMost         = $true
-    $f.ShowInTaskbar   = $true
-    $f.Text            = "BatteryPill"
-    $f.KeyPreview      = $true
+    $f.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+    $f.BackColor = $bg
+    $f.TopMost = $true
+    $f.ShowInTaskbar = $true
+    $f.Text = "BatteryPill"
+    $f.KeyPreview = $true
     $tmpG = $f.CreateGraphics(); $ds = $tmpG.DpiX / 96.0; $tmpG.Dispose()
     $f.ClientSize = New-Object System.Drawing.Size([int](360 * $ds), [int](172 * $ds))
 
     $f.Add_Paint({
-        param($s, $e)
-        $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(64, 64, 72), 1)
-        $e.Graphics.DrawRectangle($pen, 0, 0, $s.ClientSize.Width - 1, $s.ClientSize.Height - 1)
-        $pen.Dispose()
-    })
+            param($s, $e)
+            $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(64, 64, 72), 1)
+            $e.Graphics.DrawRectangle($pen, 0, 0, $s.ClientSize.Width - 1, $s.ClientSize.Height - 1)
+            $pen.Dispose()
+        })
 
     # Accent strip along the top edge — the app's signature
     $strip = New-Object System.Windows.Forms.Panel
     $strip.BackColor = $Accent
-    $strip.Location  = New-Object System.Drawing.Point(0, 0)
-    $strip.Size      = New-Object System.Drawing.Size($f.ClientSize.Width, [int](4 * $ds))
+    $strip.Location = New-Object System.Drawing.Point(0, 0)
+    $strip.Size = New-Object System.Drawing.Size($f.ClientSize.Width, [int](4 * $ds))
     $f.Controls.Add($strip)
 
     $glyphFont = New-Object System.Drawing.Font("Segoe UI Symbol", 22, [System.Drawing.FontStyle]::Regular)
@@ -308,15 +308,15 @@ if (-not $script:createdNew) {
 
 # --- Theme color references ---
 $script:theme = @{
-    PillBg       = [System.Drawing.Color]::FromArgb(24, 24, 28)
-    PopupBg      = [System.Drawing.Color]::FromArgb(26, 26, 30)
-    TextPrimary  = [System.Drawing.Color]::FromArgb(245, 245, 250)
-    TextDim      = [System.Drawing.Color]::FromArgb(145, 145, 155)
-    TextLight    = [System.Drawing.Color]::FromArgb(220, 220, 225)
-    TextMuted    = [System.Drawing.Color]::FromArgb(80, 80, 86)
-    Border       = [System.Drawing.Color]::FromArgb(50, 50, 56)
-    SparkBg      = [System.Drawing.Color]::FromArgb(20, 20, 24)
-    SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
+    PillBg      = [System.Drawing.Color]::FromArgb(24, 24, 28)
+    PopupBg     = [System.Drawing.Color]::FromArgb(26, 26, 30)
+    TextPrimary = [System.Drawing.Color]::FromArgb(245, 245, 250)
+    TextDim     = [System.Drawing.Color]::FromArgb(145, 145, 155)
+    TextLight   = [System.Drawing.Color]::FromArgb(220, 220, 225)
+    TextMuted   = [System.Drawing.Color]::FromArgb(80, 80, 86)
+    Border      = [System.Drawing.Color]::FromArgb(50, 50, 56)
+    SparkBg     = [System.Drawing.Color]::FromArgb(20, 20, 24)
+    SparkGuide  = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
 $script:appVersion = "1.1.9"
@@ -338,25 +338,25 @@ function Set-Theme {
     elseif ($themeSetting -eq "auto") { $useDark = -not (Get-SystemTheme) }
 
     if ($useDark) {
-        $script:theme.PillBg       = [System.Drawing.Color]::FromArgb(24, 24, 28)
-        $script:theme.PopupBg      = [System.Drawing.Color]::FromArgb(26, 26, 30)
-        $script:theme.TextPrimary  = [System.Drawing.Color]::FromArgb(245, 245, 250)
-        $script:theme.TextDim      = [System.Drawing.Color]::FromArgb(145, 145, 155)
-        $script:theme.TextLight    = [System.Drawing.Color]::FromArgb(220, 220, 225)
-        $script:theme.TextMuted    = [System.Drawing.Color]::FromArgb(80, 80, 86)
-        $script:theme.Border       = [System.Drawing.Color]::FromArgb(50, 50, 56)
-        $script:theme.SparkBg      = [System.Drawing.Color]::FromArgb(20, 20, 24)
-        $script:theme.SparkGuide   = [System.Drawing.Color]::FromArgb(255, 255, 255)
+        $script:theme.PillBg = [System.Drawing.Color]::FromArgb(24, 24, 28)
+        $script:theme.PopupBg = [System.Drawing.Color]::FromArgb(26, 26, 30)
+        $script:theme.TextPrimary = [System.Drawing.Color]::FromArgb(245, 245, 250)
+        $script:theme.TextDim = [System.Drawing.Color]::FromArgb(145, 145, 155)
+        $script:theme.TextLight = [System.Drawing.Color]::FromArgb(220, 220, 225)
+        $script:theme.TextMuted = [System.Drawing.Color]::FromArgb(80, 80, 86)
+        $script:theme.Border = [System.Drawing.Color]::FromArgb(50, 50, 56)
+        $script:theme.SparkBg = [System.Drawing.Color]::FromArgb(20, 20, 24)
+        $script:theme.SparkGuide = [System.Drawing.Color]::FromArgb(255, 255, 255)
     } else {
-        $script:theme.PillBg       = [System.Drawing.Color]::FromArgb(242, 242, 247)
-        $script:theme.PopupBg      = [System.Drawing.Color]::FromArgb(248, 248, 252)
-        $script:theme.TextPrimary  = [System.Drawing.Color]::FromArgb(28, 28, 30)
-        $script:theme.TextDim      = [System.Drawing.Color]::FromArgb(100, 100, 110)
-        $script:theme.TextLight    = [System.Drawing.Color]::FromArgb(50, 50, 55)
-        $script:theme.TextMuted    = [System.Drawing.Color]::FromArgb(170, 170, 180)
-        $script:theme.Border       = [System.Drawing.Color]::FromArgb(200, 200, 210)
-        $script:theme.SparkBg      = [System.Drawing.Color]::FromArgb(232, 232, 238)
-        $script:theme.SparkGuide   = [System.Drawing.Color]::FromArgb(60, 60, 68)
+        $script:theme.PillBg = [System.Drawing.Color]::FromArgb(242, 242, 247)
+        $script:theme.PopupBg = [System.Drawing.Color]::FromArgb(248, 248, 252)
+        $script:theme.TextPrimary = [System.Drawing.Color]::FromArgb(28, 28, 30)
+        $script:theme.TextDim = [System.Drawing.Color]::FromArgb(100, 100, 110)
+        $script:theme.TextLight = [System.Drawing.Color]::FromArgb(50, 50, 55)
+        $script:theme.TextMuted = [System.Drawing.Color]::FromArgb(170, 170, 180)
+        $script:theme.Border = [System.Drawing.Color]::FromArgb(200, 200, 210)
+        $script:theme.SparkBg = [System.Drawing.Color]::FromArgb(232, 232, 238)
+        $script:theme.SparkGuide = [System.Drawing.Color]::FromArgb(60, 60, 68)
     }
 
     # Refresh cached brushes for new theme
@@ -421,7 +421,7 @@ $script:hysteresisSeconds = 2  # Dead time after AC plug/unplug to ignore rate s
 # ============================================================
 
 function Get-BatteryInfo {
-    param([Parameter(Mandatory=$false)][object]$Now = $null)
+    param([Parameter(Mandatory = $false)][object]$Now = $null)
     if ($null -eq $Now) { $Now = Get-Date }
     $info = @{
         Percent            = -1
@@ -498,7 +498,7 @@ function Get-BatteryInfo {
     # Charging status from WMI
     if ($wmiBattery) {
         $batteryStatus = $wmiBattery.BatteryStatus
-        $info.IsCharging  = $batteryStatus -in @(2, 6, 7, 8, 9)
+        $info.IsCharging = $batteryStatus -in @(2, 6, 7, 8, 9)
         $info.IsPluggedIn = $batteryStatus -in @(2, 3, 6, 7, 8, 9, 11)
         $info.IsFullyCharged = $batteryStatus -eq 3
     }
@@ -596,10 +596,10 @@ function Get-BatteryInfo {
 
     # Format time string
     if ($timeMinutes -gt 0) {
-        $hours   = [math]::Floor($timeMinutes / 60)
+        $hours = [math]::Floor($timeMinutes / 60)
         $minutes = $timeMinutes % 60
         if ($hours -gt 0 -and $minutes -gt 0) {
-            $hourLabel   = if ($hours -ne 1) { "hours" } else { "hour" }
+            $hourLabel = if ($hours -ne 1) { "hours" } else { "hour" }
             $minuteLabel = if ($minutes -ne 1) { "minutes" } else { "minute" }
             $info.TimeString = "$hours $hourLabel $minutes $minuteLabel"
         } elseif ($hours -gt 0) {
@@ -636,8 +636,8 @@ function Get-BatteryInfo {
     # Labels
     $info.PowerSource = if ($info.IsPluggedIn) { "AC Power (plugged in)" } else { "Battery (unplugged)" }
     $info.TimeLabel = if ($info.IsCharging) { "Time to Full:" }
-                      elseif ($info.IsFullyCharged) { "Time Remaining:" }
-                      else { "Time Remaining:" }
+    elseif ($info.IsFullyCharged) { "Time Remaining:" }
+    else { "Time Remaining:" }
 
     if ($info.IsFullyCharged) {
         $info.TimeString = "N/A (plugged in)"
@@ -658,7 +658,7 @@ function Get-BatteryInfo {
 
     $elapsed = $Now - $script:lastStateChange.Time
     $elapsedHours = [math]::Floor($elapsed.TotalHours)
-    $elapsedMins  = $elapsed.Minutes
+    $elapsedMins = $elapsed.Minutes
     $info.ElapsedTime = "{0}:{1:D2}" -f $elapsedHours, $elapsedMins
     $info.ElapsedSince = "$($script:lastStateChange.Percent)%"
 
@@ -856,12 +856,12 @@ function Update-PowerPlanMenu {
         $item.Checked = $plan.IsActive
         $item.Tag = $plan.GUID
         $item.Add_Click({
-            $guid = $this.Tag
-            $ok = Set-ActivePowerPlan -PlanGUID $guid
-            if (-not $ok) {
-                Show-BatteryNotification -Message "Admin rights needed" -SubMessage "Cannot switch power plan without elevation"
-            }
-        })
+                $guid = $this.Tag
+                $ok = Set-ActivePowerPlan -PlanGUID $guid
+                if (-not $ok) {
+                    Show-BatteryNotification -Message "Admin rights needed" -SubMessage "Cannot switch power plan without elevation"
+                }
+            })
         $MenuItem.DropDownItems.Add($item) | Out-Null
     }
     if ($plans.Count -eq 0) {
@@ -881,11 +881,11 @@ function Get-StatusColor {
     param([string]$Status)
     switch ($Status) {
         "Fully Charged" { [System.Drawing.Color]::FromArgb(0, 200, 0) }
-        "Charging"      { [System.Drawing.Color]::FromArgb(255, 200, 0) }
-        "Critical"      { [System.Drawing.Color]::Red }
-        "Low"           { [System.Drawing.Color]::Orange }
-        "No Battery"    { [System.Drawing.Color]::Gray }
-        default         { [System.Drawing.Color]::FromArgb(0, 180, 255) }
+        "Charging" { [System.Drawing.Color]::FromArgb(255, 200, 0) }
+        "Critical" { [System.Drawing.Color]::Red }
+        "Low" { [System.Drawing.Color]::Orange }
+        "No Battery" { [System.Drawing.Color]::Gray }
+        default { [System.Drawing.Color]::FromArgb(0, 180, 255) }
     }
 }
 
@@ -1056,21 +1056,21 @@ function Read-ConfigField {
 function Import-Config {
     $configPath = Get-ConfigPath
     $default = @{
-        X = -1
-        Y = -1
-        Opacity = 0.85
-        RefreshInterval = 3000
-        PositionLocked = $false
-        DisplayMode = "time"
-        PillSize = "normal"
-        Theme = "dark"
-        AccentColorIndex = 0
+        X                  = -1
+        Y                  = -1
+        Opacity            = 0.85
+        RefreshInterval    = 3000
+        PositionLocked     = $false
+        DisplayMode        = "time"
+        PillSize           = "normal"
+        Theme              = "dark"
+        AccentColorIndex   = 0
         AutoHideFullscreen = $false
-        FirstRunShown = $false
-        BatteryHistory = @()
-        EmaRate = -1
-        LastValidRate = -1
-        ConfigSavedAt = $null
+        FirstRunShown      = $false
+        BatteryHistory     = @()
+        EmaRate            = -1
+        LastValidRate      = -1
+        ConfigSavedAt      = $null
     }
     if (Test-Path $configPath) {
         try {
@@ -1156,21 +1156,21 @@ function Save-Config {
             }
         }
         @{
-            X = $script:config.X
-            Y = $script:config.Y
-            Opacity = $script:config.Opacity
-            RefreshInterval = $script:config.RefreshInterval
-            PositionLocked = $script:config.PositionLocked
-            DisplayMode = $script:config.DisplayMode
-            PillSize = $script:config.PillSize
-            Theme = $script:config.Theme
-            AccentColorIndex = $script:config.AccentColorIndex
+            X                  = $script:config.X
+            Y                  = $script:config.Y
+            Opacity            = $script:config.Opacity
+            RefreshInterval    = $script:config.RefreshInterval
+            PositionLocked     = $script:config.PositionLocked
+            DisplayMode        = $script:config.DisplayMode
+            PillSize           = $script:config.PillSize
+            Theme              = $script:config.Theme
+            AccentColorIndex   = $script:config.AccentColorIndex
             AutoHideFullscreen = $script:config.AutoHideFullscreen
-            FirstRunShown = $script:config.FirstRunShown
-            BatteryHistory = $historyToSave
-            EmaRate = $script:emaRate
-            LastValidRate = $script:lastValidRate
-            ConfigSavedAt = (Get-Date).ToString("o")
+            FirstRunShown      = $script:config.FirstRunShown
+            BatteryHistory     = $historyToSave
+            EmaRate            = $script:emaRate
+            LastValidRate      = $script:lastValidRate
+            ConfigSavedAt      = (Get-Date).ToString("o")
         } | ConvertTo-Json -Depth 3 | Set-Content $configPath -Force
     } catch {
         Show-BatteryNotification "Config Save Failed" "Settings may not persist"
@@ -1303,26 +1303,26 @@ function New-RoundedRectPath {
 # CACHED GDI+ BRUSHES/PENS FOR PAINT HANDLER
 # ============================================================
 
-$script:pillBgBrush        = $null
-$script:pillTextBrush      = $null
-$script:pillBorderPen      = $null
+$script:pillBgBrush = $null
+$script:pillTextBrush = $null
+$script:pillBorderPen = $null
 $script:pillBorderHoverPen = $null
 
 function Initialize-PillBrushes {
     # Dispose old cached objects
-    if ($null -ne $script:pillBgBrush)        { $script:pillBgBrush.Dispose() }
-    if ($null -ne $script:pillTextBrush)      { $script:pillTextBrush.Dispose() }
-    if ($null -ne $script:pillBorderPen)      { $script:pillBorderPen.Dispose() }
+    if ($null -ne $script:pillBgBrush) { $script:pillBgBrush.Dispose() }
+    if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
+    if ($null -ne $script:pillBorderPen) { $script:pillBorderPen.Dispose() }
     if ($null -ne $script:pillBorderHoverPen) { $script:pillBorderHoverPen.Dispose() }
     # Create from current theme colors
-    $script:pillBgBrush    = New-Object System.Drawing.SolidBrush($script:theme.PillBg)
-    $script:pillTextBrush  = New-Object System.Drawing.SolidBrush($script:theme.TextPrimary)
-    $script:pillBorderPen  = New-Object System.Drawing.Pen($script:theme.Border, 1)
+    $script:pillBgBrush = New-Object System.Drawing.SolidBrush($script:theme.PillBg)
+    $script:pillTextBrush = New-Object System.Drawing.SolidBrush($script:theme.TextPrimary)
+    $script:pillBorderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
     # Hover pen: blend border 50% toward TextPrimary - reads brighter on dark theme
     # and stronger on light theme (a flat brighten washes out on a light background)
     $hb = $script:theme.Border; $ht = $script:theme.TextPrimary
     $script:pillBorderHoverPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,
-        [int](($hb.R + $ht.R) / 2), [int](($hb.G + $ht.G) / 2), [int](($hb.B + $ht.B) / 2)), 1)
+            [int](($hb.R + $ht.R) / 2), [int](($hb.G + $ht.G) / 2), [int](($hb.B + $ht.B) / 2)), 1)
 }
 
 # ============================================================
@@ -1334,7 +1334,7 @@ function Get-PillDimensions {
     $mode = $script:config.DisplayMode
     $size = $script:config.PillSize
     switch ($size) {
-        "compact"  { return @{ Width = 80; Height = 28; FontSize = 9.0; FontSize2 = 0 } }
+        "compact" { return @{ Width = 80; Height = 28; FontSize = 9.0; FontSize2 = 0 } }
         "expanded" { return @{ Width = 140; Height = 42; FontSize = 10.2; FontSize2 = 7.5 } }
         default {
             # normal — grows if DisplayMode is "both"
@@ -1483,187 +1483,187 @@ function New-FloatingBar {
 
     # Custom paint — the entire pill is the battery: fill level + text
     $form.Add_Paint({
-        param($sender, $e)
-        $g = $e.Graphics
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
-        $w = $sender.Width
-        $h = $sender.Height
-        $radius = if ($null -ne $script:pillRadius) { $script:pillRadius } else { 8 }
+            param($sender, $e)
+            $g = $e.Graphics
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+            $w = $sender.Width
+            $h = $sender.Height
+            $radius = if ($null -ne $script:pillRadius) { $script:pillRadius } else { 8 }
 
-        # --- Rounded rectangle path (full pill), 1px inset from region ---
-        $d = ($radius - 1) * 2
-        $path = New-RoundedRectPath -Right ($w - $d - 1) -Bottom ($h - $d - 1) -Diameter $d
+            # --- Rounded rectangle path (full pill), 1px inset from region ---
+            $d = ($radius - 1) * 2
+            $path = New-RoundedRectPath -Right ($w - $d - 1) -Bottom ($h - $d - 1) -Diameter $d
 
-        # --- Background (entire pill, theme-aware — cached brush) ---
-        $g.FillPath($script:pillBgBrush, $path)
+            # --- Background (entire pill, theme-aware — cached brush) ---
+            $g.FillPath($script:pillBgBrush, $path)
 
-        # --- Battery charge fill (left-to-right, clipped to pill shape) ---
-        $pct = [math]::Max(0, [math]::Min(100, $script:barDisplayPercent))
-        $fillWidth = [math]::Max(0, [math]::Round(($pct / 100) * $w))
-        if ($fillWidth -gt 0) {
-            # Clip to the rounded pill shape
-            $oldClip = $g.Clip
-            $g.SetClip($path)
+            # --- Battery charge fill (left-to-right, clipped to pill shape) ---
+            $pct = [math]::Max(0, [math]::Min(100, $script:barDisplayPercent))
+            $fillWidth = [math]::Max(0, [math]::Round(($pct / 100) * $w))
+            if ($fillWidth -gt 0) {
+                # Clip to the rounded pill shape
+                $oldClip = $g.Clip
+                $g.SetClip($path)
 
-            # Semi-transparent accent gradient fill (left brighter, right slightly darker)
-            # Use pulse alpha when charging for animated glow effect
-            $ac = $script:barAccentColor
-            $baseAlpha = if ($script:barIsCharging) { $script:pulseAlpha } else { 100 }
-            $fillLeft  = [System.Drawing.Color]::FromArgb([math]::Min(255, $baseAlpha + 20), $ac.R, $ac.G, $ac.B)
-            $fillRight = [System.Drawing.Color]::FromArgb([math]::Max(60, $baseAlpha - 20), $ac.R, $ac.G, $ac.B)
-            $fillRect = New-Object System.Drawing.Rectangle(0, 0, [math]::Max(1, $fillWidth), $h)
-            $fillBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-                $fillRect, $fillLeft, $fillRight,
-                [System.Drawing.Drawing2D.LinearGradientMode]::Horizontal)
-            $g.FillRectangle($fillBrush, $fillRect)
-            $fillBrush.Dispose()
+                # Semi-transparent accent gradient fill (left brighter, right slightly darker)
+                # Use pulse alpha when charging for animated glow effect
+                $ac = $script:barAccentColor
+                $baseAlpha = if ($script:barIsCharging) { $script:pulseAlpha } else { 100 }
+                $fillLeft = [System.Drawing.Color]::FromArgb([math]::Min(255, $baseAlpha + 20), $ac.R, $ac.G, $ac.B)
+                $fillRight = [System.Drawing.Color]::FromArgb([math]::Max(60, $baseAlpha - 20), $ac.R, $ac.G, $ac.B)
+                $fillRect = New-Object System.Drawing.Rectangle(0, 0, [math]::Max(1, $fillWidth), $h)
+                $fillBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+                    $fillRect, $fillLeft, $fillRight,
+                    [System.Drawing.Drawing2D.LinearGradientMode]::Horizontal)
+                $g.FillRectangle($fillBrush, $fillRect)
+                $fillBrush.Dispose()
 
-            $g.Clip = $oldClip
-        }
-
-        # --- Glass effect: convex top highlight band ---
-        $oldClip2 = $g.Clip
-        $g.SetClip($path)
-        $topBandRect = New-Object System.Drawing.Rectangle(0, 0, $w, 6)
-        $topBandBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-            $topBandRect,
-            [System.Drawing.Color]::FromArgb(35, 255, 255, 255),
-            [System.Drawing.Color]::FromArgb(0, 255, 255, 255),
-            [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
-        $g.FillRectangle($topBandBrush, $topBandRect)
-        $topBandBrush.Dispose()
-
-        # --- Glass effect: bottom shadow band ---
-        $botBandRect = New-Object System.Drawing.Rectangle(0, ($h - 4), $w, 4)
-        $botBandBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-            $botBandRect,
-            [System.Drawing.Color]::FromArgb(0, 0, 0, 0),
-            [System.Drawing.Color]::FromArgb(20, 0, 0, 0),
-            [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
-        $g.FillRectangle($botBandBrush, $botBandRect)
-        $botBandBrush.Dispose()
-
-        # --- Glass effect: charge boundary glow ---
-        if ($fillWidth -gt 2 -and $fillWidth -lt $w) {
-            $glowX = $fillWidth - 2
-            $glowRect = New-Object System.Drawing.Rectangle($glowX, 0, 5, $h)
-            $ac2 = $script:barAccentColor
-            $glowBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-                $glowRect,
-                [System.Drawing.Color]::FromArgb(60, $ac2.R, $ac2.G, $ac2.B),
-                [System.Drawing.Color]::FromArgb(0, $ac2.R, $ac2.G, $ac2.B),
-                [System.Drawing.Drawing2D.LinearGradientMode]::Horizontal)
-            $g.FillRectangle($glowBrush, $glowRect)
-            $glowBrush.Dispose()
-        }
-        $g.Clip = $oldClip2
-
-        # --- Text rendering (supports single-line and dual-line modes) ---
-        if ($script:barDisplayText2 -and $script:barDisplayText2.Length -gt 0 -and $null -ne $script:pillFont2) {
-            # Dual-line mode: top = accent-colored primary, bottom = dim secondary
-            $ac3 = $script:barAccentColor
-            $topBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, $ac3.R, $ac3.G, $ac3.B))
-            $topRect = New-Object System.Drawing.RectangleF(0, 2, $w, ($h / 2))
-            $g.DrawString($script:barDisplayText, $script:pillFont, $topBrush, $topRect, $script:pillStringFormat)
-            $topBrush.Dispose()
-            $botBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
-            # NOTE: the inner subtraction MUST be fully parenthesized - in an argument list the
-            # comma binds tighter than minus, so "($h / 2) - 2, $w" parses as array subtraction
-            # and throws op_Subtraction every paint, silently killing this second line.
-            $botRect = New-Object System.Drawing.RectangleF(0, (($h / 2) - 2), $w, ($h / 2))
-            $g.DrawString($script:barDisplayText2, $script:pillFont2, $botBrush, $botRect, $script:pillStringFormat)
-            $botBrush.Dispose()
-        } else {
-            # Single-line mode (centered — cached brush)
-            $textRect = New-Object System.Drawing.RectangleF(0, 0, $w, $h)
-            $g.DrawString($script:barDisplayText, $script:pillFont, $script:pillTextBrush, $textRect, $script:pillStringFormat)
-        }
-
-        # --- Plug/unplug flash overlay (green tint on light theme, white on dark) ---
-        if ($script:flashAlpha -gt 0) {
-            $isLight = ($script:theme.PillBg.R -gt 128)
-            if ($isLight) {
-                $flashBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($script:flashAlpha, 45, 212, 100))
-            } else {
-                $flashBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($script:flashAlpha, 255, 255, 255))
+                $g.Clip = $oldClip
             }
-            $g.FillPath($flashBrush, $path)
-            $flashBrush.Dispose()
-        }
 
-        # --- Low battery warning: pulsing red border at 15% ---
-        if ($null -ne $script:lowBatBorderAlpha -and $script:lowBatBorderAlpha -gt 0) {
-            $warnPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb($script:lowBatBorderAlpha, 235, 85, 75), 2)
-            $g.DrawPath($warnPen, $path)
-            $warnPen.Dispose()
-        } elseif ($script:pillHovered -and $null -ne $script:pillBorderHoverPen) {
-            # --- Hover affordance: stronger border while the cursor is on the pill (cached pen) ---
-            $g.DrawPath($script:pillBorderHoverPen, $path)
-        } else {
-            # --- Border (cached pen) ---
-            $g.DrawPath($script:pillBorderPen, $path)
-        }
+            # --- Glass effect: convex top highlight band ---
+            $oldClip2 = $g.Clip
+            $g.SetClip($path)
+            $topBandRect = New-Object System.Drawing.Rectangle(0, 0, $w, 6)
+            $topBandBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+                $topBandRect,
+                [System.Drawing.Color]::FromArgb(35, 255, 255, 255),
+                [System.Drawing.Color]::FromArgb(0, 255, 255, 255),
+                [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+            $g.FillRectangle($topBandBrush, $topBandRect)
+            $topBandBrush.Dispose()
 
-        $path.Dispose()
-    })
+            # --- Glass effect: bottom shadow band ---
+            $botBandRect = New-Object System.Drawing.Rectangle(0, ($h - 4), $w, 4)
+            $botBandBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+                $botBandRect,
+                [System.Drawing.Color]::FromArgb(0, 0, 0, 0),
+                [System.Drawing.Color]::FromArgb(20, 0, 0, 0),
+                [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+            $g.FillRectangle($botBandBrush, $botBandRect)
+            $botBandBrush.Dispose()
+
+            # --- Glass effect: charge boundary glow ---
+            if ($fillWidth -gt 2 -and $fillWidth -lt $w) {
+                $glowX = $fillWidth - 2
+                $glowRect = New-Object System.Drawing.Rectangle($glowX, 0, 5, $h)
+                $ac2 = $script:barAccentColor
+                $glowBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+                    $glowRect,
+                    [System.Drawing.Color]::FromArgb(60, $ac2.R, $ac2.G, $ac2.B),
+                    [System.Drawing.Color]::FromArgb(0, $ac2.R, $ac2.G, $ac2.B),
+                    [System.Drawing.Drawing2D.LinearGradientMode]::Horizontal)
+                $g.FillRectangle($glowBrush, $glowRect)
+                $glowBrush.Dispose()
+            }
+            $g.Clip = $oldClip2
+
+            # --- Text rendering (supports single-line and dual-line modes) ---
+            if ($script:barDisplayText2 -and $script:barDisplayText2.Length -gt 0 -and $null -ne $script:pillFont2) {
+                # Dual-line mode: top = accent-colored primary, bottom = dim secondary
+                $ac3 = $script:barAccentColor
+                $topBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, $ac3.R, $ac3.G, $ac3.B))
+                $topRect = New-Object System.Drawing.RectangleF(0, 2, $w, ($h / 2))
+                $g.DrawString($script:barDisplayText, $script:pillFont, $topBrush, $topRect, $script:pillStringFormat)
+                $topBrush.Dispose()
+                $botBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
+                # NOTE: the inner subtraction MUST be fully parenthesized - in an argument list the
+                # comma binds tighter than minus, so "($h / 2) - 2, $w" parses as array subtraction
+                # and throws op_Subtraction every paint, silently killing this second line.
+                $botRect = New-Object System.Drawing.RectangleF(0, (($h / 2) - 2), $w, ($h / 2))
+                $g.DrawString($script:barDisplayText2, $script:pillFont2, $botBrush, $botRect, $script:pillStringFormat)
+                $botBrush.Dispose()
+            } else {
+                # Single-line mode (centered — cached brush)
+                $textRect = New-Object System.Drawing.RectangleF(0, 0, $w, $h)
+                $g.DrawString($script:barDisplayText, $script:pillFont, $script:pillTextBrush, $textRect, $script:pillStringFormat)
+            }
+
+            # --- Plug/unplug flash overlay (green tint on light theme, white on dark) ---
+            if ($script:flashAlpha -gt 0) {
+                $isLight = ($script:theme.PillBg.R -gt 128)
+                if ($isLight) {
+                    $flashBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($script:flashAlpha, 45, 212, 100))
+                } else {
+                    $flashBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($script:flashAlpha, 255, 255, 255))
+                }
+                $g.FillPath($flashBrush, $path)
+                $flashBrush.Dispose()
+            }
+
+            # --- Low battery warning: pulsing red border at 15% ---
+            if ($null -ne $script:lowBatBorderAlpha -and $script:lowBatBorderAlpha -gt 0) {
+                $warnPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb($script:lowBatBorderAlpha, 235, 85, 75), 2)
+                $g.DrawPath($warnPen, $path)
+                $warnPen.Dispose()
+            } elseif ($script:pillHovered -and $null -ne $script:pillBorderHoverPen) {
+                # --- Hover affordance: stronger border while the cursor is on the pill (cached pen) ---
+                $g.DrawPath($script:pillBorderHoverPen, $path)
+            } else {
+                # --- Border (cached pen) ---
+                $g.DrawPath($script:pillBorderPen, $path)
+            }
+
+            $path.Dispose()
+        })
 
     # Hover timer for delayed popup (500ms)
     $script:hoverTimer = New-Object System.Windows.Forms.Timer
     $script:hoverTimer.Interval = 500
     $script:hoverTimer.Add_Tick({
-        $script:hoverTimer.Stop()
-        if (-not $script:hoverPopupVisible -and -not $script:floatingBar.ContextMenuStrip.Visible -and
-            -not $script:isDragging -and -not $script:leftPressed) {
-            Show-HoverPopup
-        }
-    })
+            $script:hoverTimer.Stop()
+            if (-not $script:hoverPopupVisible -and -not $script:floatingBar.ContextMenuStrip.Visible -and
+                -not $script:isDragging -and -not $script:leftPressed) {
+                Show-HoverPopup
+            }
+        })
 
     # Dismiss check timer (100ms delay to allow moving to popup)
     $script:dismissTimer = New-Object System.Windows.Forms.Timer
     $script:dismissTimer.Interval = 100
     $script:dismissTimer.Add_Tick({
-        # Check if mouse is over pill or popup
-        $mousePos = [System.Windows.Forms.Cursor]::Position
-        $overPill = $false
-        $overPopup = $false
+            # Check if mouse is over pill or popup
+            $mousePos = [System.Windows.Forms.Cursor]::Position
+            $overPill = $false
+            $overPopup = $false
 
-        if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed -and $script:floatingBar.Visible) {
-            $pillRect = New-Object System.Drawing.Rectangle($script:floatingBar.Location, $script:floatingBar.Size)
-            $pillRect.Inflate(10, 10)   # 10px grace area around pill
-            $overPill = $pillRect.Contains($mousePos)
-        }
+            if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed -and $script:floatingBar.Visible) {
+                $pillRect = New-Object System.Drawing.Rectangle($script:floatingBar.Location, $script:floatingBar.Size)
+                $pillRect.Inflate(10, 10)   # 10px grace area around pill
+                $overPill = $pillRect.Contains($mousePos)
+            }
 
-        if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed -and $script:hoverPopup.Visible) {
-            $popupRect = New-Object System.Drawing.Rectangle($script:hoverPopup.Location, $script:hoverPopup.Size)
-            $popupRect.Inflate(10, 10)  # 10px grace area around popup
-            $overPopup = $popupRect.Contains($mousePos)
-        }
+            if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed -and $script:hoverPopup.Visible) {
+                $popupRect = New-Object System.Drawing.Rectangle($script:hoverPopup.Location, $script:hoverPopup.Size)
+                $popupRect.Inflate(10, 10)  # 10px grace area around popup
+                $overPopup = $popupRect.Contains($mousePos)
+            }
 
-        if (-not $overPill -and -not $overPopup) {
-            $script:dismissTimer.Stop()
-            Close-HoverPopup
-        }
-    })
+            if (-not $overPill -and -not $overPopup) {
+                $script:dismissTimer.Stop()
+                Close-HoverPopup
+            }
+        })
 
     # Mouse enter - start hover timer + hover affordance
     $form.Add_MouseEnter({
-        $script:pillHovered = $true
-        $script:floatingBar.Invalidate()
-        if (-not $script:hoverPopupVisible -and -not $script:isDragging) {
-            $script:hoverTimer.Start()
-        }
-    })
+            $script:pillHovered = $true
+            $script:floatingBar.Invalidate()
+            if (-not $script:hoverPopupVisible -and -not $script:isDragging) {
+                $script:hoverTimer.Start()
+            }
+        })
 
     # Mouse leave - stop timer, start dismiss check, clear hover affordance
     $form.Add_MouseLeave({
-        $script:pillHovered = $false
-        $script:floatingBar.Invalidate()
-        $script:hoverTimer.Stop()
-        if ($script:hoverPopupVisible) {
-            $script:dismissTimer.Start()
-        }
-    })
+            $script:pillHovered = $false
+            $script:floatingBar.Invalidate()
+            $script:hoverTimer.Stop()
+            if ($script:hoverPopupVisible) {
+                $script:dismissTimer.Start()
+            }
+        })
 
     # Drag handling — track if mouse actually moved to distinguish click vs drag
     $script:isDragging = $false
@@ -1702,7 +1702,7 @@ function New-FloatingBar {
             if ($dx -gt 3 -or $dy -gt 3) {
                 $script:didDrag = $true
                 $newX = $script:floatingBar.Left + $e.X - $script:dragOffset.X
-                $newY = $script:floatingBar.Top  + $e.Y - $script:dragOffset.Y
+                $newY = $script:floatingBar.Top + $e.Y - $script:dragOffset.Y
 
                 # Snap-to-edge: magnetic snap within 15px of screen edge → 8px from edge
                 $snapThreshold = 15
@@ -1780,109 +1780,109 @@ function New-SparklinePanel {
     $panel.BackColor = [System.Drawing.Color]::Transparent
     $panel.Tag = @{ AccentColor = $AccentColor }
     $panel.Add_Paint({
-        param($sender, $e)
-        $sg = $e.Graphics
-        $sg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $sw = $sender.Width
-        $sh = $sender.Height
+            param($sender, $e)
+            $sg = $e.Graphics
+            $sg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $sw = $sender.Width
+            $sh = $sender.Height
 
-        # Rounded background — the sparkline was the one sharp-cornered box in an
-        # app built on rounded corners. Round it with the shared primitive and
-        # clip the graph inside so nothing squares off the corners.
-        $d = 6
-        $rPath = New-RoundedRectPath -Right ($sw - $d - 1) -Bottom ($sh - $d - 1) -Diameter $d
-        $bgBrush = New-Object System.Drawing.SolidBrush($script:theme.SparkBg)
-        $sg.FillPath($bgBrush, $rPath)
-        $bgBrush.Dispose()
+            # Rounded background — the sparkline was the one sharp-cornered box in an
+            # app built on rounded corners. Round it with the shared primitive and
+            # clip the graph inside so nothing squares off the corners.
+            $d = 6
+            $rPath = New-RoundedRectPath -Right ($sw - $d - 1) -Bottom ($sh - $d - 1) -Diameter $d
+            $bgBrush = New-Object System.Drawing.SolidBrush($script:theme.SparkBg)
+            $sg.FillPath($bgBrush, $rPath)
+            $bgBrush.Dispose()
 
-        $clipState = $sg.Save()
-        $sg.SetClip($rPath)
+            $clipState = $sg.Save()
+            $sg.SetClip($rPath)
 
-        $guide = $script:theme.SparkGuide
+            $guide = $script:theme.SparkGuide
 
-        $history = $script:batteryHistory
-        if ($null -eq $history -or $history.Count -lt 2) {
-            # Not enough data yet — a friendly, centered placeholder with a faint baseline
-            $baseY = $sh - 9
-            $basePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(45, $guide.R, $guide.G, $guide.B), 1)
-            $basePen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
-            $sg.DrawLine($basePen, 8, $baseY, $sw - 8, $baseY)
-            $basePen.Dispose()
-            $noDataFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Regular)
-            $noDataBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
-            $noDataFmt = New-Object System.Drawing.StringFormat
-            $noDataFmt.Alignment = [System.Drawing.StringAlignment]::Center
-            $noDataFmt.LineAlignment = [System.Drawing.StringAlignment]::Center
-            $sg.DrawString("Charting your battery...", $noDataFont, $noDataBrush, (New-Object System.Drawing.RectangleF(0, 0, $sw, ($sh - 6))), $noDataFmt)
-            $noDataFmt.Dispose(); $noDataBrush.Dispose(); $noDataFont.Dispose()
-        } else {
-            $count = $history.Count
-            $acColor = $sender.Tag.AccentColor
+            $history = $script:batteryHistory
+            if ($null -eq $history -or $history.Count -lt 2) {
+                # Not enough data yet — a friendly, centered placeholder with a faint baseline
+                $baseY = $sh - 9
+                $basePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(45, $guide.R, $guide.G, $guide.B), 1)
+                $basePen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+                $sg.DrawLine($basePen, 8, $baseY, $sw - 8, $baseY)
+                $basePen.Dispose()
+                $noDataFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Regular)
+                $noDataBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
+                $noDataFmt = New-Object System.Drawing.StringFormat
+                $noDataFmt.Alignment = [System.Drawing.StringAlignment]::Center
+                $noDataFmt.LineAlignment = [System.Drawing.StringAlignment]::Center
+                $sg.DrawString("Charting your battery...", $noDataFont, $noDataBrush, (New-Object System.Drawing.RectangleF(0, 0, $sw, ($sh - 6))), $noDataFmt)
+                $noDataFmt.Dispose(); $noDataBrush.Dispose(); $noDataFont.Dispose()
+            } else {
+                $count = $history.Count
+                $acColor = $sender.Tag.AccentColor
 
-            # Draw charging background bands (green tinted regions)
-            $chargeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(15, 45, 212, 100))
-            for ($i = 0; $i -lt $count; $i++) {
-                if ($history[$i].IsCharging) {
-                    $x1 = [int](($i / [math]::Max(1, $count - 1)) * $sw)
-                    $sg.FillRectangle($chargeBrush, $x1, 0, [math]::Max(2, [int]($sw / $count) + 1), $sh)
+                # Draw charging background bands (green tinted regions)
+                $chargeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(15, 45, 212, 100))
+                for ($i = 0; $i -lt $count; $i++) {
+                    if ($history[$i].IsCharging) {
+                        $x1 = [int](($i / [math]::Max(1, $count - 1)) * $sw)
+                        $sg.FillRectangle($chargeBrush, $x1, 0, [math]::Max(2, [int]($sw / $count) + 1), $sh)
+                    }
                 }
-            }
-            $chargeBrush.Dispose()
+                $chargeBrush.Dispose()
 
-            # Draw sparkline
-            $linePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(200, $acColor.R, $acColor.G, $acColor.B), 1.5)
-            $points = New-Object System.Drawing.PointF[] $count
-            for ($i = 0; $i -lt $count; $i++) {
-                $px = ($i / [math]::Max(1, $count - 1)) * $sw
-                $py = $sh - (($history[$i].Percent / 100.0) * ($sh - 4)) - 2
-                $points[$i] = New-Object System.Drawing.PointF($px, $py)
-            }
-            if ($count -ge 2) {
-                $sg.DrawLines($linePen, $points)
-            }
-            $linePen.Dispose()
+                # Draw sparkline
+                $linePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(200, $acColor.R, $acColor.G, $acColor.B), 1.5)
+                $points = New-Object System.Drawing.PointF[] $count
+                for ($i = 0; $i -lt $count; $i++) {
+                    $px = ($i / [math]::Max(1, $count - 1)) * $sw
+                    $py = $sh - (($history[$i].Percent / 100.0) * ($sh - 4)) - 2
+                    $points[$i] = New-Object System.Drawing.PointF($px, $py)
+                }
+                if ($count -ge 2) {
+                    $sg.DrawLines($linePen, $points)
+                }
+                $linePen.Dispose()
 
-            # Current value dot at the end of the sparkline
-            if ($count -ge 2) {
-                $lastPt = $points[$count - 1]
-                $dotBrush = New-Object System.Drawing.SolidBrush(
-                    [System.Drawing.Color]::FromArgb(255, $acColor.R, $acColor.G, $acColor.B))
-                $sg.FillEllipse($dotBrush, $lastPt.X - 3, $lastPt.Y - 3, 6, 6)
-                $dotBrush.Dispose()
+                # Current value dot at the end of the sparkline
+                if ($count -ge 2) {
+                    $lastPt = $points[$count - 1]
+                    $dotBrush = New-Object System.Drawing.SolidBrush(
+                        [System.Drawing.Color]::FromArgb(255, $acColor.R, $acColor.G, $acColor.B))
+                    $sg.FillEllipse($dotBrush, $lastPt.X - 3, $lastPt.Y - 3, 6, 6)
+                    $dotBrush.Dispose()
+                }
+
+                # 50% dashed guide line
+                $halfY = $sh - ((50.0 / 100.0) * ($sh - 4)) - 2
+                $dashPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50, $guide.R, $guide.G, $guide.B), 1)
+                $dashPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+                $sg.DrawLine($dashPen, 0, [int]$halfY, $sw, [int]$halfY)
+                $dashPen.Dispose()
+                $guideFont = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
+                $guideBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
+                $sg.DrawString("50%", $guideFont, $guideBrush, 4, [int]$halfY - 12)
+                $guideBrush.Dispose()
+
+                # Time range label (right edge)
+                if ($count -ge 2) {
+                    $firstTime = $history[0].Time
+                    $lastTime = $history[$count - 1].Time
+                    $spanMin = [int](($lastTime - $firstTime).TotalMinutes)
+                    $spanText = if ($spanMin -ge 60) { "{0}h" -f [math]::Round($spanMin / 60.0, 1) } else { "{0} min" -f $spanMin }
+                    $spanSize = $sg.MeasureString($spanText, $guideFont)
+                    $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
+                    $sg.DrawString($spanText, $guideFont, $spanBrush, ($sw - $spanSize.Width - 5), ($sh - $spanSize.Height - 2))
+                    $spanBrush.Dispose()
+                }
+                $guideFont.Dispose()
             }
 
-            # 50% dashed guide line
-            $halfY = $sh - ((50.0 / 100.0) * ($sh - 4)) - 2
-            $dashPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50, $guide.R, $guide.G, $guide.B), 1)
-            $dashPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
-            $sg.DrawLine($dashPen, 0, [int]$halfY, $sw, [int]$halfY)
-            $dashPen.Dispose()
-            $guideFont = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
-            $guideBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
-            $sg.DrawString("50%", $guideFont, $guideBrush, 4, [int]$halfY - 12)
-            $guideBrush.Dispose()
-
-            # Time range label (right edge)
-            if ($count -ge 2) {
-                $firstTime = $history[0].Time
-                $lastTime = $history[$count - 1].Time
-                $spanMin = [int](($lastTime - $firstTime).TotalMinutes)
-                $spanText = if ($spanMin -ge 60) { "{0}h" -f [math]::Round($spanMin / 60.0, 1) } else { "{0} min" -f $spanMin }
-                $spanSize = $sg.MeasureString($spanText, $guideFont)
-                $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
-                $sg.DrawString($spanText, $guideFont, $spanBrush, ($sw - $spanSize.Width - 5), ($sh - $spanSize.Height - 2))
-                $spanBrush.Dispose()
-            }
-            $guideFont.Dispose()
-        }
-
-        # Restore clip and stroke a soft rounded border on top
-        $sg.Restore($clipState)
-        $bdrPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(150, $script:theme.Border.R, $script:theme.Border.G, $script:theme.Border.B), 1)
-        $sg.DrawPath($bdrPen, $rPath)
-        $bdrPen.Dispose()
-        $rPath.Dispose()
-    })
+            # Restore clip and stroke a soft rounded border on top
+            $sg.Restore($clipState)
+            $bdrPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(150, $script:theme.Border.R, $script:theme.Border.G, $script:theme.Border.B), 1)
+            $sg.DrawPath($bdrPen, $rPath)
+            $bdrPen.Dispose()
+            $rPath.Dispose()
+        })
     return $panel
 }
 
@@ -1991,7 +1991,7 @@ function New-BatteryPopupContent {
 
         return @{
             TotalHeight = $ny + [int](8 * $DpiScale)
-            Fonts = @($labelFont, $heroValueFont, $titleLabel.Font) + $emptyFonts
+            Fonts       = @($labelFont, $heroValueFont, $titleLabel.Font) + $emptyFonts
         }
     }
 
@@ -2080,7 +2080,7 @@ function New-BatteryPopupContent {
     if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
         TotalHeight = $y + 8
-        Fonts = $fontsToDispose
+        Fonts       = $fontsToDispose
     }
 }
 
@@ -2128,22 +2128,22 @@ function Show-BatteryNotification {
 
     # Closure captures $Accent per-card (Add_* handlers resolve at fire time)
     $notif.Add_Paint({
-        param($sender, $e)
-        $ng = $e.Graphics
-        $ng.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $ng.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
-        # Accent bar on left
-        $accentBrush = New-Object System.Drawing.SolidBrush($Accent)
-        $ng.FillRectangle($accentBrush, 0, 0, 4, $sender.Height)
-        $accentBrush.Dispose()
-        # Border
-        $br = 10; $bd = $br * 2
-        $brW = $sender.Width - 2; $brH = $sender.Height - 2
-        $bPath = New-RoundedRectPath -Right $brW -Bottom $brH -Diameter $bd
-        $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, $Accent.R, $Accent.G, $Accent.B), 1)
-        $ng.DrawPath($bPen, $bPath)
-        $bPen.Dispose(); $bPath.Dispose()
-    }.GetNewClosure())
+            param($sender, $e)
+            $ng = $e.Graphics
+            $ng.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $ng.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+            # Accent bar on left
+            $accentBrush = New-Object System.Drawing.SolidBrush($Accent)
+            $ng.FillRectangle($accentBrush, 0, 0, 4, $sender.Height)
+            $accentBrush.Dispose()
+            # Border
+            $br = 10; $bd = $br * 2
+            $brW = $sender.Width - 2; $brH = $sender.Height - 2
+            $bPath = New-RoundedRectPath -Right $brW -Bottom $brH -Diameter $bd
+            $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, $Accent.R, $Accent.G, $Accent.B), 1)
+            $ng.DrawPath($bPen, $bPath)
+            $bPen.Dispose(); $bPath.Dispose()
+        }.GetNewClosure())
 
     # Title
     $nPad = [int](16 * $nDs)
@@ -2192,40 +2192,40 @@ function Show-BatteryNotification {
     $nTitle.Add_Click($dismissClick)
     $nSub.Add_Click($dismissClick)
     $notif.Add_KeyDown({
-        if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $nState.Phase = "out" }
-    }.GetNewClosure())
+            if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $nState.Phase = "out" }
+        }.GetNewClosure())
 
     # Slide-in with cubic ease-out, hold 10s, fade out
     $notifTimer = New-Object System.Windows.Forms.Timer
     $notifTimer.Interval = 16
     $notifTimer.Add_Tick({
-        if ($null -eq $notif -or $notif.IsDisposed) { $notifTimer.Stop(); $notifTimer.Dispose(); return }
-        if ($nState.Phase -eq "in") {
-            $elapsed = ((Get-Date) - $nState.AnimStart).TotalMilliseconds
-            $t = [math]::Min(1.0, $elapsed / 300.0)
-            # Cubic ease-out: 1 - (1 - t)^3
-            $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
-            $notif.Opacity = $eased
-            $notif.Top = [int]($nState.SlideStart + ($nState.SlideTarget - $nState.SlideStart) * $eased)
-            if ($t -ge 1.0) {
-                $notif.Opacity = 1.0
-                $notif.Top = $nState.SlideTarget
-                $nState.Phase = "hold"
-                $nState.HoldStart = Get-Date
+            if ($null -eq $notif -or $notif.IsDisposed) { $notifTimer.Stop(); $notifTimer.Dispose(); return }
+            if ($nState.Phase -eq "in") {
+                $elapsed = ((Get-Date) - $nState.AnimStart).TotalMilliseconds
+                $t = [math]::Min(1.0, $elapsed / 300.0)
+                # Cubic ease-out: 1 - (1 - t)^3
+                $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
+                $notif.Opacity = $eased
+                $notif.Top = [int]($nState.SlideStart + ($nState.SlideTarget - $nState.SlideStart) * $eased)
+                if ($t -ge 1.0) {
+                    $notif.Opacity = 1.0
+                    $notif.Top = $nState.SlideTarget
+                    $nState.Phase = "hold"
+                    $nState.HoldStart = Get-Date
+                }
+            } elseif ($nState.Phase -eq "hold") {
+                if (((Get-Date) - $nState.HoldStart).TotalSeconds -ge 10) {
+                    $nState.Phase = "out"
+                }
+            } elseif ($nState.Phase -eq "out") {
+                $notif.Opacity -= 0.06
+                if ($notif.Opacity -le 0) {
+                    $notifTimer.Stop(); $notifTimer.Dispose()
+                    foreach ($nf in $nState.Fonts) { if ($null -ne $nf) { $nf.Dispose() } }
+                    $notif.Close(); $notif.Dispose()
+                }
             }
-        } elseif ($nState.Phase -eq "hold") {
-            if (((Get-Date) - $nState.HoldStart).TotalSeconds -ge 10) {
-                $nState.Phase = "out"
-            }
-        } elseif ($nState.Phase -eq "out") {
-            $notif.Opacity -= 0.06
-            if ($notif.Opacity -le 0) {
-                $notifTimer.Stop(); $notifTimer.Dispose()
-                foreach ($nf in $nState.Fonts) { if ($null -ne $nf) { $nf.Dispose() } }
-                $notif.Close(); $notif.Dispose()
-            }
-        }
-    }.GetNewClosure())
+        }.GetNewClosure())
     $notifTimer.Start()
 }
 
@@ -2374,27 +2374,27 @@ function Close-HoverPopup {
             $script:fadeOutTimer = New-Object System.Windows.Forms.Timer
             $script:fadeOutTimer.Interval = 16
             $script:fadeOutTimer.Add_Tick({
-                if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed) {
-                    $elapsed = ((Get-Date).Ticks - $script:fadeOutStart) / 10000.0  # ms
-                    $t = [Math]::Min(1.0, $elapsed / 100.0)
-                    $eased = Get-EaseInOutCubic -t $t
-                    if ($t -ge 1.0) {
-                        $script:fadeOutTimer.Stop()
-                        $script:hoverPopup.Close()
-                        $script:hoverPopup.Dispose()
-                        $script:hoverPopup = $null
-                        # Dispose popup fonts to prevent GDI+ handle leak
-                        if ($null -ne $script:hoverPopupFonts) {
-                            foreach ($f in $script:hoverPopupFonts) { if ($null -ne $f) { $f.Dispose() } }
-                            $script:hoverPopupFonts = $null
+                    if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed) {
+                        $elapsed = ((Get-Date).Ticks - $script:fadeOutStart) / 10000.0  # ms
+                        $t = [Math]::Min(1.0, $elapsed / 100.0)
+                        $eased = Get-EaseInOutCubic -t $t
+                        if ($t -ge 1.0) {
+                            $script:fadeOutTimer.Stop()
+                            $script:hoverPopup.Close()
+                            $script:hoverPopup.Dispose()
+                            $script:hoverPopup = $null
+                            # Dispose popup fonts to prevent GDI+ handle leak
+                            if ($null -ne $script:hoverPopupFonts) {
+                                foreach ($f in $script:hoverPopupFonts) { if ($null -ne $f) { $f.Dispose() } }
+                                $script:hoverPopupFonts = $null
+                            }
+                        } else {
+                            $script:hoverPopup.Opacity = $script:fadeOutFrom * (1.0 - $eased)
                         }
                     } else {
-                        $script:hoverPopup.Opacity = $script:fadeOutFrom * (1.0 - $eased)
+                        $script:fadeOutTimer.Stop()
                     }
-                } else {
-                    $script:fadeOutTimer.Stop()
-                }
-            })
+                })
         }
         $script:fadeOutTimer.Start()
     } else {
@@ -2439,16 +2439,16 @@ function Show-HoverPopup {
 
     # Rounded border
     $popup.Add_Paint({
-        param($sender, $e)
-        $g = $e.Graphics
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $r = 10; $rd2 = $r * 2
-        $bw = $sender.Width - 1; $bh = $sender.Height - 1
-        $borderPath = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
-        $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
-        $g.DrawPath($borderPen, $borderPath)
-        $borderPen.Dispose(); $borderPath.Dispose()
-    })
+            param($sender, $e)
+            $g = $e.Graphics
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $r = 10; $rd2 = $r * 2
+            $bw = $sender.Width - 1; $bh = $sender.Height - 1
+            $borderPath = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
+            $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
+            $g.DrawPath($borderPen, $borderPath)
+            $borderPen.Dispose(); $borderPath.Dispose()
+        })
 
     # DPI scale and popup width
     $gDpi = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
@@ -2505,14 +2505,14 @@ function Show-HoverPopup {
         $script:fadeInTimer = New-Object System.Windows.Forms.Timer
         $script:fadeInTimer.Interval = 16
         $script:fadeInTimer.Add_Tick({
-            if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed) {
-                $elapsed = ((Get-Date).Ticks - $script:fadeInStart) / 10000.0  # ms
-                $t = [Math]::Min(1.0, $elapsed / 150.0)
-                $eased = Get-EaseInOutCubic -t $t
-                if ($t -ge 1.0) { $script:hoverPopup.Opacity = 1.0; $script:fadeInTimer.Stop() }
-                else { $script:hoverPopup.Opacity = $eased }
-            } else { $script:fadeInTimer.Stop() }
-        })
+                if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed) {
+                    $elapsed = ((Get-Date).Ticks - $script:fadeInStart) / 10000.0  # ms
+                    $t = [Math]::Min(1.0, $elapsed / 150.0)
+                    $eased = Get-EaseInOutCubic -t $t
+                    if ($t -ge 1.0) { $script:hoverPopup.Opacity = 1.0; $script:fadeInTimer.Stop() }
+                    else { $script:hoverPopup.Opacity = $eased }
+                } else { $script:fadeInTimer.Stop() }
+            })
     }
     $script:fadeInTimer.Start()
 }
@@ -2540,16 +2540,16 @@ function Show-BatteryPopup {
 
     # Rounded border
     $popup.Add_Paint({
-        param($sender, $e)
-        $g = $e.Graphics
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $r = 10; $rd2 = $r * 2
-        $bw = $sender.Width - 1; $bh = $sender.Height - 1
-        $borderPath = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
-        $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
-        $g.DrawPath($borderPen, $borderPath)
-        $borderPen.Dispose(); $borderPath.Dispose()
-    })
+            param($sender, $e)
+            $g = $e.Graphics
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $r = 10; $rd2 = $r * 2
+            $bw = $sender.Width - 1; $bh = $sender.Height - 1
+            $borderPath = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
+            $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
+            $g.DrawPath($borderPen, $borderPath)
+            $borderPen.Dispose(); $borderPath.Dispose()
+        })
 
     # DPI scale and popup width
     $gDpi2 = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
@@ -2610,19 +2610,19 @@ function Set-DarkComboBox {
     $Combo.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
     $Combo.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $Combo.Add_DrawItem({
-        param($sender, $e)
-        if ($e.Index -lt 0) { return }
-        $e.DrawBackground()
-        $isSelected = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
-        # Settings panel is always dark, so use fixed light-on-dark colors (theme text would be invisible in Light theme)
-        $bgColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(64, 64, 72) } else { [System.Drawing.Color]::FromArgb(50, 50, 56) }
-        $fgColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(245, 245, 250) } else { [System.Drawing.Color]::FromArgb(230, 230, 235) }
-        $bgBrush = New-Object System.Drawing.SolidBrush($bgColor)
-        $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
-        $bgBrush.Dispose()
-        $text = $sender.Items[$e.Index].ToString()
-        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $e.Bounds, $fgColor, [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter)
-    })
+            param($sender, $e)
+            if ($e.Index -lt 0) { return }
+            $e.DrawBackground()
+            $isSelected = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
+            # Settings panel is always dark, so use fixed light-on-dark colors (theme text would be invisible in Light theme)
+            $bgColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(64, 64, 72) } else { [System.Drawing.Color]::FromArgb(50, 50, 56) }
+            $fgColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(245, 245, 250) } else { [System.Drawing.Color]::FromArgb(230, 230, 235) }
+            $bgBrush = New-Object System.Drawing.SolidBrush($bgColor)
+            $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
+            $bgBrush.Dispose()
+            $text = $sender.Items[$e.Index].ToString()
+            [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $e.Bounds, $fgColor, [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter)
+        })
 }
 
 function Start-IntroAnimation {
@@ -2655,50 +2655,50 @@ function Start-IntroAnimation {
     $script:introTimer = New-Object System.Windows.Forms.Timer
     $script:introTimer.Interval = 16
     $script:introTimer.Add_Tick({
-        if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) {
-            $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null; return
-        }
-        $st = $script:introState
-        # User grabbed it mid-intro: land everything instantly, get out of the way
-        if ($script:leftPressed -or $script:isDragging) {
-            $script:floatingBar.Opacity = $st.TargetOpacity
-            $script:floatingBar.Top = $st.TargetTop
-            $script:barDisplayPercent = $st.TargetPct
-            $script:floatingBar.Invalidate()
-            $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
-            Show-FirstRunTooltip
-            return
-        }
-        $ms = ((Get-Date) - $st.Start).TotalMilliseconds
-        if ($st.Phase -eq "rise") {
-            $t = [math]::Min(1.0, $ms / 280.0)
-            $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
-            $script:floatingBar.Opacity = $st.TargetOpacity * $eased
-            $script:floatingBar.Top = [int]($st.TargetTop + 14 * (1.0 - $eased))
-            if ($t -ge 1.0) {
+            if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) {
+                $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null; return
+            }
+            $st = $script:introState
+            # User grabbed it mid-intro: land everything instantly, get out of the way
+            if ($script:leftPressed -or $script:isDragging) {
                 $script:floatingBar.Opacity = $st.TargetOpacity
                 $script:floatingBar.Top = $st.TargetTop
-                if ($st.TargetPct -gt 0) {
-                    $script:barDisplayPercent = 0
-                    $st.Phase = "sweep"; $st.Start = Get-Date
-                } else {
-                    $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
-                    Show-FirstRunTooltip
-                }
-            }
-        } elseif ($st.Phase -eq "sweep") {
-            $t = [math]::Min(1.0, $ms / 500.0)
-            $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
-            $script:barDisplayPercent = [int]($st.TargetPct * $eased)
-            $script:floatingBar.Invalidate()
-            if ($t -ge 1.0) {
                 $script:barDisplayPercent = $st.TargetPct
                 $script:floatingBar.Invalidate()
                 $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
                 Show-FirstRunTooltip
+                return
             }
-        }
-    })
+            $ms = ((Get-Date) - $st.Start).TotalMilliseconds
+            if ($st.Phase -eq "rise") {
+                $t = [math]::Min(1.0, $ms / 280.0)
+                $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
+                $script:floatingBar.Opacity = $st.TargetOpacity * $eased
+                $script:floatingBar.Top = [int]($st.TargetTop + 14 * (1.0 - $eased))
+                if ($t -ge 1.0) {
+                    $script:floatingBar.Opacity = $st.TargetOpacity
+                    $script:floatingBar.Top = $st.TargetTop
+                    if ($st.TargetPct -gt 0) {
+                        $script:barDisplayPercent = 0
+                        $st.Phase = "sweep"; $st.Start = Get-Date
+                    } else {
+                        $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
+                        Show-FirstRunTooltip
+                    }
+                }
+            } elseif ($st.Phase -eq "sweep") {
+                $t = [math]::Min(1.0, $ms / 500.0)
+                $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
+                $script:barDisplayPercent = [int]($st.TargetPct * $eased)
+                $script:floatingBar.Invalidate()
+                if ($t -ge 1.0) {
+                    $script:barDisplayPercent = $st.TargetPct
+                    $script:floatingBar.Invalidate()
+                    $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
+                    Show-FirstRunTooltip
+                }
+            }
+        })
     $script:introTimer.Start()
 }
 
@@ -2729,19 +2729,19 @@ function Show-FirstRunTooltip {
     $tPath.Dispose()
 
     $script:firstRunTip.Add_Paint({
-        param($sender, $e)
-        $tg = $e.Graphics
-        $tg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $br = 10; $bd = $br * 2   # matches the region radius above
-        $bPath = New-RoundedRectPath -Right ($sender.Width - $bd - 2) -Bottom ($sender.Height - $bd - 2) -Diameter $bd
-        $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, 45, 212, 100), 1)
-        $tg.DrawPath($bPen, $bPath)
-        $bPen.Dispose(); $bPath.Dispose()
-        # Green accent bar on left
-        $acBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(45, 212, 100))
-        $tg.FillRectangle($acBrush, 0, 0, 3, $sender.Height)
-        $acBrush.Dispose()
-    })
+            param($sender, $e)
+            $tg = $e.Graphics
+            $tg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $br = 10; $bd = $br * 2   # matches the region radius above
+            $bPath = New-RoundedRectPath -Right ($sender.Width - $bd - 2) -Bottom ($sender.Height - $bd - 2) -Diameter $bd
+            $bPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(80, 45, 212, 100), 1)
+            $tg.DrawPath($bPen, $bPath)
+            $bPen.Dispose(); $bPath.Dispose()
+            # Green accent bar on left
+            $acBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(45, 212, 100))
+            $tg.FillRectangle($acBrush, 0, 0, 3, $sender.Height)
+            $acBrush.Dispose()
+        })
 
     $pad = [int](14 * $ds)
     $tips = @(
@@ -2791,25 +2791,25 @@ function Show-FirstRunTooltip {
     $script:firstRunTimer = New-Object System.Windows.Forms.Timer
     $script:firstRunTimer.Interval = 16
     $script:firstRunTimer.Add_Tick({
-        if ($null -eq $script:firstRunTip -or $script:firstRunTip.IsDisposed) {
-            $script:firstRunTimer.Stop(); $script:firstRunTimer.Dispose(); return
-        }
-        if ($script:tipPhase -eq "in") {
-            $elapsed = ((Get-Date) - $script:tipAnimStart).TotalMilliseconds
-            $t = [math]::Min(1.0, $elapsed / 200)
-            $script:firstRunTip.Opacity = $t
-            if ($t -ge 1.0) { $script:tipPhase = "hold"; $script:tipHoldStart = Get-Date }
-        } elseif ($script:tipPhase -eq "hold") {
-            if (((Get-Date) - $script:tipHoldStart).TotalSeconds -ge 8) { $script:tipPhase = "out" }
-        } elseif ($script:tipPhase -eq "out") {
-            $script:firstRunTip.Opacity -= 0.08
-            if ($script:firstRunTip.Opacity -le 0) {
-                $script:firstRunTimer.Stop(); $script:firstRunTimer.Dispose()
-                $script:firstRunFont.Dispose()
-                $script:firstRunTip.Close(); $script:firstRunTip.Dispose()
+            if ($null -eq $script:firstRunTip -or $script:firstRunTip.IsDisposed) {
+                $script:firstRunTimer.Stop(); $script:firstRunTimer.Dispose(); return
             }
-        }
-    })
+            if ($script:tipPhase -eq "in") {
+                $elapsed = ((Get-Date) - $script:tipAnimStart).TotalMilliseconds
+                $t = [math]::Min(1.0, $elapsed / 200)
+                $script:firstRunTip.Opacity = $t
+                if ($t -ge 1.0) { $script:tipPhase = "hold"; $script:tipHoldStart = Get-Date }
+            } elseif ($script:tipPhase -eq "hold") {
+                if (((Get-Date) - $script:tipHoldStart).TotalSeconds -ge 8) { $script:tipPhase = "out" }
+            } elseif ($script:tipPhase -eq "out") {
+                $script:firstRunTip.Opacity -= 0.08
+                if ($script:firstRunTip.Opacity -le 0) {
+                    $script:firstRunTimer.Stop(); $script:firstRunTimer.Dispose()
+                    $script:firstRunFont.Dispose()
+                    $script:firstRunTip.Close(); $script:firstRunTip.Dispose()
+                }
+            }
+        })
     $script:firstRunTimer.Start()
 }
 
@@ -2845,11 +2845,11 @@ function Show-SettingsPanel {
     $settingsTooltip.InitialDelay = 400
     $settingsTooltip.ReshowDelay = 200
     $settings.Add_FormClosed({
-        $settingsTooltip.Dispose()
-        $labelFont.Dispose()
-        $sectionFont.Dispose()
-        $script:settingsDisplayCombo = $null   # stop click-cycle sync once the panel closes
-    })
+            $settingsTooltip.Dispose()
+            $labelFont.Dispose()
+            $sectionFont.Dispose()
+            $script:settingsDisplayCombo = $null   # stop click-cycle sync once the panel closes
+        })
 
     # --- Behavior section header ---
     $bhvSep = New-Object System.Windows.Forms.Label
@@ -2877,11 +2877,11 @@ function Show-SettingsPanel {
     $autoStartCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
     $autoStartCheck.Checked = Get-AutoStartEnabled
     $autoStartCheck.Add_CheckedChanged({
-        $result = Set-AutoStart -Enable $autoStartCheck.Checked
-        if (-not $result) {
-            $autoStartCheck.Checked = Get-AutoStartEnabled
-        }
-    })
+            $result = Set-AutoStart -Enable $autoStartCheck.Checked
+            if (-not $result) {
+                $autoStartCheck.Checked = Get-AutoStartEnabled
+            }
+        })
     $settings.Controls.Add($autoStartCheck)
     $settingsTooltip.SetToolTip($autoStartCheck, "Automatically launch BatteryPill when Windows starts")
     $y += [int](30 * $ds)
@@ -2896,14 +2896,14 @@ function Show-SettingsPanel {
     $showBarCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
     $showBarCheck.Checked = ($null -ne $script:floatingBar -and $script:floatingBar.Visible)
     $showBarCheck.Add_CheckedChanged({
-        if ($showBarCheck.Checked) {
-            $script:floatingBar.Show()
-            $toggleBarItem.Text = "Hide Bar"
-        } else {
-            $script:floatingBar.Hide()
-            $toggleBarItem.Text = "Show Bar"
-        }
-    })
+            if ($showBarCheck.Checked) {
+                $script:floatingBar.Show()
+                $toggleBarItem.Text = "Hide Bar"
+            } else {
+                $script:floatingBar.Hide()
+                $toggleBarItem.Text = "Show Bar"
+            }
+        })
     $settings.Controls.Add($showBarCheck)
     $settingsTooltip.SetToolTip($showBarCheck, "Show or hide the floating battery pill on your desktop")
     $y += [int](30 * $ds)
@@ -2918,10 +2918,10 @@ function Show-SettingsPanel {
     $lockPosCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
     $lockPosCheck.Checked = $script:positionLocked
     $lockPosCheck.Add_CheckedChanged({
-        $script:positionLocked = $lockPosCheck.Checked
-        $script:config.PositionLocked = $lockPosCheck.Checked
-        Save-Config
-    })
+            $script:positionLocked = $lockPosCheck.Checked
+            $script:config.PositionLocked = $lockPosCheck.Checked
+            Save-Config
+        })
     $settings.Controls.Add($lockPosCheck)
     $settingsTooltip.SetToolTip($lockPosCheck, "Prevent accidental dragging of the pill")
     $y += [int](30 * $ds)
@@ -2936,9 +2936,9 @@ function Show-SettingsPanel {
     $autoHideCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
     $autoHideCheck.Checked = $script:config.AutoHideFullscreen
     $autoHideCheck.Add_CheckedChanged({
-        $script:config.AutoHideFullscreen = $autoHideCheck.Checked
-        Save-Config
-    })
+            $script:config.AutoHideFullscreen = $autoHideCheck.Checked
+            Save-Config
+        })
     $settings.Controls.Add($autoHideCheck)
     $settingsTooltip.SetToolTip($autoHideCheck, "Hide pill when fullscreen apps are active (games, videos)")
     $y += [int](36 * $ds)
@@ -2978,18 +2978,18 @@ function Show-SettingsPanel {
     $displayCombo.Size = New-Object System.Drawing.Size($cw, [int](28 * $ds))
     $displayCombo.Items.AddRange(@("Time remaining", "Percentage", "Both (% + time)"))
     $displayIdx = switch ($script:config.DisplayMode) {
-        "time"    { 0 }
+        "time" { 0 }
         "percent" { 1 }
-        "both"    { 2 }
-        default   { 0 }
+        "both" { 2 }
+        default { 0 }
     }
     $displayCombo.SelectedIndex = $displayIdx
     $displayCombo.Add_SelectedIndexChanged({
-        $modeMap = @("time", "percent", "both")
-        $script:config.DisplayMode = $modeMap[$displayCombo.SelectedIndex]
-        Update-PillSize
-        Save-Config
-    })
+            $modeMap = @("time", "percent", "both")
+            $script:config.DisplayMode = $modeMap[$displayCombo.SelectedIndex]
+            Update-PillSize
+            Save-Config
+        })
     Set-DarkComboBox -Combo $displayCombo
     $settings.Controls.Add($displayCombo)
     $settingsTooltip.SetToolTip($displayCombo, "Choose what information appears on the pill")
@@ -3015,18 +3015,18 @@ function Show-SettingsPanel {
     $sizeCombo.Size = New-Object System.Drawing.Size($cw, [int](28 * $ds))
     $sizeCombo.Items.AddRange(@("Compact (80x28)", "Normal (108x34)", "Expanded (140x42)"))
     $sizeIdx = switch ($script:config.PillSize) {
-        "compact"  { 0 }
-        "normal"   { 1 }
+        "compact" { 0 }
+        "normal" { 1 }
         "expanded" { 2 }
-        default    { 1 }
+        default { 1 }
     }
     $sizeCombo.SelectedIndex = $sizeIdx
     $sizeCombo.Add_SelectedIndexChanged({
-        $sizeMap = @("compact", "normal", "expanded")
-        $script:config.PillSize = $sizeMap[$sizeCombo.SelectedIndex]
-        Update-PillSize
-        Save-Config
-    })
+            $sizeMap = @("compact", "normal", "expanded")
+            $script:config.PillSize = $sizeMap[$sizeCombo.SelectedIndex]
+            Update-PillSize
+            Save-Config
+        })
     Set-DarkComboBox -Combo $sizeCombo
     $settings.Controls.Add($sizeCombo)
     $settingsTooltip.SetToolTip($sizeCombo, "Adjust the size of the floating pill")
@@ -3051,59 +3051,59 @@ function Show-SettingsPanel {
         $colorPanel.BackColor = [System.Drawing.Color]::Transparent
         $colorPanel.Tag = @{ Index = $ci; Hovered = $false }
         $colorPanel.Add_Paint({
-            param($sender, $e)
-            $cg = $e.Graphics
-            $cg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-            $tagData = $sender.Tag
-            $idx = $tagData.Index
-            $isHovered = $tagData.Hovered
-            $color = $script:accentPresets[$idx]
-            $brush = New-Object System.Drawing.SolidBrush($color)
-            # Scale circle radius 1.15x on hover
-            if ($isHovered) {
-                $scale = 1.15
-                $cw = $sender.Width - 5; $ch = $sender.Height - 5
-                $sw = [int]($cw * $scale); $sh = [int]($ch * $scale)
-                $sx = [int]((($sender.Width - $sw) / 2) - 0.5)
-                $sy = [int]((($sender.Height - $sh) / 2) - 0.5)
-                $cg.FillEllipse($brush, $sx, $sy, $sw, $sh)
-            } else {
-                $cg.FillEllipse($brush, 2, 2, $sender.Width - 5, $sender.Height - 5)
-            }
-            $brush.Dispose()
-            # Selection ring — a contrasting ring with a gap, so the active swatch
-            # is unmistakable. (An accent-hued ring on an accent dot was invisible.)
-            if ($idx -eq $script:config.AccentColorIndex) {
-                # Gap: punch the panel-bg between dot and ring so they read separately
-                $gapPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(32, 32, 36), 2)
-                $cg.DrawEllipse($gapPen, 1, 1, $sender.Width - 3, $sender.Height - 3)
-                $gapPen.Dispose()
-                # Ring: light on dark swatches, dark on light ones (e.g. the white preset)
-                $lum = ($color.R * 0.299) + ($color.G * 0.587) + ($color.B * 0.114)
-                $ringColor = if ($lum -gt 180) {
-                    [System.Drawing.Color]::FromArgb(120, 120, 130)
+                param($sender, $e)
+                $cg = $e.Graphics
+                $cg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                $tagData = $sender.Tag
+                $idx = $tagData.Index
+                $isHovered = $tagData.Hovered
+                $color = $script:accentPresets[$idx]
+                $brush = New-Object System.Drawing.SolidBrush($color)
+                # Scale circle radius 1.15x on hover
+                if ($isHovered) {
+                    $scale = 1.15
+                    $cw = $sender.Width - 5; $ch = $sender.Height - 5
+                    $sw = [int]($cw * $scale); $sh = [int]($ch * $scale)
+                    $sx = [int]((($sender.Width - $sw) / 2) - 0.5)
+                    $sy = [int]((($sender.Height - $sh) / 2) - 0.5)
+                    $cg.FillEllipse($brush, $sx, $sy, $sw, $sh)
                 } else {
-                    [System.Drawing.Color]::FromArgb(240, 240, 245)
+                    $cg.FillEllipse($brush, 2, 2, $sender.Width - 5, $sender.Height - 5)
                 }
-                $ringPen = New-Object System.Drawing.Pen($ringColor, 2)
-                $cg.DrawEllipse($ringPen, 0, 0, $sender.Width - 1, $sender.Height - 1)
-                $ringPen.Dispose()
-            }
-        })
+                $brush.Dispose()
+                # Selection ring — a contrasting ring with a gap, so the active swatch
+                # is unmistakable. (An accent-hued ring on an accent dot was invisible.)
+                if ($idx -eq $script:config.AccentColorIndex) {
+                    # Gap: punch the panel-bg between dot and ring so they read separately
+                    $gapPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(32, 32, 36), 2)
+                    $cg.DrawEllipse($gapPen, 1, 1, $sender.Width - 3, $sender.Height - 3)
+                    $gapPen.Dispose()
+                    # Ring: light on dark swatches, dark on light ones (e.g. the white preset)
+                    $lum = ($color.R * 0.299) + ($color.G * 0.587) + ($color.B * 0.114)
+                    $ringColor = if ($lum -gt 180) {
+                        [System.Drawing.Color]::FromArgb(120, 120, 130)
+                    } else {
+                        [System.Drawing.Color]::FromArgb(240, 240, 245)
+                    }
+                    $ringPen = New-Object System.Drawing.Pen($ringColor, 2)
+                    $cg.DrawEllipse($ringPen, 0, 0, $sender.Width - 1, $sender.Height - 1)
+                    $ringPen.Dispose()
+                }
+            })
         $colorPanel.Add_MouseEnter({ param($sender); $sender.Tag.Hovered = $true; $sender.Invalidate() })
         $colorPanel.Add_MouseLeave({ param($sender); $sender.Tag.Hovered = $false; $sender.Invalidate() })
         $colorPanel.Add_Click({
-            param($sender)
-            $script:config.AccentColorIndex = $sender.Tag.Index
-            $script:cachedIconPercent = -999   # force tray icon rebuild with the new accent
-            Save-Config
-            # Repaint all color circles to update selection ring
-            foreach ($ctrl in $settings.Controls) {
-                if ($ctrl -is [System.Windows.Forms.Panel] -and $null -ne $ctrl.Tag -and $ctrl.Tag -is [hashtable] -and $null -ne $ctrl.Tag.Index) {
-                    $ctrl.Invalidate()
+                param($sender)
+                $script:config.AccentColorIndex = $sender.Tag.Index
+                $script:cachedIconPercent = -999   # force tray icon rebuild with the new accent
+                Save-Config
+                # Repaint all color circles to update selection ring
+                foreach ($ctrl in $settings.Controls) {
+                    if ($ctrl -is [System.Windows.Forms.Panel] -and $null -ne $ctrl.Tag -and $ctrl.Tag -is [hashtable] -and $null -ne $ctrl.Tag.Index) {
+                        $ctrl.Invalidate()
+                    }
                 }
-            }
-        })
+            })
         $colorPanel.Cursor = [System.Windows.Forms.Cursors]::Hand
         $settings.Controls.Add($colorPanel)
     }
@@ -3128,18 +3128,18 @@ function Show-SettingsPanel {
     $themeCombo.Size = New-Object System.Drawing.Size($cw, [int](28 * $ds))
     $themeCombo.Items.AddRange(@("Dark", "Light", "Auto (follow Windows)"))
     $themeIdx = switch ($script:config.Theme) {
-        "dark"  { 0 }
+        "dark" { 0 }
         "light" { 1 }
-        "auto"  { 2 }
+        "auto" { 2 }
         default { 0 }
     }
     $themeCombo.SelectedIndex = $themeIdx
     $themeCombo.Add_SelectedIndexChanged({
-        $themeMap = @("dark", "light", "auto")
-        $script:config.Theme = $themeMap[$themeCombo.SelectedIndex]
-        Set-Theme
-        Save-Config
-    })
+            $themeMap = @("dark", "light", "auto")
+            $script:config.Theme = $themeMap[$themeCombo.SelectedIndex]
+            Set-Theme
+            Save-Config
+        })
     Set-DarkComboBox -Combo $themeCombo
     $settings.Controls.Add($themeCombo)
     $settingsTooltip.SetToolTip($themeCombo, "Color scheme (Auto follows Windows theme)")
@@ -3193,26 +3193,26 @@ function Show-SettingsPanel {
     $opacitySlider.Cursor = [System.Windows.Forms.Cursors]::Hand
     $sTx0 = [int](9 * $ds); $sThumbR = [int](7 * $ds)
     $opacitySlider.Add_Paint({
-        param($sender, $e)
-        $sg = $e.Graphics
-        $sg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $tx0 = $sTx0; $tx1 = $sender.Width - $sTx0; $tw = $tx1 - $tx0
-        $cy = [int]($sender.Height / 2)
-        $frac = ($script:opacityVal - 30) / 70.0
-        $thumbX = [int]($tx0 + $frac * $tw)
-        # track
-        $trkPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(64, 64, 72), 3)
-        $sg.DrawLine($trkPen, $tx0, $cy, $tx1, $cy); $trkPen.Dispose()
-        # filled portion (accent)
-        $accent = $script:accentPresets[[math]::Max(0, [math]::Min(7, [int]$script:config.AccentColorIndex))]
-        $filPen = New-Object System.Drawing.Pen($accent, 3)
-        $sg.DrawLine($filPen, $tx0, $cy, $thumbX, $cy); $filPen.Dispose()
-        # thumb
-        $thBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(238, 238, 244))
-        $sg.FillEllipse($thBrush, ($thumbX - $sThumbR), ($cy - $sThumbR), ($sThumbR * 2), ($sThumbR * 2)); $thBrush.Dispose()
-        $thPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(32, 32, 36), 1)
-        $sg.DrawEllipse($thPen, ($thumbX - $sThumbR), ($cy - $sThumbR), ($sThumbR * 2), ($sThumbR * 2)); $thPen.Dispose()
-    })
+            param($sender, $e)
+            $sg = $e.Graphics
+            $sg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $tx0 = $sTx0; $tx1 = $sender.Width - $sTx0; $tw = $tx1 - $tx0
+            $cy = [int]($sender.Height / 2)
+            $frac = ($script:opacityVal - 30) / 70.0
+            $thumbX = [int]($tx0 + $frac * $tw)
+            # track
+            $trkPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(64, 64, 72), 3)
+            $sg.DrawLine($trkPen, $tx0, $cy, $tx1, $cy); $trkPen.Dispose()
+            # filled portion (accent)
+            $accent = $script:accentPresets[[math]::Max(0, [math]::Min(7, [int]$script:config.AccentColorIndex))]
+            $filPen = New-Object System.Drawing.Pen($accent, 3)
+            $sg.DrawLine($filPen, $tx0, $cy, $thumbX, $cy); $filPen.Dispose()
+            # thumb
+            $thBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(238, 238, 244))
+            $sg.FillEllipse($thBrush, ($thumbX - $sThumbR), ($cy - $sThumbR), ($sThumbR * 2), ($sThumbR * 2)); $thBrush.Dispose()
+            $thPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(32, 32, 36), 1)
+            $sg.DrawEllipse($thPen, ($thumbX - $sThumbR), ($cy - $sThumbR), ($sThumbR * 2), ($sThumbR * 2)); $thPen.Dispose()
+        })
     $setOpacityFromX = {
         param($px)
         $tx0 = $sTx0; $tx1 = $opacitySlider.Width - $sTx0; $tw = $tx1 - $tx0
@@ -3259,12 +3259,12 @@ function Show-SettingsPanel {
     }
     $refreshCombo.SelectedIndex = $selectedIndex
     $refreshCombo.Add_SelectedIndexChanged({
-        $intervalMap = @(1000, 3000, 5000, 10000)
-        $newInterval = $intervalMap[$refreshCombo.SelectedIndex]
-        $script:timer.Interval = $newInterval
-        $script:config.RefreshInterval = $newInterval
-        Save-Config
-    })
+            $intervalMap = @(1000, 3000, 5000, 10000)
+            $newInterval = $intervalMap[$refreshCombo.SelectedIndex]
+            $script:timer.Interval = $newInterval
+            $script:config.RefreshInterval = $newInterval
+            Save-Config
+        })
     Set-DarkComboBox -Combo $refreshCombo
     $settings.Controls.Add($refreshCombo)
     $settingsTooltip.SetToolTip($refreshCombo, "How often battery data refreshes (lower = more CPU)")
@@ -3283,19 +3283,19 @@ function Show-SettingsPanel {
     $resetBtn.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
     $resetBtn.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
     $resetBtn.Add_Click({
-        if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-            $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
-        } else {
-            $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-        }
-        $newX = $screen.Right - $script:floatingBar.Width - 10
-        $newY = $screen.Bottom - $script:floatingBar.Height - 10
-        $script:floatingBar.Location = New-Object System.Drawing.Point($newX, $newY)
-        $script:config.X = $newX
-        $script:config.Y = $newY
-        Save-Config
-        Show-BatteryNotification "Position Reset" "Pill moved to default location"
-    })
+            if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+                $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
+            } else {
+                $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+            }
+            $newX = $screen.Right - $script:floatingBar.Width - 10
+            $newY = $screen.Bottom - $script:floatingBar.Height - 10
+            $script:floatingBar.Location = New-Object System.Drawing.Point($newX, $newY)
+            $script:config.X = $newX
+            $script:config.Y = $newY
+            Save-Config
+            Show-BatteryNotification "Position Reset" "Pill moved to default location"
+        })
     $settings.Controls.Add($resetBtn)
     $settingsTooltip.SetToolTip($resetBtn, "Move pill back to default position (bottom-right)")
     $y += [int](34 * $ds)
@@ -3344,9 +3344,9 @@ function Show-BatteryHealthCard {
     if ($hasData) {
         $health = [int][math]::Round(($info.FullChargeCapacity / $info.DesignCapacity) * 100)
         $health = [math]::Max(0, [math]::Min(100, $health))
-        if ($health -ge 80)     { $hcol = [System.Drawing.Color]::FromArgb(45, 212, 100);  $word = "Good condition" }
-        elseif ($health -ge 60) { $hcol = [System.Drawing.Color]::FromArgb(255, 200, 0);   $word = "Fair condition" }
-        else                    { $hcol = [System.Drawing.Color]::FromArgb(255, 120, 45);  $word = "Worn - consider replacing" }
+        if ($health -ge 80) { $hcol = [System.Drawing.Color]::FromArgb(45, 212, 100); $word = "Good condition" }
+        elseif ($health -ge 60) { $hcol = [System.Drawing.Color]::FromArgb(255, 200, 0); $word = "Fair condition" }
+        else { $hcol = [System.Drawing.Color]::FromArgb(255, 120, 45); $word = "Worn - consider replacing" }
     }
     # light theme: darken the ring/status color for contrast
     if ($script:theme.PopupBg.GetBrightness() -gt 0.5) {
@@ -3373,47 +3373,47 @@ function Show-BatteryHealthCard {
     $card.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($card.Handle) })
 
     $card.Add_Paint({
-        param($sender, $e)
-        $g = $e.Graphics
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
-        $dds = $script:hcDs
-        # rounded border
-        $rd2 = 24
-        $bw = $sender.Width - 1; $bh = $sender.Height - 1
-        $bp = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
-        $bpen = New-Object System.Drawing.Pen($script:theme.Border, 1)
-        $g.DrawPath($bpen, $bp); $bpen.Dispose(); $bp.Dispose()
-        if (-not $script:hcHasData) { return }
-        # health ring
-        $ringD = [int](144 * $dds); $thick = [int](14 * $dds)
-        $ringX = [int](($sender.Width - $ringD) / 2); $ringY = [int](58 * $dds)
-        $inset = [int]($thick / 2) + 1
-        $rect = New-Object System.Drawing.Rectangle(($ringX + $inset), ($ringY + $inset), ($ringD - $inset*2), ($ringD - $inset*2))
-        $tpen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(52, 52, 60), $thick)
-        $tpen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $tpen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-        $g.DrawArc($tpen, $rect, -90, 359.9); $tpen.Dispose()
-        $sweep = ($script:hcPct / 100.0) * 360.0
-        if ($sweep -gt 0.5) {
-            $hpen = New-Object System.Drawing.Pen($script:hcColor, $thick)
-            $hpen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $hpen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $g.DrawArc($hpen, $rect, -90, $sweep); $hpen.Dispose()
-        }
-        # center: big % + HEALTH
-        $fmt = New-Object System.Drawing.StringFormat
-        $fmt.Alignment = [System.Drawing.StringAlignment]::Center
-        $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center   # y = vertical center of text
-        $cx = [single]($ringX + $ringD / 2)
-        $cy = $ringY + $ringD / 2
-        $pctFont = New-Object System.Drawing.Font("Segoe UI Semibold", (26 * $dds), [System.Drawing.FontStyle]::Bold)
-        $pctBrush = New-Object System.Drawing.SolidBrush($script:theme.TextPrimary)
-        $g.DrawString(("{0}%" -f $script:hcPct), $pctFont, $pctBrush, $cx, ([single]($cy - 9 * $dds)), $fmt)
-        $pctFont.Dispose(); $pctBrush.Dispose()
-        $lblFont = New-Object System.Drawing.Font("Segoe UI", (8 * $dds))
-        $lblBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
-        $g.DrawString("HEALTH", $lblFont, $lblBrush, $cx, ([single]($cy + 24 * $dds)), $fmt)
-        $lblFont.Dispose(); $lblBrush.Dispose(); $fmt.Dispose()
-    })
+            param($sender, $e)
+            $g = $e.Graphics
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+            $dds = $script:hcDs
+            # rounded border
+            $rd2 = 24
+            $bw = $sender.Width - 1; $bh = $sender.Height - 1
+            $bp = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
+            $bpen = New-Object System.Drawing.Pen($script:theme.Border, 1)
+            $g.DrawPath($bpen, $bp); $bpen.Dispose(); $bp.Dispose()
+            if (-not $script:hcHasData) { return }
+            # health ring
+            $ringD = [int](144 * $dds); $thick = [int](14 * $dds)
+            $ringX = [int](($sender.Width - $ringD) / 2); $ringY = [int](58 * $dds)
+            $inset = [int]($thick / 2) + 1
+            $rect = New-Object System.Drawing.Rectangle(($ringX + $inset), ($ringY + $inset), ($ringD - $inset * 2), ($ringD - $inset * 2))
+            $tpen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(52, 52, 60), $thick)
+            $tpen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $tpen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $g.DrawArc($tpen, $rect, -90, 359.9); $tpen.Dispose()
+            $sweep = ($script:hcPct / 100.0) * 360.0
+            if ($sweep -gt 0.5) {
+                $hpen = New-Object System.Drawing.Pen($script:hcColor, $thick)
+                $hpen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $hpen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $g.DrawArc($hpen, $rect, -90, $sweep); $hpen.Dispose()
+            }
+            # center: big % + HEALTH
+            $fmt = New-Object System.Drawing.StringFormat
+            $fmt.Alignment = [System.Drawing.StringAlignment]::Center
+            $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center   # y = vertical center of text
+            $cx = [single]($ringX + $ringD / 2)
+            $cy = $ringY + $ringD / 2
+            $pctFont = New-Object System.Drawing.Font("Segoe UI Semibold", (26 * $dds), [System.Drawing.FontStyle]::Bold)
+            $pctBrush = New-Object System.Drawing.SolidBrush($script:theme.TextPrimary)
+            $g.DrawString(("{0}%" -f $script:hcPct), $pctFont, $pctBrush, $cx, ([single]($cy - 9 * $dds)), $fmt)
+            $pctFont.Dispose(); $pctBrush.Dispose()
+            $lblFont = New-Object System.Drawing.Font("Segoe UI", (8 * $dds))
+            $lblBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
+            $g.DrawString("HEALTH", $lblFont, $lblBrush, $cx, ([single]($cy + 24 * $dds)), $fmt)
+            $lblFont.Dispose(); $lblBrush.Dispose(); $fmt.Dispose()
+        })
 
     $fontsToDispose = @()
     function Add-CenterLabel {
@@ -3476,16 +3476,16 @@ function Show-AboutDialog {
 
     # Rounded border paint
     $about.Add_Paint({
-        param($sender, $e)
-        $g = $e.Graphics
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $r = 10; $rd2 = $r * 2
-        $bw = $sender.Width - 1; $bh = $sender.Height - 1
-        $borderPath = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
-        $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
-        $g.DrawPath($borderPen, $borderPath)
-        $borderPen.Dispose(); $borderPath.Dispose()
-    })
+            param($sender, $e)
+            $g = $e.Graphics
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $r = 10; $rd2 = $r * 2
+            $bw = $sender.Width - 1; $bh = $sender.Height - 1
+            $borderPath = New-RoundedRectPath -Right ($bw - $rd2) -Bottom ($bh - $rd2) -Diameter $rd2
+            $borderPen = New-Object System.Drawing.Pen($script:theme.Border, 1)
+            $g.DrawPath($borderPen, $borderPath)
+            $borderPen.Dispose(); $borderPath.Dispose()
+        })
 
     # DPI scale
     $gDpi = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
@@ -3574,9 +3574,9 @@ function Show-AboutDialog {
 
     # Close on Escape
     $about.Add_KeyDown({
-        param($sender, $e)
-        if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $about.Close() }
-    })
+            param($sender, $e)
+            if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $about.Close() }
+        })
 
     # Close on deactivate (click outside)
     $about.Add_Deactivate({ $about.Close() })
@@ -3599,8 +3599,8 @@ function Update-TrayIcon {
 
     # Only regenerate icon when state actually changes
     $needsNewIcon = ($info.Percent -ne $script:cachedIconPercent) -or
-                    ($info.IsCharging -ne $script:cachedIconCharging) -or
-                    ($info.IsFullyCharged -ne $script:cachedIconFullyCharged)
+    ($info.IsCharging -ne $script:cachedIconCharging) -or
+    ($info.IsFullyCharged -ne $script:cachedIconFullyCharged)
 
     if ($needsNewIcon) {
         # Destroy previous icon handle
@@ -3637,10 +3637,10 @@ function Update-TrayIcon {
     # Skip when there's no battery so we don't fill the graph with junk -1 readings.
     if (-not $info.NoBattery) {
         $script:batteryHistory.Add(@{
-            Time = $now
-            Percent = $info.Percent
-            IsCharging = $info.IsCharging
-        }) | Out-Null
+                Time       = $now
+                Percent    = $info.Percent
+                IsCharging = $info.IsCharging
+            }) | Out-Null
         if ($script:batteryHistory.Count -gt 2400) {
             $script:batteryHistory.RemoveAt(0)
         }
@@ -3733,52 +3733,52 @@ $script:displaySettingsHandler = {
 $script:menuDismissTimer = New-Object System.Windows.Forms.Timer
 $script:menuDismissTimer.Interval = 200
 $script:menuDismissTimer.Add_Tick({
-    if ($null -eq $pillContextMenu -or -not $pillContextMenu.Visible) {
-        $script:menuDismissTimer.Stop()
-        return
-    }
-    $mousePos = [System.Windows.Forms.Cursor]::Position
-    $overMenu = $false
-    # Main menu bounds + 10px grace
-    $menuRect = New-Object System.Drawing.Rectangle($pillContextMenu.Location, $pillContextMenu.Size)
-    $menuRect.Inflate(10, 10)
-    if ($menuRect.Contains($mousePos)) { $overMenu = $true }
-    # Check any visible submenu (Power Plan dropdown)
-    if (-not $overMenu) {
-        foreach ($item in $pillContextMenu.Items) {
-            if ($item -is [System.Windows.Forms.ToolStripMenuItem] -and $item.HasDropDown -and $item.DropDown.Visible) {
-                $subRect = New-Object System.Drawing.Rectangle($item.DropDown.Location, $item.DropDown.Size)
-                $subRect.Inflate(10, 10)
-                if ($subRect.Contains($mousePos)) { $overMenu = $true; break }
+        if ($null -eq $pillContextMenu -or -not $pillContextMenu.Visible) {
+            $script:menuDismissTimer.Stop()
+            return
+        }
+        $mousePos = [System.Windows.Forms.Cursor]::Position
+        $overMenu = $false
+        # Main menu bounds + 10px grace
+        $menuRect = New-Object System.Drawing.Rectangle($pillContextMenu.Location, $pillContextMenu.Size)
+        $menuRect.Inflate(10, 10)
+        if ($menuRect.Contains($mousePos)) { $overMenu = $true }
+        # Check any visible submenu (Power Plan dropdown)
+        if (-not $overMenu) {
+            foreach ($item in $pillContextMenu.Items) {
+                if ($item -is [System.Windows.Forms.ToolStripMenuItem] -and $item.HasDropDown -and $item.DropDown.Visible) {
+                    $subRect = New-Object System.Drawing.Rectangle($item.DropDown.Location, $item.DropDown.Size)
+                    $subRect.Inflate(10, 10)
+                    if ($subRect.Contains($mousePos)) { $overMenu = $true; break }
+                }
             }
         }
-    }
-    if (-not $overMenu) {
-        $script:menuDismissTimer.Stop()
-        $pillContextMenu.Close()
-    }
-})
+        if (-not $overMenu) {
+            $script:menuDismissTimer.Stop()
+            $pillContextMenu.Close()
+        }
+    })
 
 # Pill context menu (right-click on floating bar)
 $pillContextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $pillContextMenu.Add_Opening({
-    $script:hoverTimer.Stop()
-    if ($script:hoverPopupVisible) {
-        Close-HoverPopup
-    }
-    Update-PowerPlanMenu -MenuItem $pillPowerItem
-    $script:menuDismissTimer.Start()
-})
+        $script:hoverTimer.Stop()
+        if ($script:hoverPopupVisible) {
+            Close-HoverPopup
+        }
+        Update-PowerPlanMenu -MenuItem $pillPowerItem
+        $script:menuDismissTimer.Start()
+    })
 $pillContextMenu.Add_Closed({ $script:menuDismissTimer.Stop() })
 
 $pillHideItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hide Pill")
 $pillHideItem.Add_Click({
-    $script:floatingBar.Hide()
-    # Update tray menu item too
-    $toggleBarItem.Text = "Show Bar"
-    # Breadcrumb so a first-timer isn't left wondering where it went
-    Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
-})
+        $script:floatingBar.Hide()
+        # Update tray menu item too
+        $toggleBarItem.Text = "Show Bar"
+        # Breadcrumb so a first-timer isn't left wondering where it went
+        Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
+    })
 
 $pillHealthItem = New-Object System.Windows.Forms.ToolStripMenuItem("Battery Health")
 $pillHealthItem.Add_Click({ Show-BatteryHealthCard })
@@ -3800,12 +3800,12 @@ $pillSeparator2 = New-Object System.Windows.Forms.ToolStripSeparator
 
 $pillExitItem = New-Object System.Windows.Forms.ToolStripMenuItem("Exit")
 $pillExitItem.Add_Click({
-    $script:timer.Stop()
-    $script:notifyIcon.Visible = $false
-    $script:notifyIcon.Dispose()
-    $script:floatingBar.Close()
-    $script:mainForm.Close()
-})
+        $script:timer.Stop()
+        $script:notifyIcon.Visible = $false
+        $script:notifyIcon.Dispose()
+        $script:floatingBar.Close()
+        $script:mainForm.Close()
+    })
 
 $pillContextMenu.Items.Add($pillHideItem) | Out-Null
 $pillContextMenu.Items.Add($pillHealthItem) | Out-Null
@@ -3825,16 +3825,16 @@ $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 
 $toggleBarItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hide Bar")
 $toggleBarItem.Add_Click({
-    if ($script:floatingBar.Visible) {
-        $script:floatingBar.Hide()
-        $toggleBarItem.Text = "Show Bar"
-        # Breadcrumb so a first-timer isn't left wondering where it went
-        Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
-    } else {
-        $script:floatingBar.Show()
-        $toggleBarItem.Text = "Hide Bar"
-    }
-})
+        if ($script:floatingBar.Visible) {
+            $script:floatingBar.Hide()
+            $toggleBarItem.Text = "Show Bar"
+            # Breadcrumb so a first-timer isn't left wondering where it went
+            Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
+        } else {
+            $script:floatingBar.Show()
+            $toggleBarItem.Text = "Hide Bar"
+        }
+    })
 
 $healthItem = New-Object System.Windows.Forms.ToolStripMenuItem("Battery Health")
 $healthItem.Add_Click({ Show-BatteryHealthCard })
@@ -3854,16 +3854,16 @@ $separatorItem = New-Object System.Windows.Forms.ToolStripSeparator
 
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem("Exit")
 $exitItem.Add_Click({
-    $script:timer.Stop()
-    $script:notifyIcon.Visible = $false
-    $script:notifyIcon.Dispose()
-    $script:floatingBar.Close()
-    $script:mainForm.Close()
-})
+        $script:timer.Stop()
+        $script:notifyIcon.Visible = $false
+        $script:notifyIcon.Dispose()
+        $script:floatingBar.Close()
+        $script:mainForm.Close()
+    })
 
 $contextMenu.Add_Opening({
-    Update-PowerPlanMenu -MenuItem $trayPowerItem
-})
+        Update-PowerPlanMenu -MenuItem $trayPowerItem
+    })
 
 $contextMenu.Items.Add($toggleBarItem) | Out-Null
 $contextMenu.Items.Add($healthItem) | Out-Null
@@ -3879,64 +3879,64 @@ $script:notifyIcon.ContextMenuStrip = $contextMenu
 
 # Left-click tray icon opens popup
 $script:notifyIcon.Add_MouseClick({
-    param($sender, $e)
-    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-        $currentInfo = Get-BatteryInfo
-        Show-BatteryPopup -BatteryInfo $currentInfo
-    }
-})
+        param($sender, $e)
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            $currentInfo = Get-BatteryInfo
+            Show-BatteryPopup -BatteryInfo $currentInfo
+        }
+    })
 
 # Timer for periodic updates
 $script:timer = New-Object System.Windows.Forms.Timer
 $script:timer.Interval = $script:config.RefreshInterval
 $script:timer.Add_Tick({
-    try { Update-TrayIcon } catch {}
-})
+        try { Update-TrayIcon } catch {}
+    })
 
 # Pulse timer for charging animation (smooth pulsing glow effect)
 $script:pulseTimer = New-Object System.Windows.Forms.Timer
 $script:pulseTimer.Interval = 33  # 33ms for smooth animation (~30 FPS)
 $script:pulseTimer.Add_Tick({
-    try {
-        $needsRepaint = $false
-        if ($script:barIsCharging) {
-            # Sine-wave breathing pulse: 5-second cycle, alpha 90-120
-            $t = (Get-Date).Ticks / 10000000.0
-            $script:pulseAlpha = [int](105 + 15 * [Math]::Sin($t * 1.257))
-            $needsRepaint = $true
-        }
-        # Plug/unplug flash decay (180→0 at 33ms tick, ~8/tick = ~750ms)
-        if ($script:flashAlpha -gt 0) {
-            $script:flashAlpha = [math]::Max(0, $script:flashAlpha - 12)
-            $needsRepaint = $true
-        }
-        # Low battery warning animations
-        if ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) {
-            # Pulsing red border (~3.1s cycle at 33ms tick = ~94 ticks)
-            $script:lowBatBorderAlpha += $script:lowBatBorderDir * 3
-            if ($script:lowBatBorderAlpha -ge 220) { $script:lowBatBorderAlpha = 220; $script:lowBatBorderDir = -1 }
-            elseif ($script:lowBatBorderAlpha -le 80) { $script:lowBatBorderAlpha = 80; $script:lowBatBorderDir = 1 }
-            # Opacity oscillation at 10% and below
-            if ($script:lowBatOpacityPulse -and $null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-                $opBase = 0.8 + 0.2 * [math]::Sin((Get-Date).Ticks / 10000000.0 * 1.5)
-                $script:floatingBar.Opacity = [math]::Max(0.6, [math]::Min(1.0, $opBase))
+        try {
+            $needsRepaint = $false
+            if ($script:barIsCharging) {
+                # Sine-wave breathing pulse: 5-second cycle, alpha 90-120
+                $t = (Get-Date).Ticks / 10000000.0
+                $script:pulseAlpha = [int](105 + 15 * [Math]::Sin($t * 1.257))
+                $needsRepaint = $true
             }
-            $needsRepaint = $true
-        }
-        # "Estimating..." text pulse in popup
-        if ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed) {
-            $t2 = (Get-Date).Ticks / 10000000.0
-            $alpha = [int](120 + 80 * [Math]::Sin($t2 * 2.5))
-            $script:estimatingLabel.ForeColor = [System.Drawing.Color]::FromArgb(
-                $alpha, $script:theme.TextPrimary.R, $script:theme.TextPrimary.G, $script:theme.TextPrimary.B)
-        }
-        if ($needsRepaint -and $null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-            $script:floatingBar.Invalidate()
-        }
-        # Auto-stop when all animations complete
-        Update-PulseTimerState
-    } catch {}
-})
+            # Plug/unplug flash decay (180→0 at 33ms tick, ~8/tick = ~750ms)
+            if ($script:flashAlpha -gt 0) {
+                $script:flashAlpha = [math]::Max(0, $script:flashAlpha - 12)
+                $needsRepaint = $true
+            }
+            # Low battery warning animations
+            if ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) {
+                # Pulsing red border (~3.1s cycle at 33ms tick = ~94 ticks)
+                $script:lowBatBorderAlpha += $script:lowBatBorderDir * 3
+                if ($script:lowBatBorderAlpha -ge 220) { $script:lowBatBorderAlpha = 220; $script:lowBatBorderDir = -1 }
+                elseif ($script:lowBatBorderAlpha -le 80) { $script:lowBatBorderAlpha = 80; $script:lowBatBorderDir = 1 }
+                # Opacity oscillation at 10% and below
+                if ($script:lowBatOpacityPulse -and $null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+                    $opBase = 0.8 + 0.2 * [math]::Sin((Get-Date).Ticks / 10000000.0 * 1.5)
+                    $script:floatingBar.Opacity = [math]::Max(0.6, [math]::Min(1.0, $opBase))
+                }
+                $needsRepaint = $true
+            }
+            # "Estimating..." text pulse in popup
+            if ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed) {
+                $t2 = (Get-Date).Ticks / 10000000.0
+                $alpha = [int](120 + 80 * [Math]::Sin($t2 * 2.5))
+                $script:estimatingLabel.ForeColor = [System.Drawing.Color]::FromArgb(
+                    $alpha, $script:theme.TextPrimary.R, $script:theme.TextPrimary.G, $script:theme.TextPrimary.B)
+            }
+            if ($needsRepaint -and $null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+                $script:floatingBar.Invalidate()
+            }
+            # Auto-stop when all animations complete
+            Update-PulseTimerState
+        } catch {}
+    })
 # Timer starts idle — Update-PulseTimerState will start it when animations are active
 
 function Update-PulseTimerState {
@@ -3953,82 +3953,82 @@ function Update-PulseTimerState {
 $script:fullscreenTimer = New-Object System.Windows.Forms.Timer
 $script:fullscreenTimer.Interval = 1000
 $script:fullscreenTimer.Add_Tick({
-    try {
-        if (-not $script:config.AutoHideFullscreen) { return }
-        $isFS = Test-FullscreenApp
-        if ($isFS -and -not $script:isFullscreenHidden) {
-            # Fade out pill
-            $script:isFullscreenHidden = $true
-            if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed -and $script:floatingBar.Visible) {
-                $script:floatingBar.Hide()
+        try {
+            if (-not $script:config.AutoHideFullscreen) { return }
+            $isFS = Test-FullscreenApp
+            if ($isFS -and -not $script:isFullscreenHidden) {
+                # Fade out pill
+                $script:isFullscreenHidden = $true
+                if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed -and $script:floatingBar.Visible) {
+                    $script:floatingBar.Hide()
+                }
+            } elseif (-not $isFS -and $script:isFullscreenHidden) {
+                # Restore pill
+                $script:isFullscreenHidden = $false
+                if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed -and -not $script:floatingBar.Visible) {
+                    $script:floatingBar.Show()
+                }
             }
-        } elseif (-not $isFS -and $script:isFullscreenHidden) {
-            # Restore pill
-            $script:isFullscreenHidden = $false
-            if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed -and -not $script:floatingBar.Visible) {
-                $script:floatingBar.Show()
-            }
-        }
-    } catch {}
-})
+        } catch {}
+    })
 $script:fullscreenTimer.Start()
 
 # Cleanup on form closing
 $script:mainForm.Add_FormClosing({
-    # Save config (including battery history) on exit
-    Save-Config
-    $script:timer.Stop()
-    $script:timer.Dispose()
-    $script:pulseTimer.Stop()
-    $script:pulseTimer.Dispose()
-    $script:fullscreenTimer.Stop()
-    $script:fullscreenTimer.Dispose()
-    if ($null -ne $script:introTimer) {
-        $script:introTimer.Stop()
-        $script:introTimer.Dispose()
-    }
-    # Clean up hover timers
-    if ($null -ne $script:hoverTimer) {
-        $script:hoverTimer.Stop()
-        $script:hoverTimer.Dispose()
-    }
-    if ($null -ne $script:dismissTimer) {
-        $script:dismissTimer.Stop()
-        $script:dismissTimer.Dispose()
-    }
-    if ($null -ne $script:menuDismissTimer) {
-        $script:menuDismissTimer.Stop()
-        $script:menuDismissTimer.Dispose()
-    }
-    # Close hover popup and fade timers
-    if ($null -ne $script:fadeInTimer) { $script:fadeInTimer.Stop(); $script:fadeInTimer.Dispose() }
-    if ($null -ne $script:fadeOutTimer) { $script:fadeOutTimer.Stop(); $script:fadeOutTimer.Dispose() }
-    if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed) {
-        $script:hoverPopup.Close(); $script:hoverPopup.Dispose(); $script:hoverPopup = $null
-    }
-    $script:hoverPopupVisible = $false
-    $script:notifyIcon.Visible = $false
-    $script:notifyIcon.Dispose()
-    if ($script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-        $script:floatingBar.Close()
-        $script:floatingBar.Dispose()
-    }
-    if ($script:lastIconHandle) {
-        [Win32Icon]::DestroyIcon($script:lastIconHandle) | Out-Null
-    }
-    # Dispose cached GDI objects
-    if ($null -ne $script:pillFont) { $script:pillFont.Dispose() }
-    if ($null -ne $script:pillFont2) { $script:pillFont2.Dispose() }
-    if ($null -ne $script:pillStringFormat) { $script:pillStringFormat.Dispose() }
-    if ($null -ne $script:pillBgBrush)   { $script:pillBgBrush.Dispose() }
-    if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
-    if ($null -ne $script:pillBorderPen) { $script:pillBorderPen.Dispose() }
-    # Unregister system events to avoid leaks
-    [Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($script:powerModeHandler)
-    [Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($script:displaySettingsHandler)
-    $script:mutex.ReleaseMutex()
-    $script:mutex.Dispose()
-})
+        # Save config (including battery history) on exit
+        Save-Config
+        $script:timer.Stop()
+        $script:timer.Dispose()
+        $script:pulseTimer.Stop()
+        $script:pulseTimer.Dispose()
+        $script:fullscreenTimer.Stop()
+        $script:fullscreenTimer.Dispose()
+        if ($null -ne $script:introTimer) {
+            $script:introTimer.Stop()
+            $script:introTimer.Dispose()
+        }
+        # Clean up hover timers
+        if ($null -ne $script:hoverTimer) {
+            $script:hoverTimer.Stop()
+            $script:hoverTimer.Dispose()
+        }
+        if ($null -ne $script:dismissTimer) {
+            $script:dismissTimer.Stop()
+            $script:dismissTimer.Dispose()
+        }
+        if ($null -ne $script:menuDismissTimer) {
+            $script:menuDismissTimer.Stop()
+            $script:menuDismissTimer.Dispose()
+        }
+        # Close hover popup and fade timers
+        if ($null -ne $script:fadeInTimer) { $script:fadeInTimer.Stop(); $script:fadeInTimer.Dispose() }
+        if ($null -ne $script:fadeOutTimer) { $script:fadeOutTimer.Stop(); $script:fadeOutTimer.Dispose() }
+        if ($null -ne $script:hoverPopup -and -not $script:hoverPopup.IsDisposed) {
+            $script:hoverPopup.Close(); $script:hoverPopup.Dispose(); $script:hoverPopup = $null
+        }
+        $script:hoverPopupVisible = $false
+        $script:notifyIcon.Visible = $false
+        $script:notifyIcon.Dispose()
+        if ($script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+            $script:floatingBar.Close()
+            $script:floatingBar.Dispose()
+        }
+        if ($script:lastIconHandle) {
+            [Win32Icon]::DestroyIcon($script:lastIconHandle) | Out-Null
+        }
+        # Dispose cached GDI objects
+        if ($null -ne $script:pillFont) { $script:pillFont.Dispose() }
+        if ($null -ne $script:pillFont2) { $script:pillFont2.Dispose() }
+        if ($null -ne $script:pillStringFormat) { $script:pillStringFormat.Dispose() }
+        if ($null -ne $script:pillBgBrush) { $script:pillBgBrush.Dispose() }
+        if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
+        if ($null -ne $script:pillBorderPen) { $script:pillBorderPen.Dispose() }
+        # Unregister system events to avoid leaks
+        [Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($script:powerModeHandler)
+        [Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($script:displaySettingsHandler)
+        $script:mutex.ReleaseMutex()
+        $script:mutex.Dispose()
+    })
 
 # Initial update, then the intro choreography (rise -> fill sweep -> tips)
 Update-TrayIcon

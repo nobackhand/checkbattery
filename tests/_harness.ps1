@@ -14,7 +14,7 @@
 # the PowerShell AST and hands back a scriptblock the caller dot-sources into
 # its own scope - no message loop, no forms, no side effects.
 
-$script:TestsRun    = 0
+$script:TestsRun = 0
 $script:TestsFailed = 0
 
 function Import-WidgetFunction {
@@ -26,7 +26,7 @@ function Import-WidgetFunction {
     param([Parameter(Mandatory = $true)][string[]]$Name)
 
     $repoRoot = Split-Path -Parent $PSScriptRoot
-    $source   = Join-Path $repoRoot 'BatteryWidget.ps1'
+    $source = Join-Path $repoRoot 'BatteryWidget.ps1'
     if (-not (Test-Path $source)) { throw "not found: $source" }
 
     $errs = $null
@@ -96,7 +96,7 @@ function Test-AssertValueEqual {
     param([AllowNull()]$Expected, [AllowNull()]$Actual)
 
     if ($null -eq $Expected -and $null -eq $Actual) { return $true }
-    if ($null -eq $Expected -or  $null -eq $Actual) { return $false }
+    if ($null -eq $Expected -or $null -eq $Actual) { return $false }
 
     $eBool = $Expected -is [bool]; $aBool = $Actual -is [bool]
     if ($eBool -or $aBool) { return ($eBool -and $aBool -and ($Expected -eq $Actual)) }
@@ -105,7 +105,7 @@ function Test-AssertValueEqual {
     if ($eStr -or $aStr) { return ($eStr -and $aStr -and [string]::Equals($Expected, $Actual, 'Ordinal')) }
 
     $eCol = $Expected -is [System.Collections.IEnumerable]
-    $aCol = $Actual   -is [System.Collections.IEnumerable]
+    $aCol = $Actual -is [System.Collections.IEnumerable]
     if ($eCol -or $aCol) {
         if (-not ($eCol -and $aCol)) { return $false }
         $e = @($Expected); $a = @($Actual)
@@ -131,8 +131,8 @@ function Assert-Equal {
     param([AllowNull()]$Expected, [AllowNull()]$Actual, [string]$Because = '')
     if (-not (Test-AssertValueEqual $Expected $Actual)) {
         throw ("expected {0} but got {1}{2}" -f (Format-AssertValue $Expected),
-                                                (Format-AssertValue $Actual),
-                                                $(if ($Because) { " ($Because)" } else { '' }))
+            (Format-AssertValue $Actual),
+            $(if ($Because) { " ($Because)" } else { '' }))
     }
 }
 

@@ -76,10 +76,10 @@ foreach ($tok in $tokens) {
         if ($ch -eq "`n") { $lineOffset++; continue }
         if ([int]$ch -gt 127) {
             [void]$hits.Add([pscustomobject]@{
-                Line = $tok.Extent.StartLineNumber + $lineOffset
-                Code = [int]$ch
-                Char = $ch
-            })
+                    Line = $tok.Extent.StartLineNumber + $lineOffset
+                    Code = [int]$ch
+                    Char = $ch
+                })
         }
     }
 }
