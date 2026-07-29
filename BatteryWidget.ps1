@@ -1047,6 +1047,68 @@ function New-BatteryIcon {
 }
 
 # ============================================================
+# EXTERNAL I/O FAILURE REPORTING
+# ============================================================
+
+# Every external-I/O failure (disk, shell, subprocess) funnels through
+# Write-IoFailure, so none of them can end as an empty catch block. A failure is
+# always RECORDED (diagnostics + tests read $script:ioFailures) and, once the UI
+# exists, SHOWN as a card that names the file, the reason Windows gave, and what
+# the user can do about it. Notifications stay off until the tray icon is up:
+# Show-BatteryNotification needs forms, and the earliest failure (config load)
+# happens before there are any. Startup flushes the backlog once it enables them.
+$script:ioFailures = @()
+$script:ioNotifyEnabled = $false
+
+# Warm amber: an I/O failure is a "something did not stick" warning, not the
+# red reserved for a dying battery.
+$script:ioFailureAccent = [System.Drawing.Color]::FromArgb(255, 170, 60)
+
+function Write-IoFailure {
+    [OutputType([void])]
+    param(
+        # Headline, phrased as what the user lost: "Couldn't save your settings".
+        [string]$Operation,
+        # The file, folder, or URL involved - so the message is actionable.
+        [string]$Path = '',
+        # The exception message from Windows, verbatim.
+        [string]$Reason = '',
+        # What the user can do next.
+        [string]$Advice = ''
+    )
+    $parts = @()
+    foreach ($p in @($Path, $Reason, $Advice)) { if ($p) { $parts += $p } }
+    $detail = ($parts -join ' - ')
+    $script:ioFailures += [pscustomobject]@{
+        Time      = Get-Date
+        Operation = $Operation
+        Path      = $Path
+        Reason    = $Reason
+        Advice    = $Advice
+        Detail    = $detail
+    }
+    if ($script:ioNotifyEnabled) {
+        Show-BatteryNotification -Message $Operation -SubMessage $detail -Accent $script:ioFailureAccent
+    }
+}
+
+function Open-ExternalLink {
+    # Start-Process throws when no handler is registered for the protocol (or
+    # the shell association is broken). Unhandled inside a LinkClicked handler
+    # that is a hard crash of a -noConsole exe, so the click must never escape.
+    [OutputType([bool])]
+    param([string]$Url)
+    try {
+        Start-Process $Url -ErrorAction Stop
+        return $true
+    } catch {
+        Write-IoFailure -Operation "Couldn't open the link" -Path $Url -Reason $_.Exception.Message `
+            -Advice 'Type the address into your browser instead'
+        return $false
+    }
+}
+
+# ============================================================
 # FLOATING BAR — POSITION PERSISTENCE
 # ============================================================
 
@@ -1054,7 +1116,13 @@ function Get-ConfigPath {
     [OutputType([string])]
     param()
     $dir = $PSScriptRoot
-    if (-not $dir) { $dir = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) }
+    # MainModule throws (Win32Exception/InvalidOperation) when the process token
+    # cannot read its own image path. Unguarded that killed startup outright,
+    # before any window existed to report it.
+    if (-not $dir) {
+        try { $dir = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) }
+        catch { $dir = '' }
+    }
     if (-not $dir) { $dir = $PWD.Path }
     return Join-Path $dir "BatteryWidget.config.json"
 }
@@ -1085,8 +1153,11 @@ function Read-ConfigField {
 
 function Import-Config {
     [OutputType([hashtable])]
-    param()
-    $configPath = Get-ConfigPath
+    param(
+        # Config file to read. Defaults to the app's own file; tests override it.
+        [string]$Path = ''
+    )
+    $configPath = if ($Path) { $Path } else { Get-ConfigPath }
     $default = @{
         X                  = -1
         Y                  = -1
@@ -1106,7 +1177,7 @@ function Import-Config {
     }
     if (Test-Path $configPath) {
         try {
-            $json = Get-Content $configPath -Raw | ConvertFrom-Json
+            $json = Get-Content $configPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
 
             # Position is a pair: take it only if BOTH coordinates parse
             $xv = Read-ConfigField -Raw $json.X -Fallback $null -Parse { param($r) [int]$r }
@@ -1166,15 +1237,36 @@ function Import-Config {
                     }
                 } catch {}
             }
-        } catch {}
+        } catch {
+            # This file IS the user's setup - position, theme, accent, history.
+            # Swallowing the failure reset all of it with no explanation, and the
+            # next Save-Config then overwrote the only copy. Keep a copy of what
+            # we could not read, and say so.
+            $backupPath = "$configPath.corrupt"
+            $backedUp = $false
+            try {
+                Copy-Item -LiteralPath $configPath -Destination $backupPath -Force -ErrorAction Stop
+                $backedUp = $true
+            } catch { $backedUp = $false }
+            $advice = if ($backedUp) {
+                "Settings reset to defaults; the unreadable file was kept as $(Split-Path -Leaf $backupPath)"
+            } else {
+                'Settings reset to defaults'
+            }
+            Write-IoFailure -Operation "Couldn't read your settings" -Path $configPath `
+                -Reason $_.Exception.Message -Advice $advice
+        }
     }
     return $default
 }
 
 function Save-Config {
     [OutputType([void])]
-    param()
-    $configPath = Get-ConfigPath
+    param(
+        # Config file to write. Defaults to the app's own file; tests override it.
+        [string]$Path = ''
+    )
+    $configPath = if ($Path) { $Path } else { Get-ConfigPath }
     try {
         # Serialize last 200 history entries (timestamps as ISO8601)
         $historyToSave = @()
@@ -1205,9 +1297,15 @@ function Save-Config {
             EmaRate            = $script:emaRate
             LastValidRate      = $script:lastValidRate
             ConfigSavedAt      = (Get-Date).ToString("o")
-        } | ConvertTo-Json -Depth 3 | Set-Content $configPath -Force
+        } | ConvertTo-Json -Depth 3 | Set-Content $configPath -Force -ErrorAction Stop
+        # -ErrorAction Stop is load-bearing: Set-Content's write errors are
+        # NON-terminating, so without it the catch below never ran and a
+        # read-only file or a missing folder lost every setting change with no
+        # error at all - the exact silent failure the card was meant to report.
     } catch {
-        Show-BatteryNotification "Config Save Failed" "Settings may not persist"
+        Write-IoFailure -Operation "Couldn't save your settings" -Path $configPath `
+            -Reason $_.Exception.Message `
+            -Advice 'Changes will be lost when BatteryPill closes - check the folder is writable'
     }
 }
 
@@ -1218,9 +1316,15 @@ function Save-Config {
 function Get-ExePath {
     [OutputType([string])]
     param()
-    # Get the path of the current executable or script
-    $process = [System.Diagnostics.Process]::GetCurrentProcess()
-    $exePath = $process.MainModule.FileName
+    # Get the path of the current executable or script. MainModule throws when
+    # the process cannot read its own image path; treat that as script mode
+    # (no shortcut) rather than letting it escape into the Settings click.
+    try {
+        $process = [System.Diagnostics.Process]::GetCurrentProcess()
+        $exePath = $process.MainModule.FileName
+    } catch {
+        return $null
+    }
     # If running as script, use PowerShell with script path
     if ($exePath -like "*powershell*" -or $exePath -like "*pwsh*") {
         return $null  # Can't create shortcut for script mode
@@ -1228,19 +1332,30 @@ function Get-ExePath {
     return $exePath
 }
 
+function Get-StartupShortcutPath {
+    [OutputType([string])]
+    param()
+    return (Join-Path ([Environment]::GetFolderPath('Startup')) "BatteryPill.lnk")
+}
+
 function Get-AutoStartEnabled {
     [OutputType([bool])]
-    param()
-    $startupPath = [Environment]::GetFolderPath('Startup')
-    $shortcutPath = Join-Path $startupPath "BatteryPill.lnk"
-    return (Test-Path $shortcutPath)
+    param(
+        # Shortcut to look for. Defaults to the real Startup folder; tests override it.
+        [string]$ShortcutPath = ''
+    )
+    if (-not $ShortcutPath) { $ShortcutPath = Get-StartupShortcutPath }
+    return (Test-Path $ShortcutPath)
 }
 
 function Set-AutoStart {
     [OutputType([bool])]
-    param([bool]$Enable)
-    $startupPath = [Environment]::GetFolderPath('Startup')
-    $shortcutPath = Join-Path $startupPath "BatteryPill.lnk"
+    param(
+        [bool]$Enable,
+        # Shortcut to create/remove. Defaults to the real Startup folder; tests override it.
+        [string]$ShortcutPath = ''
+    )
+    if (-not $ShortcutPath) { $ShortcutPath = Get-StartupShortcutPath }
 
     if ($Enable) {
         $exePath = Get-ExePath
@@ -1253,24 +1368,31 @@ function Set-AutoStart {
 
         try {
             $shell = New-Object -ComObject WScript.Shell
-            $shortcut = $shell.CreateShortcut($shortcutPath)
+            $shortcut = $shell.CreateShortcut($ShortcutPath)
             $shortcut.TargetPath = $exePath
             $shortcut.WorkingDirectory = Split-Path $exePath
             $shortcut.Description = "BatteryPill - Battery Widget"
             $shortcut.Save()
             return $true
         } catch {
-            Show-BatteryNotification -Message "Couldn't enable auto-start" `
-                -SubMessage "Windows blocked the startup shortcut. Try launching BatteryPill once as administrator." `
-                -Accent ([System.Drawing.Color]::FromArgb(255, 170, 60))
+            Write-IoFailure -Operation "Couldn't turn on auto-start" -Path $ShortcutPath `
+                -Reason $_.Exception.Message `
+                -Advice 'Windows blocked the startup shortcut - try launching BatteryPill once as administrator'
             return $false
         }
     } else {
-        if (Test-Path $shortcutPath) {
+        if (Test-Path $ShortcutPath) {
             try {
-                Remove-Item $shortcutPath -Force
+                # -ErrorAction Stop: Remove-Item's failures are non-terminating,
+                # so the catch never fired and the checkbox flipped to "off"
+                # while the shortcut survived - BatteryPill kept starting with
+                # Windows and nothing ever said why.
+                Remove-Item $ShortcutPath -Force -ErrorAction Stop
                 return $true
             } catch {
+                Write-IoFailure -Operation "Couldn't turn off auto-start" -Path $ShortcutPath `
+                    -Reason $_.Exception.Message `
+                    -Advice 'BatteryPill will still start with Windows - delete this shortcut from your Startup folder'
                 return $false
             }
         }
@@ -3620,7 +3742,7 @@ function Show-AboutDialog {
     $siteLink.ActiveLinkColor = if ($aboutIsLight) { [System.Drawing.Color]::FromArgb(0, 82, 164) } else { [System.Drawing.Color]::FromArgb(130, 170, 255) }
     $siteLink.AutoSize = $true
     $siteLink.Location = New-Object System.Drawing.Point($m, $y)
-    $siteLink.Add_LinkClicked({ Start-Process "https://batterypill.com" })
+    $siteLink.Add_LinkClicked({ [void](Open-ExternalLink -Url "https://batterypill.com") })
     $about.Controls.Add($siteLink)
     $y += [int](22 * $ds)
 
@@ -3632,7 +3754,7 @@ function Show-AboutDialog {
     $donateLink.ActiveLinkColor = if ($aboutIsLight) { [System.Drawing.Color]::FromArgb(122, 82, 0) } else { [System.Drawing.Color]::FromArgb(255, 220, 100) }
     $donateLink.AutoSize = $true
     $donateLink.Location = New-Object System.Drawing.Point($m, $y)
-    $donateLink.Add_LinkClicked({ Start-Process "https://buymeacoffee.com/nobackhand" })
+    $donateLink.Add_LinkClicked({ [void](Open-ExternalLink -Url "https://buymeacoffee.com/nobackhand") })
     $about.Controls.Add($donateLink)
     $y += [int](34 * $ds)
 
@@ -4116,6 +4238,16 @@ $script:mainForm.Add_FormClosing({
         $script:mutex.ReleaseMutex()
         $script:mutex.Dispose()
     })
+
+# The UI exists now, so I/O failures can show their own card from here on. Flush
+# anything recorded during startup (a config we could not read) - it happened
+# before there was a window to say it in.
+$script:ioNotifyEnabled = $true
+if ($script:ioFailures.Count -gt 0) {
+    $startupFailure = @($script:ioFailures)[-1]
+    Show-BatteryNotification -Message $startupFailure.Operation -SubMessage $startupFailure.Detail `
+        -Accent $script:ioFailureAccent
+}
 
 # Initial update, then the intro choreography (rise -> fill sweep -> tips)
 Update-TrayIcon
