@@ -14,6 +14,7 @@
 #   5. PSScriptAnalyzer reports zero Error/Warning findings across every .ps1
 #      in the repo, using PSScriptAnalyzerSettings.psd1 (which documents the
 #      one-line justification for each rule that is switched off).
+#   6. Every .ps1 is already autoformatted (tools\format-source.ps1 -Check).
 # Exit code: 0 = all checks pass, 1 = any failure OR any warning.
 #            Warnings are fatal on purpose: the build log must stay clean, so a
 #            new non-ASCII string literal has to be written as [char]0xNNNN.
@@ -143,6 +144,23 @@ if (-not (Test-Path $settingsPath)) {
             Write-Host ("      {0} {1} - {2}:{3} {4}" -f $f.Severity, $f.RuleName, (Split-Path $f.ScriptName -Leaf), $f.Line, $f.Message)
             $shown++
         }
+        $failures++
+    }
+}
+
+# ---- 6) Formatting: every .ps1 matches the autoformatter's output ----
+$formatScript = Join-Path $PSScriptRoot 'format-source.ps1'
+if (-not (Test-Path $formatScript)) {
+    Write-Host "FAIL: not found: $formatScript"
+    $failures++
+} else {
+    # format-source.ps1 reports via Write-Host, so its per-file detail streams
+    # straight into this log; only its exit code needs interpreting here.
+    & $formatScript -Check
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host 'PASS: every .ps1 is autoformatted'
+    } else {
+        Write-Host 'FAIL: unformatted .ps1 file(s) - run: powershell -ExecutionPolicy Bypass -File tools\format-source.ps1'
         $failures++
     }
 }
