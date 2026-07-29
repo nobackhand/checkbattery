@@ -13,29 +13,33 @@ BatteryPill is a Windows desktop battery widget built with PowerShell and WinFor
 - **System Tray Integration**: Includes a tray icon with a context menu for settings and exiting.
 - **Single Instance**: Uses a global mutex to prevent multiple instances from running.
 
-## Requirements
+## Setup
 
-- Windows OS.
-- PowerShell 5.0 or higher.
-- `ps2exe` module (required for building the executable).
+One command takes a fresh clone to a running widget:
 
-## Installation
-
-To build the standalone executable:
-```powershell
-.\Build.ps1
+```bash
+./scripts/setup.sh
 ```
 
-To run the widget directly via PowerShell:
+It checks prerequisites, installs the `ps2exe` dependency (bootstrapping TLS 1.2 and the NuGet provider that stock PowerShell 5.1 lacks), builds `BatteryPill-<version>.exe`, and launches it. It is idempotent — re-run it any time. Use `./scripts/setup.sh --no-run` to build without launching, and `--help` for usage.
+
+The only prerequisites are Windows, Windows PowerShell 5.1 (`powershell.exe` on PATH), and a bash shell (Git Bash works). Everything else is installed for you.
+
+## Usage
+
+Quit from the tray icon's **Exit** item. To start it again afterwards, run the compiled executable (the version suffix comes from `$script:appVersion` in the source):
+```powershell
+.\BatteryPill-<version>.exe
+```
+
+To run the widget from source without building:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 ```
 
-## Usage
-
-Run the compiled executable (the version suffix comes from `$script:appVersion` in the source):
+To rebuild the executable on its own:
 ```powershell
-.\BatteryPill-<version>.exe
+.\Build.ps1
 ```
 
 Quick battery status check via CLI:
@@ -89,7 +93,7 @@ Tests dot-source individual functions out of `BatteryWidget.ps1` via the PowerSh
 - `BatteryWidget.ps1`: Main widget logic and UI code.
 - `Build.ps1`: Script to compile the widget into a standalone `.exe` using `ps2exe`.
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
-- `scripts/`: `verify.sh` (the lint + tests + build gate) and `run-tests.ps1` (test runner).
+- `scripts/`: `setup.sh` (one-command setup), `verify.sh` (the lint + tests + build gate), and `run-tests.ps1` (test runner).
 - `tests/`: Test suite - `_harness.ps1` (assertions + AST function loader) plus `*.Tests.ps1` files.
 - `tools/`: Dev harness - `check-source.ps1` (BOM + parse gate) and `render-states.ps1` (headless renderer of popup/pill/settings states).
 - `docs/`: Website files for the project landing page.
