@@ -324,11 +324,17 @@ $script:appVersion = "1.1.9"
 
 function Get-SystemTheme {
     [OutputType([bool])]
-    param()
+    param(
+        # Test seam: the registry key to read the theme preference from.
+        [string]$RegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+    )
     try {
-        $regPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-        $val = Get-ItemPropertyValue -Path $regPath -Name "AppsUseLightTheme" -ErrorAction Stop
-        return ($val -eq 1)  # $true = light theme
+        $val = Get-ItemPropertyValue -Path $RegPath -Name "AppsUseLightTheme" -ErrorAction Stop
+        # The value is a DWORD, but the key is user-writable: a REG_SZ, a
+        # REG_MULTI_SZ array, or a missing value must all mean "not light"
+        # rather than returning a non-boolean out of a [bool] function.
+        $num = Read-DeviceNumber -Raw $val -Min 0 -Max 4294967295
+        return ($null -ne $num -and $num -eq 1)  # $true = light theme
     } catch {
         return $false  # default to dark
     }
@@ -427,9 +433,50 @@ $script:hysteresisSeconds = 2  # Dead time after AC plug/unplug to ignore rate s
 # BATTERY DATA COLLECTION
 # ============================================================
 
+function Read-DeviceNumber {
+    <#
+    .SYNOPSIS
+        Validated read of ONE numeric property coming from outside the app
+        (WMI / battery firmware). Returns $null - "no reading" - for anything
+        that is not a finite number inside [Min, Max].
+
+        Every value on Win32_Battery is whatever the OEM's firmware felt like
+        reporting, and PowerShell's casts turn that into a crash or a lie:
+        [int]4294967295 (the UInt32 "unknown" pattern) THROWS, [int]$null is a
+        silent 0, [int] of a dual-battery array THROWS, and a string property
+        sails through `-gt 0` before throwing on the cast. Validate here once
+        instead of guessing at each call site.
+    #>
+    [OutputType([object])]
+    param(
+        # any-typed: one raw WMI property - number, string, $null, or an array.
+        [AllowNull()][object]$Raw,
+        [double]$Min = 0,
+        [double]$Max = 2147483647
+    )
+    if ($null -eq $Raw) { return $null }
+    # The cast is the shape check too: [double] throws for a collection (the
+    # dual-battery array, a REG_MULTI_SZ) and for a non-numeric string alike.
+    $value = 0.0
+    try { $value = [double]$Raw } catch { return $null }
+    if ([double]::IsNaN($value) -or [double]::IsInfinity($value)) { return $null }
+    if ($value -lt $Min -or $value -gt $Max) { return $null }
+    return $value
+}
+
 function Get-BatteryInfo {
     [OutputType([hashtable])]
-    param([Parameter(Mandatory = $false)][AllowNull()][Nullable[datetime]]$Now = $null)
+    param(
+        [Parameter(Mandatory = $false)][AllowNull()][Nullable[datetime]]$Now = $null,
+        # Test seam: when bound, this stands in for the Win32_Battery instance
+        # instead of querying WMI, so the adversarial suite can hand the parser
+        # firmware values no real machine here would produce.
+        # any-typed: a WMI instance, a stub with the same properties, or $null.
+        [AllowNull()][object]$WmiBattery = $null,
+        # Test seam: same, for the .NET PowerStatus fallback source.
+        # any-typed: a PowerStatus instance or a stub with the same properties.
+        [AllowNull()][object]$PowerStatus = $null
+    )
     if ($null -eq $Now) { $Now = Get-Date }
     $info = @{
         Percent            = -1
@@ -457,18 +504,24 @@ function Get-BatteryInfo {
     # WMI primary source. Dual-battery laptops return an ARRAY here; member access
     # on it produces arrays that crash the [int] casts below, so take the first
     # pack (empty array pipes to $null, preserving the no-battery path).
-    try {
-        $wmiBattery = @(Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop) | Select-Object -First 1
-    } catch {
-        $wmiBattery = $null
+    if ($PSBoundParameters.ContainsKey('WmiBattery')) {
+        $wmiBattery = @($WmiBattery) | Select-Object -First 1
+    } else {
+        try {
+            $wmiBattery = @(Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop) | Select-Object -First 1
+        } catch {
+            $wmiBattery = $null
+        }
     }
 
     # .NET fallback source
-    $dotnetPower = [System.Windows.Forms.SystemInformation]::PowerStatus
+    $dotnetPower = if ($PSBoundParameters.ContainsKey('PowerStatus')) { $PowerStatus }
+    else { [System.Windows.Forms.SystemInformation]::PowerStatus }
 
     # No battery detection
+    $dnChargeStatus = if ($dotnetPower) { Read-DeviceNumber -Raw $dotnetPower.BatteryChargeStatus -Min 0 -Max 255 } else { $null }
     if ($null -eq $wmiBattery) {
-        if ($null -eq $dotnetPower -or ([int]$dotnetPower.BatteryChargeStatus -band 128) -eq 128) {
+        if ($null -eq $dotnetPower -or ($null -ne $dnChargeStatus -and ([int]$dnChargeStatus -band 128) -eq 128)) {
             $info.NoBattery = $true
             $info.StatusText = "No Battery"
             $info.TimeString = "N/A"
@@ -484,20 +537,17 @@ function Get-BatteryInfo {
     # reading so the .NET source can answer instead.
     $wmiPct = $null
     if ($wmiBattery) {
-        try {
-            $rawPct = $wmiBattery.EstimatedChargeRemaining
-            if ($null -ne $rawPct) {
-                $candidate = [double]$rawPct
-                if ($candidate -ge 0 -and $candidate -le 100) { $wmiPct = $candidate }
-            }
-        } catch {}
+        $wmiPct = Read-DeviceNumber -Raw $wmiBattery.EstimatedChargeRemaining -Min 0 -Max 100
     }
     if ($null -ne $wmiPct) {
         $info.PercentExact = $wmiPct
         $info.Percent = [int]$wmiPct
     } elseif ($dotnetPower) {
-        $dnPct = [math]::Round($dotnetPower.BatteryLifePercent * 100, 1)
-        if ($dnPct -ge 0 -and $dnPct -le 100) {
+        # BatteryLifePercent is 255 when the driver has no reading, so the
+        # fraction is range-checked before it becomes a percentage.
+        $dnFraction = Read-DeviceNumber -Raw $dotnetPower.BatteryLifePercent -Min 0 -Max 1
+        if ($null -ne $dnFraction) {
+            $dnPct = [math]::Round($dnFraction * 100, 1)
             $info.PercentExact = $dnPct
             $info.Percent = [int]$dnPct
         }
@@ -505,10 +555,12 @@ function Get-BatteryInfo {
 
     # Charging status from WMI
     if ($wmiBattery) {
-        $batteryStatus = $wmiBattery.BatteryStatus
+        # BatteryStatus is a UInt16 code 1-11; anything else (a string, an
+        # array, an out-of-range code) means "unknown", not a state.
+        $batteryStatus = Read-DeviceNumber -Raw $wmiBattery.BatteryStatus -Min 1 -Max 11
         $info.IsCharging = $batteryStatus -in @(2, 6, 7, 8, 9)
         $info.IsPluggedIn = $batteryStatus -in @(2, 3, 6, 7, 8, 9, 11)
-        $info.IsFullyCharged = $batteryStatus -eq 3
+        $info.IsFullyCharged = ($null -ne $batteryStatus -and $batteryStatus -eq 3)
     }
 
     # .NET cross-validation
@@ -516,7 +568,7 @@ function Get-BatteryInfo {
         if ($dotnetPower.PowerLineStatus -eq 'Online') {
             $info.IsPluggedIn = $true
         }
-        if (([int]$dotnetPower.BatteryChargeStatus -band 8) -eq 8) {
+        if ($null -ne $dnChargeStatus -and ([int]$dnChargeStatus -band 8) -eq 8) {
             $info.IsCharging = $true
         }
     }
@@ -528,36 +580,24 @@ function Get-BatteryInfo {
 
     # --- Extended WMI data (capacity, rates, wear) ---
     if ($wmiBattery) {
-        try {
-            if ($wmiBattery.DesignCapacity -and $wmiBattery.DesignCapacity -gt 0) {
-                $info.DesignCapacity = [int]$wmiBattery.DesignCapacity
-            }
-        } catch {}
+        # Every one of these is firmware-supplied: validate the range FIRST, so
+        # a UInt32 sentinel or a string never reaches an [int] cast. Min 1
+        # because a zero capacity/rate is "no reading", not a measurement.
+        $designCap = Read-DeviceNumber -Raw $wmiBattery.DesignCapacity -Min 1
+        if ($null -ne $designCap) { $info.DesignCapacity = [int]$designCap }
 
-        try {
-            if ($wmiBattery.FullChargeCapacity -and $wmiBattery.FullChargeCapacity -gt 0) {
-                $info.FullChargeCapacity = [int]$wmiBattery.FullChargeCapacity
-            }
-        } catch {}
+        $fullCap = Read-DeviceNumber -Raw $wmiBattery.FullChargeCapacity -Min 1
+        if ($null -ne $fullCap) { $info.FullChargeCapacity = [int]$fullCap }
 
-        try {
-            if ($null -ne $wmiBattery.DischargeRate -and $wmiBattery.DischargeRate -gt 0 -and $wmiBattery.DischargeRate -lt 4294967295) {
-                $info.DischargeRate = [int]$wmiBattery.DischargeRate
-            }
-        } catch {}
+        $dischargeRate = Read-DeviceNumber -Raw $wmiBattery.DischargeRate -Min 1
+        if ($null -ne $dischargeRate) { $info.DischargeRate = [int]$dischargeRate }
 
-        try {
-            if ($null -ne $wmiBattery.ChargeRate -and $wmiBattery.ChargeRate -gt 0 -and $wmiBattery.ChargeRate -lt 4294967295) {
-                $info.ChargeRate = [int]$wmiBattery.ChargeRate
-            }
-        } catch {}
+        $chargeRate = Read-DeviceNumber -Raw $wmiBattery.ChargeRate -Min 1
+        if ($null -ne $chargeRate) { $info.ChargeRate = [int]$chargeRate }
 
-        # Full runtime from WMI
-        try {
-            if ($wmiBattery.EstimatedRunTime -and $wmiBattery.EstimatedRunTime -ne 71582788 -and $wmiBattery.EstimatedRunTime -gt 0) {
-                $info.FullRuntimeMinutes = [int]$wmiBattery.EstimatedRunTime
-            }
-        } catch {}
+        # Full runtime from WMI (71582788 is the documented "unknown" sentinel)
+        $runTime = Read-DeviceNumber -Raw $wmiBattery.EstimatedRunTime -Min 1
+        if ($null -ne $runTime -and $runTime -ne 71582788) { $info.FullRuntimeMinutes = [int]$runTime }
     }
 
     # Battery wear
@@ -584,15 +624,19 @@ function Get-BatteryInfo {
         # Fallback to WMI/dotnet if smoothed calculation unavailable
         if ($timeMinutes -le 0) {
             if (-not $info.IsCharging) {
-                if ($wmiBattery -and $wmiBattery.EstimatedRunTime -and $wmiBattery.EstimatedRunTime -ne 71582788) {
-                    $timeMinutes = [int]$wmiBattery.EstimatedRunTime
-                } elseif ($dotnetPower -and $dotnetPower.BatteryLifeRemaining -gt 0) {
-                    $timeMinutes = [math]::Round($dotnetPower.BatteryLifeRemaining / 60)
+                # These reads used to cast straight to [int]: EstimatedRunTime
+                # is a UInt32, so the 4294967295 "unknown" pattern threw out of
+                # Get-BatteryInfo on every timer tick.
+                $runFallback = if ($wmiBattery) { Read-DeviceNumber -Raw $wmiBattery.EstimatedRunTime -Min 1 } else { $null }
+                $dnRemaining = if ($dotnetPower) { Read-DeviceNumber -Raw $dotnetPower.BatteryLifeRemaining -Min 1 } else { $null }
+                if ($null -ne $runFallback -and $runFallback -ne 71582788) {
+                    $timeMinutes = [int]$runFallback
+                } elseif ($null -ne $dnRemaining) {
+                    $timeMinutes = [math]::Round($dnRemaining / 60)
                 }
             } elseif ($info.IsCharging) {
-                if ($wmiBattery -and $wmiBattery.TimeToFullCharge -and $wmiBattery.TimeToFullCharge -ne 0) {
-                    $timeMinutes = [int]$wmiBattery.TimeToFullCharge
-                }
+                $toFull = if ($wmiBattery) { Read-DeviceNumber -Raw $wmiBattery.TimeToFullCharge -Min 1 } else { $null }
+                if ($null -ne $toFull) { $timeMinutes = [int]$toFull }
             }
         }
     }
@@ -628,14 +672,17 @@ function Get-BatteryInfo {
         $info.ETA = $eta.ToString("h:mm tt")
     }
 
-    # Status text
+    # Status text.
+    # The `-ge 0` guards are load-bearing: Percent is -1 when NO source gave a
+    # reading, and "-1 is <= 10" made an unreadable battery report itself as
+    # Critical - red hero text and a "Critical" title on data we do not have.
     if ($info.IsFullyCharged) {
         $info.StatusText = "Fully Charged"
     } elseif ($info.IsCharging) {
         $info.StatusText = "Charging"
-    } elseif ($info.Percent -le 10) {
+    } elseif ($info.Percent -ge 0 -and $info.Percent -le 10) {
         $info.StatusText = "Critical"
-    } elseif ($info.Percent -le 20) {
+    } elseif ($info.Percent -ge 0 -and $info.Percent -le 20) {
         $info.StatusText = "Low"
     } else {
         $info.StatusText = "Discharging"
@@ -839,19 +886,43 @@ function Get-SmoothedTimeRemaining {
 # HELPER: POWER PLAN MANAGEMENT
 # ============================================================
 
+# A plan id must look like a GUID before it is handed back to powercfg or shown
+# as a menu item's Tag. powercfg's output is localized and version-dependent,
+# so the regex above can and does match lines that are not plan rows.
+$script:powerPlanGuidPattern = '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
+
 function Get-PowerPlans {
     [OutputType([hashtable[]])]
-    param()
+    param(
+        # Test seam: stands in for `powercfg /list` output when bound, so the
+        # parser can be fed the malformed lines a real machine will not produce.
+        [AllowNull()][string[]]$Output = $null
+    )
     try {
-        $output = & powercfg /list 2>&1
-        if ($LASTEXITCODE -ne 0) { return @() }
+        if ($PSBoundParameters.ContainsKey('Output')) {
+            $lines = @($Output)
+        } else {
+            $lines = & powercfg /list 2>&1
+            if ($LASTEXITCODE -ne 0) { return @() }
+        }
         $result = @()
-        foreach ($line in $output) {
-            if ($line -match 'GUID:\s+(\S+)\s+\((.+?)\)(\s+\*)?') {
+        foreach ($line in $lines) {
+            if ($null -eq $line) { continue }
+            if ("$line" -match 'GUID:\s+(\S+)\s+\((.+?)\)(\s+\*)?') {
+                # Capture all three groups FIRST: the -notmatch below is itself a
+                # regex operation and overwrites $Matches.
+                $guid = $Matches[1]
+                $name = $Matches[2].Trim()
+                $active = [bool]$Matches[3]
+                # Reject anything that is not a real plan: a non-GUID id would
+                # be passed straight to `powercfg /setactive`, and a blank name
+                # produces an unclickable, unlabelled menu row.
+                if ($guid -notmatch $script:powerPlanGuidPattern) { continue }
+                if (-not $name) { continue }
                 $result += @{
-                    Name     = $Matches[2]
-                    GUID     = $Matches[1]
-                    IsActive = [bool]$Matches[3]
+                    Name     = $name
+                    GUID     = $guid
+                    IsActive = $active
                 }
             }
         }
@@ -861,7 +932,10 @@ function Get-PowerPlans {
 
 function Set-ActivePowerPlan {
     [OutputType([bool])]
-    param([string]$PlanGUID)
+    param([AllowNull()][string]$PlanGUID)
+    # Validate before invoking: the id arrives from a menu item's Tag, which was
+    # filled from powercfg's own (localized, parsed) output.
+    if (-not $PlanGUID -or $PlanGUID -notmatch $script:powerPlanGuidPattern) { return $false }
     try {
         & powercfg /setactive $PlanGUID 2>&1 | Out-Null
         return ($LASTEXITCODE -eq 0)
@@ -1184,8 +1258,17 @@ function Import-Config {
             $yv = Read-ConfigField -Raw $json.Y -Fallback $null -Parse { param($r) [int]$r }
             if ($null -ne $xv -and $null -ne $yv) { $default.X = $xv; $default.Y = $yv }
 
+            # NaN survives the clamp - [math]::Max/Min propagate it, because
+            # every comparison against NaN is false - and WinForms accepts it
+            # on Form.Opacity without complaint (verified: the property keeps
+            # NaN). From there nothing recovers it: the slider's arithmetic and
+            # the low-battery opacity oscillation all stay NaN, and the config
+            # is saved back as NaN. Reject it before the clamp.
             $default.Opacity = Read-ConfigField -Raw $json.Opacity -Fallback $default.Opacity -Parse {
-                param($r) [math]::Max(0.3, [math]::Min(1.0, [double]$r)) }
+                param($r)
+                $o = [double]$r
+                if ([double]::IsNaN($o)) { return $null }
+                [math]::Max(0.3, [math]::Min(1.0, $o)) }
             # Clamp: 0/negative would throw at Timer.Interval assignment and leave
             # the WinForms default of 100ms - a WMI query 10x/second
             $default.RefreshInterval = Read-ConfigField -Raw $json.RefreshInterval -Fallback $default.RefreshInterval -Parse {
