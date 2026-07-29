@@ -46,6 +46,12 @@ function Import-WidgetFunction {
 function Test-Case {
     param([string]$Name, [scriptblock]$Body)
     $script:TestsRun++
+    # A non-terminating error inside a test body (a failing cmdlet, a bad path)
+    # does not throw by default, so the body used to run to completion and the
+    # test reported PASS while something in it had actually failed. Stop makes
+    # every error terminating for the duration of the body, so the catch below
+    # sees it. The assignment is function-scoped; the invoked body inherits it.
+    $ErrorActionPreference = 'Stop'
     try {
         & $Body
         Write-Host "  PASS  $Name"
@@ -56,10 +62,77 @@ function Test-Case {
     }
 }
 
+# Numeric types that Assert-Equal compares by value across widths, so that an
+# [int] expectation still matches the [double] that [math]::Round returns.
+$script:AssertNumericTypes = @(
+    [byte], [sbyte], [int16], [uint16], [int32], [uint32], [int64], [uint64],
+    [single], [double], [decimal]
+)
+
+function Format-AssertValue {
+    <# Renders a value unambiguously for assertion messages. #>
+    param([AllowNull()]$Value)
+    if ($null -eq $Value) { return '$null' }
+    if ($Value -is [string]) { return "'$Value'" }
+    if ($Value -is [bool]) { return $(if ($Value) { '$true' } else { '$false' }) }
+    if ($Value -is [System.Collections.IEnumerable]) {
+        $parts = @($Value) | ForEach-Object { Format-AssertValue $_ }
+        return '@(' + ($parts -join ', ') + ')'
+    }
+    return "$Value [$($Value.GetType().Name)]"
+}
+
+function Test-AssertValueEqual {
+    <#
+    .SYNOPSIS
+        Strict equality for assertions: no silent PowerShell coercion.
+
+        `-eq` coerces its right operand to the left operand's type, so
+        `$true -eq 'hello'` and `5 -eq '5'` are both true - assertions built on
+        it pass against values of entirely the wrong type. This compares within
+        a category (bool/string/collection/numeric) and calls a cross-category
+        comparison unequal.
+    #>
+    param([AllowNull()]$Expected, [AllowNull()]$Actual)
+
+    if ($null -eq $Expected -and $null -eq $Actual) { return $true }
+    if ($null -eq $Expected -or  $null -eq $Actual) { return $false }
+
+    $eBool = $Expected -is [bool]; $aBool = $Actual -is [bool]
+    if ($eBool -or $aBool) { return ($eBool -and $aBool -and ($Expected -eq $Actual)) }
+
+    $eStr = $Expected -is [string]; $aStr = $Actual -is [string]
+    if ($eStr -or $aStr) { return ($eStr -and $aStr -and [string]::Equals($Expected, $Actual, 'Ordinal')) }
+
+    $eCol = $Expected -is [System.Collections.IEnumerable]
+    $aCol = $Actual   -is [System.Collections.IEnumerable]
+    if ($eCol -or $aCol) {
+        if (-not ($eCol -and $aCol)) { return $false }
+        $e = @($Expected); $a = @($Actual)
+        if ($e.Count -ne $a.Count) { return $false }
+        for ($i = 0; $i -lt $e.Count; $i++) {
+            if (-not (Test-AssertValueEqual $e[$i] $a[$i])) { return $false }
+        }
+        return $true
+    }
+
+    $eNum = $script:AssertNumericTypes -contains $Expected.GetType()
+    $aNum = $script:AssertNumericTypes -contains $Actual.GetType()
+    if ($eNum -or $aNum) {
+        if (-not ($eNum -and $aNum)) { return $false }
+        return ([decimal]$Expected -eq [decimal]$Actual)
+    }
+
+    if ($Expected.GetType() -ne $Actual.GetType()) { return $false }
+    return [object]::Equals($Expected, $Actual)
+}
+
 function Assert-Equal {
     param([AllowNull()]$Expected, [AllowNull()]$Actual, [string]$Because = '')
-    if ($Expected -ne $Actual) {
-        throw ("expected <{0}> but got <{1}>{2}" -f $Expected, $Actual, $(if ($Because) { " ($Because)" } else { '' }))
+    if (-not (Test-AssertValueEqual $Expected $Actual)) {
+        throw ("expected {0} but got {1}{2}" -f (Format-AssertValue $Expected),
+                                                (Format-AssertValue $Actual),
+                                                $(if ($Because) { " ($Because)" } else { '' }))
     }
 }
 
@@ -78,6 +151,13 @@ function Assert-Throws {
 function Complete-Tests {
     <# Prints the per-file summary and returns the exit code (0 = all green). #>
     Write-Host "  --- $script:TestsRun run, $script:TestsFailed failed"
+    # A file that asserted nothing is not a passing file - it is a file whose
+    # tests never ran (an early return, a bad filter, a deleted block). Reporting
+    # PASS for it is how coverage silently disappears.
+    if ($script:TestsRun -eq 0) {
+        Write-Host '        no tests ran in this file - failing rather than reporting a hollow PASS'
+        return 1
+    }
     if ($script:TestsFailed -gt 0) { return 1 }
     return 0
 }

@@ -20,8 +20,14 @@ if (-not (Test-Path $testDir)) {
     exit 1
 }
 
+# BaseName of "Formatting.Tests.ps1" is "Formatting.Tests", so matching the
+# filter against BaseName alone made the documented `-Filter Formatting` match
+# nothing. Match the suite name (BaseName minus the ".Tests" suffix) as well.
 $files = @(Get-ChildItem -Path $testDir -Filter '*.Tests.ps1' -File |
-           Where-Object { $_.BaseName -like $Filter } |
+           Where-Object {
+               $suite = $_.BaseName -replace '\.Tests$', ''
+               ($_.BaseName -like $Filter) -or ($suite -like $Filter)
+           } |
            Sort-Object Name)
 
 if ($files.Count -eq 0) {
