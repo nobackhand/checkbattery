@@ -61,7 +61,7 @@ or
 
 It runs (cheapest signal first, each with a wall-clock timeout so the whole run stays well under 10 minutes):
 
-1. **Lint** — `tools/check-source.ps1`: verifies `BatteryWidget.ps1` still carries its UTF-8 BOM, parse-checks every shipped `.ps1`, and runs PSScriptAnalyzer (settings in `PSScriptAnalyzerSettings.psd1`). The gate fails on **any** warning, so the build log stays warning-free — write new non-ASCII display characters as `[char]0xNNNN` rather than literals.
+1. **Lint** — `tools/check-source.ps1`: verifies `BatteryWidget.ps1` still carries its UTF-8 BOM, parse-checks every shipped `.ps1`, runs PSScriptAnalyzer (settings in `PSScriptAnalyzerSettings.psd1`), and checks that every `.ps1` is autoformatted. The gate fails on **any** warning, so the build log stays warning-free — write new non-ASCII display characters as `[char]0xNNNN` rather than literals.
 2. **Tests** — `scripts/run-tests.ps1`: runs every `tests/*.Tests.ps1`, each in its own `powershell.exe`.
 3. **Build** — `Build.ps1`: compiles `BatteryWidget.ps1` to `BatteryPill-<version>.exe` with ps2exe.
 
@@ -75,6 +75,17 @@ To run just the tests, or one file:
 ```
 
 Tests dot-source individual functions out of `BatteryWidget.ps1` via the PowerShell AST (`Import-WidgetFunction` in `tests/_harness.ps1`) — the script itself ends in a WinForms message loop, so it can never be dot-sourced whole.
+
+### Formatting
+
+House style is enforced by an autoformatter, so layout is never a review topic. If the lint stage reports unformatted files, fix them mechanically:
+
+```powershell
+.\tools\format-source.ps1           # rewrite every .ps1 in place
+.\tools\format-source.ps1 -Check    # what verify.sh runs; exits 1 if anything is unformatted
+```
+
+It wraps PSScriptAnalyzer's `Invoke-Formatter` (K&R braces, 4-space indent, aligned hashtable assignments), preserves each file's UTF-8 BOM and line endings, and refuses to write a file whose token stream changed — a reformat can only move whitespace.
 
 ## Configuration
 
@@ -95,5 +106,5 @@ Tests dot-source individual functions out of `BatteryWidget.ps1` via the PowerSh
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
 - `scripts/`: `setup.sh` (one-command setup), `verify.sh` (the lint + tests + build gate), and `run-tests.ps1` (test runner).
 - `tests/`: Test suite - `_harness.ps1` (assertions + AST function loader) plus `*.Tests.ps1` files.
-- `tools/`: Dev harness - `check-source.ps1` (BOM + parse + PSScriptAnalyzer gate) and `render-states.ps1` (headless renderer of popup/pill/settings states).
+- `tools/`: Dev harness - `check-source.ps1` (BOM + parse + PSScriptAnalyzer + formatting gate), `format-source.ps1` (autoformatter), and `render-states.ps1` (headless renderer of popup/pill/settings states).
 - `docs/`: Website files for the project landing page.

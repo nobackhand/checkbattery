@@ -63,9 +63,10 @@
 
 ## Dev Tools (tools\)
 
-Two PS 5.1-safe helpers in `tools\`; both resolve repo paths via `$PSScriptRoot` and exit nonzero on failure.
+Three PS 5.1-safe helpers in `tools\`; all resolve repo paths via `$PSScriptRoot` and exit nonzero on failure.
 
 - **`tools\check-source.ps1`** — source health gate. Verifies `BatteryWidget.ps1` has its UTF-8 BOM, parse-checks `BatteryWidget.ps1` / `CheckBattery.ps1` / `Build.ps1`, inventories non-ASCII characters inside string tokens (the BOM-dependent hazard), and runs PSScriptAnalyzer across the repo with `PSScriptAnalyzerSettings.psd1`. **Warnings are fatal** — the gate exits nonzero on any warning or finding, so the build log stays clean; write display characters like the em-dash as `[char]0x2014` instead of literals, and justify any new analyzer rule exclusion inline in the settings file. Needs `-ExecutionPolicy Bypass` (as verify.sh uses) or PSScriptAnalyzer's format data won't load. Run after any edit to a `.ps1` and before committing or building.
+- **`tools\format-source.ps1`** — autoformatter (PSScriptAnalyzer's `Invoke-Formatter`; house style: K&R braces, 4-space indent, aligned hashtable assignments). Run it bare to fix layout in place; `-Check` is what check-source.ps1 runs, so an unformatted `.ps1` fails verify.sh. Preserves each file's UTF-8 BOM and line endings, and refuses to write a file whose token stream changed — a reformat can only move whitespace. `PSUseCorrectCasing` is deliberately off: it rewrites `Invoke-PS2EXE -InputFile` into the module's declared `Invoke-ps2exe -inputFile`.
 - **`tools\render-states.ps1`** — headless state renderer. Stages a message-loop-stripped copy of the widget in a temp dir, feeds it fake battery presets, and captures PNGs of popup/pill/settings states plus a control-geometry dump (`geometry.txt` — the reliable layout oracle: type, X, Right, Width, wrapped-line count, text) to `-OutDir` (default `%TEMP%\batterypill-renders`). Subset with `-States popup-discharge,settings`; add `-DrawToBitmap` under RDP where CopyFromScreen fails. Never touches repo files; kills its child process on timeout.
 
 ## Build & Run
