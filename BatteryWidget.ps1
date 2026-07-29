@@ -760,8 +760,15 @@ function Get-SmoothedTimeRemaining {
     if ($null -ne $script:lastAcState -and $script:lastAcState -ne $IsPluggedIn) {
         # AC state just changed — start hysteresis window
         $script:stateChangeTime = $Now
-        # Reset EMA on state change to avoid polluting new state with old rate
+        # Reset EMA on state change to avoid polluting new state with old rate.
+        # The held rate goes with it: a discharge rate is not a charge rate, so
+        # carrying it across the transition let the "hold" path below compute a
+        # confident time-to-full from how fast the battery had been DRAINING
+        # (and vice versa on unplug) before the new state ever reported a rate.
+        # The resume-from-sleep handler already clears all three together.
         $script:emaRate = -1
+        $script:lastValidRate = -1
+        $script:lastValidRateTime = $null
     }
     $script:lastAcState = $IsPluggedIn
 
