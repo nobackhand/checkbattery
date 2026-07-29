@@ -22,7 +22,7 @@ is real. 4. Pass → check off with one-line proof, commit report, continue. Fai
 
 ## Missions
 
-- [ ] 1. Create `scripts/verify.sh` — build + full tests + lint, nonzero exit on any failure, under 10 minutes — and document it in the README. Proof: it passes on the current tree.
+- [x] 1. Create `scripts/verify.sh` — build + full tests + lint, nonzero exit on any failure, under 10 minutes — and document it in the README. Proof: it passes on the current tree. — **DONE** e1cfae8. Orchestrator ran `./scripts/verify.sh`: **exit 0 in 4s** (lint 0s / tests 1s / build 3s). Repo had no tests; agent added `tests/` (45 asserts) + `scripts/run-tests.ps1` + AST-based harness (can't dot-source the widget — it ends in `Application::Run()`). Orchestrator negative control: injected a bug into `Format-Duration` → **exit 1** ("1 of 2 test file(s) failed"), reverted clean. `.gitattributes` added so `*.sh` stays LF (CRLF would kill verify.sh on fresh clone).
 - [ ] 2. Make setup one documented command from fresh clone to running project. Proof: execute it in a clean temp directory.
 - [ ] 3. Test suite fully green — fix broken tests, quarantine truly flaky ones with linked notes. Proof: full suite passes twice consecutively.
 - [ ] 4. Zero build/compiler/deprecation warnings — fix or suppress each with a one-line justification. Proof: warning-free build log.
