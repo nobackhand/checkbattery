@@ -35,15 +35,15 @@ function Invoke-HarnessFile {
     $dir = Join-Path $env:TEMP ('batterypill-harness-' + [guid]::NewGuid().ToString('N'))
     [void](New-Item -ItemType Directory -Path $dir)
     try {
-        $probe   = Join-Path $dir 'probe.ps1'
+        $probe = Join-Path $dir 'probe.ps1'
         $outFile = Join-Path $dir 'out.txt'
         $errFile = Join-Path $dir 'err.txt'
-        $header  = ". (Join-Path '$PSScriptRoot' '_harness.ps1')"
+        $header = ". (Join-Path '$PSScriptRoot' '_harness.ps1')"
         Set-Content -LiteralPath $probe -Value ($header + "`r`n" + $Body) -Encoding UTF8
 
         $proc = Start-Process -FilePath 'powershell.exe' -Wait -PassThru -NoNewWindow `
-                    -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $probe) `
-                    -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+            -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $probe) `
+            -RedirectStandardOutput $outFile -RedirectStandardError $errFile
 
         $stdout = ''
         if (Test-Path $outFile) { $stdout = [string](Get-Content -LiteralPath $outFile -Raw) }

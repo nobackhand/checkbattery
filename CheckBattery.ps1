@@ -82,7 +82,7 @@ $isFullyCharged = $false
 
 if ($wmiBattery) {
     $batteryStatus = $wmiBattery.BatteryStatus
-    $isCharging  = $batteryStatus -in @(2, 6, 7, 8, 9)
+    $isCharging = $batteryStatus -in @(2, 6, 7, 8, 9)
     $isPluggedIn = $batteryStatus -in @(2, 3, 6, 7, 8, 9, 11)
     $isFullyCharged = $batteryStatus -eq 3
 }
@@ -120,19 +120,19 @@ if (-not $isCharging -and -not $isFullyCharged) {
 
 # --- Format time as hours and minutes ---
 if ($timeMinutes -gt 0) {
-    $hours   = [math]::Floor($timeMinutes / 60)
+    $hours = [math]::Floor($timeMinutes / 60)
     $minutes = $timeMinutes % 60
 
     if ($hours -gt 0 -and $minutes -gt 0) {
-        $hourLabel   = if ($hours -ne 1) { "hours" } else { "hour" }
+        $hourLabel = if ($hours -ne 1) { "hours" } else { "hour" }
         $minuteLabel = if ($minutes -ne 1) { "minutes" } else { "minute" }
-        $timeString  = "$hours $hourLabel $minutes $minuteLabel"
+        $timeString = "$hours $hourLabel $minutes $minuteLabel"
     } elseif ($hours -gt 0) {
-        $hourLabel  = if ($hours -ne 1) { "hours" } else { "hour" }
+        $hourLabel = if ($hours -ne 1) { "hours" } else { "hour" }
         $timeString = "$hours $hourLabel"
     } else {
         $minuteLabel = if ($minutes -ne 1) { "minutes" } else { "minute" }
-        $timeString  = "$minutes $minuteLabel"
+        $timeString = "$minutes $minuteLabel"
     }
 } else {
     $timeString = "Estimating..."
@@ -149,27 +149,27 @@ $batteryBar = "    [$bar] $chargePercent%"
 
 # --- Determine status text and color ---
 if ($isFullyCharged) {
-    $statusText  = "Fully Charged"
+    $statusText = "Fully Charged"
     $statusColor = "Green"
 } elseif ($isCharging) {
-    $statusText  = "Charging"
+    $statusText = "Charging"
     $statusColor = "Yellow"
 } elseif ($chargePercent -le 10) {
-    $statusText  = "Critical"
+    $statusText = "Critical"
     $statusColor = "Red"
 } elseif ($chargePercent -le 20) {
-    $statusText  = "Low"
+    $statusText = "Low"
     $statusColor = "DarkYellow"
 } else {
-    $statusText  = "Discharging"
+    $statusText = "Discharging"
     $statusColor = "Cyan"
 }
 
 $powerSourceText = if ($isPluggedIn) { "AC Power (plugged in)" } else { "Battery (unplugged)" }
 
 $timeLabel = if ($isCharging) { "Time to Full:     " }
-             elseif ($isFullyCharged) { "Time Remaining:   " }
-             else { "Time Remaining:   " }
+elseif ($isFullyCharged) { "Time Remaining:   " }
+else { "Time Remaining:   " }
 
 $timeDisplay = if ($isFullyCharged) { "N/A (plugged in)" } else { $timeString }
 
