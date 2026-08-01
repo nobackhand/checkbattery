@@ -1,5 +1,7 @@
 # BatteryPill
 
+[![verify](https://github.com/nobackhand/checkbattery/actions/workflows/verify.yml/badge.svg)](https://github.com/nobackhand/checkbattery/actions/workflows/verify.yml)
+
 BatteryPill is a Windows desktop battery widget built with PowerShell and WinForms. It displays a floating, draggable pill-shaped indicator on the desktop showing time remaining, a detailed information popup on hover (the tray icon opens a modal version on click), and a system tray icon. It is designed for Windows users who want a persistent, glanceable view of their battery status using smoothed estimates rather than just a percentage.
 
 ## Features
@@ -133,7 +135,10 @@ It refuses to run on a dirty tree or an already-released version, runs the full 
 - `Build.ps1`: Script that assembles `src/` and compiles it into a standalone `.exe` using `ps2exe`.
 - `release.ps1`: One-command GitHub release (verify, build, tag, upload assets).
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
+- `DISTRIBUTION.md`: SmartScreen/AV expectations for the unsigned exe and the signing/rewrite decision record.
 - `scripts/`: `setup.sh` (one-command setup), `verify.sh` (the lint + tests + build gate), and `run-tests.ps1` (test runner).
 - `tests/`: Test suite - `_harness.ps1` (assertions + AST function loader) plus `*.Tests.ps1` files.
 - `tools/`: Dev harness - `check-source.ps1` (BOM + parse + PSScriptAnalyzer + formatting + typing gate), `format-source.ps1` (autoformatter), `check-types.ps1` (type gate), and `render-states.ps1` (headless renderer of popup/pill/settings states).
+- `.github/workflows/`: CI - `verify.yml` runs `scripts/verify.sh` on windows-latest for every push and PR.
 - `docs/`: Website files for the project landing page.
+- `history/`: Archived mission records and evidence from past improvement loops (historical reference only).

@@ -12,10 +12,14 @@
 - **src/** — The widget source, split into 14 ordered modules (`010-init.ps1` … `140-main.ps1`) that concatenate byte-exactly, in filename order, into the single script that ships (`tools\_assemble.ps1` is the shared assembler; dot-source it and call `Write-AssembledWidget`/`Get-AssembledWidgetText`). The widget creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position. Supports dark/light/auto themes, configurable pill size and display mode, accent color presets, battery history sparkline, and fullscreen auto-hide. `$script:appVersion` lives in `src\010-init.ps1`.
 - **BatteryWidget.Run.ps1** — Source-run wrapper: assembles `src\` to `%TEMP%\BatteryPill-source-run\BatteryWidget.ps1`, carries the repo-root config json to/from the staging dir, and runs it via `powershell -STA -File`.
 - **Build.ps1** — Assembles `src\` to a temp staging file and compiles it to `BatteryPill-<version>.exe` using `Invoke-PS2EXE`.
+- **release.ps1** — One-command GitHub release: refuses a dirty tree or already-released version, runs `scripts/verify.sh`, builds, tags `v<version>`, and uploads two assets (versioned exe + stable-named `BatteryPill.exe` that the website's download button always points at).
+- **.github/workflows/verify.yml** — CI: runs `scripts/verify.sh` on windows-latest for every push and PR.
 - **CheckBattery.ps1** — Standalone CLI script for quick battery status checks.
 - **CheckBattery.bat** — Batch launcher for `CheckBattery.ps1`.
+- **DISTRIBUTION.md** — What users hit installing an unsigned PS2EXE exe (SmartScreen, AV flags) and the signing/rewrite decision record.
 - **docs/index.html** — Splash/landing page served via GitHub Pages at batterypill.com. Single HTML file with embedded CSS/JS, dark theme, scroll animations.
 - **docs/CNAME** — Custom domain config for GitHub Pages (batterypill.com).
+- **history/** — Archived mission records and evidence from past improvement loops; historical reference only, never load-bearing.
 
 ## Key Technical Decisions
 
