@@ -27,7 +27,7 @@ The only prerequisites are Windows, Windows PowerShell 5.1 (`powershell.exe` on 
 
 ## Usage
 
-Quit from the tray icon's **Exit** item. To start it again afterwards, run the compiled executable (the version suffix comes from `$script:appVersion` in the source):
+Quit from the tray icon's **Exit** item. To start it again afterwards, run the compiled executable (the version suffix comes from `$script:appVersion` in the source; end users grab the stable-named `BatteryPill.exe` from the [latest release](https://github.com/nobackhand/checkbattery/releases/latest/download/BatteryPill.exe) instead):
 ```powershell
 .\BatteryPill-<version>.exe
 ```
@@ -102,6 +102,16 @@ It reads every `.ps1` with the AST and enforces four rules repo-wide, with no pe
 3. **No blanket `[object]`** — rule 1 cannot be satisfied by typing everything `[object]`. A genuinely polymorphic parameter needs an `# any-typed: ...` comment on its own line or the line above, saying what it holds.
 4. **Honest `[void]`** — a function declaring `[OutputType([void])]` must not `return` a value from its own body (returns inside nested functions and event-handler scriptblocks belong to those and are ignored). This is what keeps declared return types from drifting as the code changes.
 
+## Release
+
+Releases are one command. Bump `$script:appVersion` in `BatteryWidget.ps1`, commit, then:
+
+```powershell
+.\release.ps1
+```
+
+It refuses to run on a dirty tree or an already-released version, runs the full `scripts/verify.sh` gate, builds via `Build.ps1`, tags `v<version>`, pushes the tag, and creates the GitHub release with two assets: the versioned `BatteryPill-<version>.exe` and a stable-named `BatteryPill.exe`. The website's download button points at `.../releases/latest/download/BatteryPill.exe`, so it always serves the newest release without any site edit. Requires `git`, `gh` (authenticated), and bash on PATH.
+
 ## Configuration
 
 - **Position Persistence**: The widget saves its bar position to `BatteryWidget.config.json` on drag and exit.
@@ -118,6 +128,7 @@ It reads every `.ps1` with the AST and enforces four rules repo-wide, with no pe
 
 - `BatteryWidget.ps1`: Main widget logic and UI code.
 - `Build.ps1`: Script to compile the widget into a standalone `.exe` using `ps2exe`.
+- `release.ps1`: One-command GitHub release (verify, build, tag, upload assets).
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
 - `scripts/`: `setup.sh` (one-command setup), `verify.sh` (the lint + tests + build gate), and `run-tests.ps1` (test runner).
 - `tests/`: Test suite - `_harness.ps1` (assertions + AST function loader) plus `*.Tests.ps1` files.
