@@ -18,7 +18,7 @@
 # capacity cross-validation).
 #
 # Every test below was confirmed to FAIL against a deliberate one-line mutation
-# of the code it covers; see missions-evidence/mission-09-mutation.log.
+# of the code it covers; see history/missions-evidence/mission-09-mutation.log.
 
 . (Join-Path $PSScriptRoot '_harness.ps1')
 . (Import-WidgetFunction 'Update-EMARate', 'Get-CapacityDerivedRate', 'Get-SmoothedTimeRemaining')

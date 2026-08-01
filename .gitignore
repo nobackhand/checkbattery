@@ -11,4 +11,6 @@ debug_dpi.ps1
 
 # Claude plans
 .claude/
-.vercel
+
+# Playwright MCP session logs
+.playwright-mcp/
