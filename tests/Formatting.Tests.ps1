@@ -1,6 +1,6 @@
 # tests\Formatting.Tests.ps1
 #
-# Pure-function tests for the display formatting helpers in BatteryWidget.ps1.
+# Pure-function tests for the display formatting helpers in the widget source.
 # These are the functions every visible surface (pill, popup, tray tooltip)
 # routes through, and they have no UI or WMI dependencies.
 

@@ -32,9 +32,9 @@ Quit from the tray icon's **Exit** item. To start it again afterwards, run the c
 .\BatteryPill-<version>.exe
 ```
 
-To run the widget from source without building:
+To run the widget from source without building (assembles the `src/` modules to a staging file and runs it):
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
+powershell -ExecutionPolicy Bypass -File .\BatteryWidget.Run.ps1
 ```
 
 To rebuild the executable on its own:
@@ -61,9 +61,9 @@ or
 
 It runs (cheapest signal first, each with a wall-clock timeout so the whole run stays well under 10 minutes):
 
-1. **Lint** — `tools/check-source.ps1`: verifies `BatteryWidget.ps1` still carries its UTF-8 BOM, parse-checks every shipped `.ps1`, runs PSScriptAnalyzer (settings in `PSScriptAnalyzerSettings.psd1`), checks that every `.ps1` is autoformatted, and runs the type gate (`tools/check-types.ps1`, below). The gate fails on **any** warning, so the build log stays warning-free — write new non-ASCII display characters as `[char]0xNNNN` rather than literals.
+1. **Lint** — `tools/check-source.ps1`: verifies every `src/*.ps1` module still carries its UTF-8 BOM, parse-checks each module plus the assembled whole and every shipped `.ps1`, runs PSScriptAnalyzer (settings in `PSScriptAnalyzerSettings.psd1`), checks that every `.ps1` is autoformatted, and runs the type gate (`tools/check-types.ps1`, below). The gate fails on **any** warning, so the build log stays warning-free — write new non-ASCII display characters as `[char]0xNNNN` rather than literals.
 2. **Tests** — `scripts/run-tests.ps1`: runs every `tests/*.Tests.ps1`, each in its own `powershell.exe`.
-3. **Build** — `Build.ps1`: compiles `BatteryWidget.ps1` to `BatteryPill-<version>.exe` with ps2exe.
+3. **Build** — `Build.ps1`: assembles `src/*.ps1` and compiles the result to `BatteryPill-<version>.exe` with ps2exe.
 
 Requires Windows PowerShell 5.1 (`powershell.exe` on PATH) and a bash shell (Git Bash works). Typical runtime on a dev machine is a few seconds.
 
@@ -74,7 +74,7 @@ To run just the tests, or one file:
 .\scripts\run-tests.ps1 -Filter Formatting
 ```
 
-Tests dot-source individual functions out of `BatteryWidget.ps1` via the PowerShell AST (`Import-WidgetFunction` in `tests/_harness.ps1`) — the script itself ends in a WinForms message loop, so it can never be dot-sourced whole.
+Tests dot-source individual functions out of the assembled widget source via the PowerShell AST (`Import-WidgetFunction` in `tests/_harness.ps1`) — the script itself ends in a WinForms message loop, so it can never be dot-sourced whole.
 
 ### Formatting
 
@@ -104,7 +104,7 @@ It reads every `.ps1` with the AST and enforces four rules repo-wide, with no pe
 
 ## Release
 
-Releases are one command. Bump `$script:appVersion` in `BatteryWidget.ps1`, commit, then:
+Releases are one command. Bump `$script:appVersion` in `src/010-init.ps1`, commit, then:
 
 ```powershell
 .\release.ps1
@@ -126,8 +126,9 @@ It refuses to run on a dirty tree or an already-released version, runs the full 
 
 ## Project structure
 
-- `BatteryWidget.ps1`: Main widget logic and UI code.
-- `Build.ps1`: Script to compile the widget into a standalone `.exe` using `ps2exe`.
+- `src/`: The widget source, split into ordered modules (`010-init.ps1` … `140-main.ps1`) that concatenate byte-exactly into the shipped script (`tools/_assemble.ps1`).
+- `BatteryWidget.Run.ps1`: Runs the widget straight from `src/` without building.
+- `Build.ps1`: Script that assembles `src/` and compiles it into a standalone `.exe` using `ps2exe`.
 - `release.ps1`: One-command GitHub release (verify, build, tag, upload assets).
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
 - `scripts/`: `setup.sh` (one-command setup), `verify.sh` (the lint + tests + build gate), and `run-tests.ps1` (test runner).
