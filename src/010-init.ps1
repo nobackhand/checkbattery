@@ -10,7 +10,7 @@
     capacity, discharge rate, ETA, elapsed time, and battery wear.
     Auto-refreshes every 3 seconds with EMA-smoothed estimates.
 .EXAMPLE
-    powershell -STA -File .\BatteryWidget.ps1
+    powershell -ExecutionPolicy Bypass -File .\BatteryWidget.Run.ps1
 .NOTES
     File map (search for the ==== banner with the same name):
       P/INVOKE + SINGLE INSTANCE ... Win32Icon class, DPI awareness, mutex guard
