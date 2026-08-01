@@ -32,6 +32,8 @@ Quit from the tray icon's **Exit** item. To start it again afterwards, run the c
 .\BatteryPill-<version>.exe
 ```
 
+The release exe is unsigned, so SmartScreen warns on first run and some AV engines flag PS2EXE output — see [DISTRIBUTION.md](DISTRIBUTION.md) for what users hit and the signing/rewrite decision record.
+
 To run the widget from source without building (assembles the `src/` modules to a staging file and runs it):
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\BatteryWidget.Run.ps1
