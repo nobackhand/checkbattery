@@ -1,0 +1,32 @@
+KILLED    M1 WMI runtime fallback casts straight to [int] (pre-fix code)
+            FAIL  EstimatedRunTime 4294967295 does not crash the tick (it used to throw)
+            FAIL  EstimatedRunTime as a string does not crash
+            FAIL  every numeric property arriving as garbage at once does not crash
+            FAIL  array-valued properties (member access over two packs) do not crash
+KILLED    M2 percent is trusted without a range check
+            FAIL  percent 255 (the WMI unknown sentinel) is not shown as 255%
+KILLED    M3 an unreadable percent is allowed to read as Critical
+            FAIL  an unreadable percent is not reported as Critical
+KILLED    M4 Opacity NaN guard removed
+            FAIL  an Opacity of NaN never reaches Form.Opacity
+KILLED    M5 powercfg plan id is not validated as a GUID
+            FAIL  Set-ActivePowerPlan refuses an id that is not a GUID - without shelling out
+KILLED    M6 powercfg output rows are not filtered by GUID shape
+            FAIL  a line whose id is not a GUID is dropped, not passed to powercfg
+KILLED    M7 BatteryStatus is trusted verbatim
+            FAIL  an array-valued BatteryStatus yields real booleans, not a filtered array
+KILLED    M8 the CLI casts the dual-battery array instead of taking pack 1
+            FAIL  CheckBattery.ps1 takes the first pack of a dual-battery array
+KILLED    M9 Read-DeviceNumber lets NaN/Infinity through
+            FAIL  Read-DeviceNumber rejects NaN and Infinity
+KILLED    M10 Read-DeviceNumber drops the range check
+            FAIL  Read-DeviceNumber rejects the UInt32 sentinel that used to throw on [int]
+            FAIL  Read-DeviceNumber rejects out-of-range values on both sides
+            FAIL  EstimatedRunTime 4294967295 does not crash the tick (it used to throw)
+            FAIL  TimeToFullCharge 4294967295 while charging does not crash
+            FAIL  percent 255 (the WMI unknown sentinel) is not shown as 255%
+            FAIL  negative percent is rejected
+            FAIL  .NET BatteryLifePercent of 255 (its unknown value) is not shown as 25500%
+            FAIL  a garbage BatteryLifeRemaining does not crash the time fallback
+---
+RESULT: PASS - all 10 mutation(s) killed

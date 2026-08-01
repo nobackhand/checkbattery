@@ -123,7 +123,7 @@ function Write-GeometryDump {
 function Render-PopupState {
     param([string]$name, [hashtable]$info, [switch]$EmptyHistory)
     $script:config.Theme = 'dark'
-    Apply-Theme
+    Set-Theme
     if ($EmptyHistory) { $script:batteryHistory = @() }
     else { $script:batteryHistory = Seed-History -charging:([bool]$info.IsCharging) }
     Write-GeometryDump -stateName $name -info $info   # oracle first: survives capture failures
@@ -168,7 +168,7 @@ function Render-PopupState {
 function Render-PillState {
     param([string]$name, [hashtable]$info, [string]$mode)
     $script:config.Theme = 'dark'
-    Apply-Theme
+    Set-Theme
     $script:config.DisplayMode = $mode
     Update-PillSize
     for ($k = 0; $k -lt 15; $k++) { Update-FloatingBar -BatteryInfo $info }   # converge accent lerp
@@ -184,7 +184,7 @@ function Render-PillState {
 function Render-SettingsState {
     param([string]$name)
     $script:config.Theme = 'dark'
-    Apply-Theme
+    Set-Theme
     $script:hzPath = Join-Path $OUT ($name + '.png')
     $script:hzDtb = $HZDTB
     $script:hzTries = 0

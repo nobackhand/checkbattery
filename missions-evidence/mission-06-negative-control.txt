@@ -1,0 +1,21 @@
+﻿      FAIL: 1 typing violation(s):
+            untyped-parameter BatteryWidget.ps1:1942 Format-Duration: $Minutes has no type constraint
+      RESULT: FAIL
+  [untyped parameter] check-types exit code = 1
+
+      FAIL: 1 typing violation(s):
+            missing-outputtype BatteryWidget.ps1:1937 Format-Duration: no [OutputType(...)] declared (use [OutputType([void])] if it emits nothing)
+      RESULT: FAIL
+  [missing [OutputType]] check-types exit code = 1
+
+      FAIL: 1 typing violation(s):
+            unjustified-object BatteryWidget.ps1:1942 Format-Duration: $Minutes is [object] with no 'any-typed:' justification comment
+      RESULT: FAIL
+  [blanket [object] param] check-types exit code = 1
+
+      FAIL: 1 typing violation(s):
+            void-returns-value BatteryWidget.ps1:340 Set-Theme: declared [OutputType([void])] but returns a value: return $true
+      RESULT: FAIL
+  [[void] that returns a value] check-types exit code = 1
+
+restored tree: check-types exit code = 0

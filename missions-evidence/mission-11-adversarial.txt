@@ -1,0 +1,68 @@
+Adversarial.Tests.ps1
+  PASS  Read-DeviceNumber accepts an in-range number
+  PASS  Read-DeviceNumber accepts a numeric string (WMI hands back strings)
+  PASS  Read-DeviceNumber rejects the UInt32 sentinel that used to throw on [int]
+  PASS  Read-DeviceNumber rejects $null instead of letting it become a silent 0
+  PASS  Read-DeviceNumber rejects a non-numeric string
+  PASS  Read-DeviceNumber rejects an array (the dual-battery shape)
+  PASS  Read-DeviceNumber rejects a ONE-element array too
+  PASS  Read-DeviceNumber rejects a hashtable
+  PASS  Read-DeviceNumber rejects NaN and Infinity
+  PASS  Read-DeviceNumber rejects out-of-range values on both sides
+  PASS  Read-DeviceNumber keeps the boundaries themselves
+  PASS  healthy WMI reading still parses (the control case)
+  PASS  EstimatedRunTime 4294967295 does not crash the tick (it used to throw)
+  PASS  TimeToFullCharge 4294967295 while charging does not crash
+  PASS  EstimatedRunTime as a string does not crash
+  PASS  percent 255 (the WMI unknown sentinel) is not shown as 255%
+  PASS  percent $null does not become a false, alarming 0%
+  PASS  an unreadable percent is not reported as Critical
+  PASS  a real 8% still reports Critical (the guard did not disable the alarm)
+  PASS  negative percent is rejected
+  PASS  every numeric property arriving as garbage at once does not crash
+  PASS  every property arriving as $null does not crash
+  PASS  a dual-battery ARRAY is reduced to the first pack, not cast to [int]
+  PASS  array-valued properties (member access over two packs) do not crash
+  PASS  capacity of 0 does not produce a divide-by-zero wear figure
+  PASS  a FullChargeCapacity above DesignCapacity clamps wear at 0, never negative
+  PASS  out-of-range BatteryStatus is treated as unknown, not as a state
+  PASS  an array-valued BatteryStatus yields real booleans, not a filtered array
+  PASS  a numeric-string BatteryStatus still reads as the state it names
+  PASS  no WMI instance at all falls back to .NET without crashing
+  PASS  .NET BatteryLifePercent of 255 (its unknown value) is not shown as 25500%
+  PASS  a garbage BatteryChargeStatus does not crash the no-battery probe
+  PASS  the real no-battery flag (128) is still honoured
+  PASS  a garbage BatteryLifeRemaining does not crash the time fallback
+  PASS  an absurd runtime is suppressed rather than displayed
+  PASS  an object with no battery properties at all does not crash
+  PASS  a well-formed config still loads every field (the control case)
+  PASS  every field holding the wrong type falls back field-by-field
+  PASS  an enum field holding an unlisted value falls back instead of being trusted
+  PASS  out-of-range numbers are clamped into the range the UI can render
+  PASS  negative and zero refresh intervals cannot become a 100ms WMI storm
+  PASS  an Opacity of NaN never reaches Form.Opacity
+  PASS  an Opacity of Infinity is clamped, not propagated
+  PASS  a number too large for [int] falls back instead of throwing
+  PASS  a half-written position (X only) is ignored - the pair moves together
+  PASS  truncated JSON degrades to defaults and reports itself
+  PASS  a JSON array where an object belongs does not crash
+  PASS  a bare JSON scalar does not crash
+  PASS  an empty config file does not crash
+  PASS  BatteryHistory holding a scalar instead of a list does not crash
+  PASS  history entries with junk percents or timestamps are dropped, good ones kept
+  PASS  an oversized history is capped before it reaches the paint loop
+  PASS  a persisted EMA state with a junk timestamp is discarded, not trusted
+  PASS  a config with no fields at all yields the full default set
+  PASS  Read-ConfigField never lets a throwing parser escape
+  PASS  a normal powercfg listing parses (the control case)
+  PASS  a line whose id is not a GUID is dropped, not passed to powercfg
+  PASS  a plan row with an empty name is dropped (no unlabelled menu item)
+  PASS  empty, null and non-matching powercfg output yields an empty list
+  PASS  a localized name with brackets and unicode still parses
+  PASS  Set-ActivePowerPlan refuses an id that is not a GUID - without shelling out
+  PASS  a missing theme key means dark, not a crash
+  PASS  a theme value of 1 means light, 0 means dark
+  PASS  a hand-edited theme value of the wrong TYPE returns a real boolean
+  PASS  CheckBattery.ps1 ships the same validator, and it behaves the same
+  PASS  CheckBattery.ps1 takes the first pack of a dual-battery array
+  --- 66 run, 0 failed

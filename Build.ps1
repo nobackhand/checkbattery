@@ -45,14 +45,14 @@ Get-ChildItem $scriptDir -Filter "BatteryPill-*.exe" | ForEach-Object {
 Write-Host "Compiling BatteryWidget.ps1 -> BatteryPill-$appVersion.exe" -ForegroundColor Cyan
 
 Invoke-PS2EXE -InputFile $inputFile `
-              -OutputFile $outputFile `
-              -noConsole `
-              -STA `
-              -DPIAware `
-              -title "BatteryPill" `
-              -description "BatteryPill - floating battery widget for Windows" `
-              -version "$appVersion.0" `
-              -copyright "(c) 2026"
+    -OutputFile $outputFile `
+    -noConsole `
+    -STA `
+    -DPIAware `
+    -title "BatteryPill" `
+    -description "BatteryPill - floating battery widget for Windows" `
+    -version "$appVersion.0" `
+    -copyright "(c) 2026"
 
 if (Test-Path $outputFile) {
     $fileSize = [math]::Round((Get-Item $outputFile).Length / 1KB)
