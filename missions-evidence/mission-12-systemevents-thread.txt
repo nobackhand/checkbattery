@@ -1,0 +1,43 @@
+=== mission 12: which thread do the SystemEvents handlers run on? ===
+
+--- probe source ---
+# Probe: does Microsoft.Win32.SystemEvents raise its events on the app's own
+# STA/UI thread, or on a private thread of its own?
+#
+# .NET Framework's SystemEvents creates a hidden window to receive the WM_*
+# broadcasts. It only spins up a DEDICATED thread for that window when it is
+# first initialized from a non-STA thread; from an STA thread it SHARES that
+# thread, so the handlers are dispatched by that thread's message pump.
+# The private static field `windowThread` is null in the shared case.
+Add-Type -AssemblyName System.Windows.Forms
+$apartment = [System.Threading.Thread]::CurrentThread.GetApartmentState()
+$h = { param($s, $e) }
+[Microsoft.Win32.SystemEvents]::add_PowerModeChanged($h)
+[Microsoft.Win32.SystemEvents]::add_DisplaySettingsChanged($h)
+Start-Sleep -Milliseconds 800
+$f = [Microsoft.Win32.SystemEvents].GetField('windowThread', [System.Reflection.BindingFlags]'NonPublic,Static')
+$wt = $f.GetValue($null)
+"host apartment            : $apartment"
+"main thread id            : $([System.Threading.Thread]::CurrentThread.ManagedThreadId)"
+if ($null -eq $wt) {
+    "SystemEvents windowThread : <null> -> events are pumped by THIS thread"
+    "VERDICT                   : handlers run on the app's own thread (no race with the message loop)"
+} else {
+    "SystemEvents windowThread : id=$($wt.ManagedThreadId) -> events run on a SEPARATE thread"
+    "VERDICT                   : handlers are cross-thread"
+}
+[Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($h)
+[Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($h)
+
+--- STA host (how BatteryPill runs: Build.ps1 passes -STA, and the docs
+    launch line is 'powershell -STA -File .\BatteryWidget.ps1') ---
+host apartment            : STA
+main thread id            : 16
+SystemEvents windowThread : <null> -> events are pumped by THIS thread
+VERDICT                   : handlers run on the app's own thread (no race with the message loop)
+
+--- MTA host, for contrast (NOT how BatteryPill runs) ---
+host apartment            : MTA
+main thread id            : 17
+SystemEvents windowThread : id=18 -> events run on a SEPARATE thread
+VERDICT                   : handlers are cross-thread
