@@ -8,11 +8,14 @@
 #     Test-Case 'formats hours and minutes' { Assert-Equal '3h 8m' (Format-Duration 188) }
 #     exit (Complete-Tests)
 #
-# BatteryWidget.ps1 cannot be dot-sourced directly: it ends in
-# [Windows.Forms.Application]::Run(), so loading it would launch the widget.
-# Import-WidgetFunction lifts named function definitions out of the file via
-# the PowerShell AST and hands back a scriptblock the caller dot-sources into
-# its own scope - no message loop, no forms, no side effects.
+# The widget source (the concatenation of the src\ modules) cannot be
+# dot-sourced directly: it ends in [Windows.Forms.Application]::Run(), so
+# loading it would launch the widget. Import-WidgetFunction assembles the
+# modules in memory (tools\_assemble.ps1), lifts named function definitions
+# out via the PowerShell AST, and hands back a scriptblock the caller
+# dot-sources into its own scope - no message loop, no forms, no side effects.
+
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools\_assemble.ps1')
 
 $script:TestsRun = 0
 $script:TestsFailed = 0
@@ -20,30 +23,37 @@ $script:TestsFailed = 0
 function Import-WidgetFunction {
     <#
     .SYNOPSIS
-        Returns a scriptblock defining the named top-level functions from
-        BatteryWidget.ps1. Dot-source the result to bring them into scope.
+        Returns a scriptblock defining the named top-level functions from the
+        widget source (the assembled src\ modules). Dot-source the result to
+        bring them into scope.
     #>
     [OutputType([scriptblock])]
     param(
         [Parameter(Mandatory = $true)][string[]]$Name,
-        # Repo-relative file to lift from. CheckBattery.ps1 ships standalone and
-        # carries its own copy of some helpers, so its copies get tested too.
-        [string]$Source = 'BatteryWidget.ps1'
+        # Repo-relative file to lift from INSTEAD of the assembled widget.
+        # CheckBattery.ps1 ships standalone and carries its own copy of some
+        # helpers, so its copies get tested too.
+        [string]$Source = ''
     )
 
-    $repoRoot = Split-Path -Parent $PSScriptRoot
-    $source = Join-Path $repoRoot $Source
-    if (-not (Test-Path $source)) { throw "not found: $source" }
-
     $errs = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($source, [ref]$null, [ref]$errs)
-    if ($errs.Count -gt 0) { throw "BatteryWidget.ps1 has $($errs.Count) parser error(s)" }
+    if ($Source) {
+        $repoRoot = Split-Path -Parent $PSScriptRoot
+        $path = Join-Path $repoRoot $Source
+        if (-not (Test-Path $path)) { throw "not found: $path" }
+        $label = $Source
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$errs)
+    } else {
+        $label = 'the assembled widget source (src\*.ps1)'
+        $ast = [System.Management.Automation.Language.Parser]::ParseInput((Get-AssembledWidgetText), [ref]$null, [ref]$errs)
+    }
+    if ($errs.Count -gt 0) { throw "$label has $($errs.Count) parser error(s)" }
 
     $defs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)
     $text = New-Object System.Text.StringBuilder
     foreach ($wanted in $Name) {
         $def = $defs | Where-Object { $_.Name -eq $wanted } | Select-Object -First 1
-        if ($null -eq $def) { throw "function not found in BatteryWidget.ps1: $wanted" }
+        if ($null -eq $def) { throw "function not found in ${label}: $wanted" }
         [void]$text.AppendLine($def.Extent.Text)
     }
     return [scriptblock]::Create($text.ToString())

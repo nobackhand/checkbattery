@@ -7,7 +7,7 @@
 #   -Role writer   loops Save-Config over $Path (the app's real save path)
 #   -Role reader   loops Import-Config over $Path (the app's real load path)
 #
-# Both roles run the shipped functions, lifted out of BatteryWidget.ps1 by the
+# Both roles run the shipped functions, lifted out of the widget source by the
 # harness - no reimplementation - so whatever the app does under concurrent
 # access is exactly what this measures. Results go to -Result as JSON.
 

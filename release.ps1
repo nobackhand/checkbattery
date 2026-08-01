@@ -4,7 +4,8 @@
 .SYNOPSIS
     One-command release for BatteryPill.
 .DESCRIPTION
-    Reads the version from BatteryWidget.ps1 ($script:appVersion), refuses to
+    Reads the version from the widget source ($script:appVersion in
+    src\010-init.ps1), refuses to
     run on a dirty tree or an already-released version, runs the full verify
     gate (scripts/verify.sh via bash), builds the exe, tags v<version>, pushes
     the tag, and creates a GitHub release carrying two assets:
@@ -14,7 +15,7 @@
         newest release without any site edit)
 .EXAMPLE
     .\release.ps1
-    # Bump $script:appVersion in BatteryWidget.ps1 first, then run this.
+    # Bump $script:appVersion in src\010-init.ps1 first, then run this.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -28,10 +29,9 @@ function Stop-Release {
 }
 
 # ---- Version (same regex Build.ps1 uses) ----
-$inputFile = Join-Path $repoRoot 'BatteryWidget.ps1'
-$versionLine = Select-String -Path $inputFile -Pattern '^\$script:appVersion\s*=\s*"(.+?)"' | Select-Object -First 1
+$versionLine = Select-String -Path (Join-Path $repoRoot 'src\*.ps1') -Pattern '^\$script:appVersion\s*=\s*"(.+?)"' | Select-Object -First 1
 if (-not $versionLine) {
-    Stop-Release 'could not read $script:appVersion from BatteryWidget.ps1'
+    Stop-Release 'could not read $script:appVersion from src\*.ps1'
 }
 $appVersion = $versionLine.Matches[0].Groups[1].Value
 $tag = "v$appVersion"
@@ -58,7 +58,7 @@ if ($dirty) {
 $existingLocal = git -C $repoRoot tag --list $tag
 $existingRemote = git -C $repoRoot ls-remote --tags origin "refs/tags/$tag"
 if ($existingLocal -or $existingRemote) {
-    Stop-Release "tag $tag already exists - bump `$script:appVersion in BatteryWidget.ps1 first"
+    Stop-Release "tag $tag already exists - bump `$script:appVersion in src\010-init.ps1 first"
 }
 
 # ---- Verify gate (lint + tests + build) ----

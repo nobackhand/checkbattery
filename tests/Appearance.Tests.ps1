@@ -1,6 +1,6 @@
 # tests\Appearance.Tests.ps1
 #
-# Tests for the drawing helpers in BatteryWidget.ps1 that decide what the pill
+# Tests for the drawing helpers in the widget source that decide what the pill
 # looks like. Get-AccentColor drives every fill/tray colour; New-RoundedRectPath
 # is the single rounded-rectangle primitive behind every region and card.
 

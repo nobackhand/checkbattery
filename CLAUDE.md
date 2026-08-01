@@ -9,8 +9,9 @@
 
 ## Architecture
 
-- **BatteryWidget.ps1** — Main widget (~2800 lines). Creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position. Supports dark/light/auto themes, configurable pill size and display mode, accent color presets, battery history sparkline, and fullscreen auto-hide.
-- **Build.ps1** — Compiles `BatteryWidget.ps1` to `BatteryWidget.exe` using `Invoke-PS2EXE`.
+- **src/** — The widget source, split into 14 ordered modules (`010-init.ps1` … `140-main.ps1`) that concatenate byte-exactly, in filename order, into the single script that ships (`tools\_assemble.ps1` is the shared assembler; dot-source it and call `Write-AssembledWidget`/`Get-AssembledWidgetText`). The widget creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position. Supports dark/light/auto themes, configurable pill size and display mode, accent color presets, battery history sparkline, and fullscreen auto-hide. `$script:appVersion` lives in `src\010-init.ps1`.
+- **BatteryWidget.Run.ps1** — Source-run wrapper: assembles `src\` to `%TEMP%\BatteryPill-source-run\BatteryWidget.ps1`, carries the repo-root config json to/from the staging dir, and runs it via `powershell -STA -File`.
+- **Build.ps1** — Assembles `src\` to a temp staging file and compiles it to `BatteryPill-<version>.exe` using `Invoke-PS2EXE`.
 - **CheckBattery.ps1** — Standalone CLI script for quick battery status checks.
 - **CheckBattery.bat** — Batch launcher for `CheckBattery.ps1`.
 - **docs/index.html** — Splash/landing page served via GitHub Pages at batterypill.com. Single HTML file with embedded CSS/JS, dark theme, scroll animations.
@@ -56,7 +57,7 @@
 
 ## Known Gotchas
 
-- **`BatteryWidget.ps1` MUST be saved as UTF-8 *with BOM*** — the script contains literal em-dash (`—`) characters. (Display *strings* are now pure ASCII — the last literal became `[char]0x2014` in v1.1.9+ and check-source.ps1 fails on any new one — but 40+ em-dashes remain in comments.) Windows PowerShell 5.1 reads BOM-less `.ps1` files using the ANSI codepage (1252 on most machines), which mangles those bytes and produces a parser error (`Unexpected token '$('` around the popup title). `powershell -File BatteryWidget.ps1` then fails to launch. If an editor/tool re-saves without the BOM, re-add it (e.g. `Set-Content -Encoding utf8BOM`, or `[System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding $true))`).
+- **Every `src\*.ps1` module MUST be saved as UTF-8 *with BOM*** — the source contains literal em-dash (`—`) characters. (Display *strings* are now pure ASCII — the last literal became `[char]0x2014` in v1.1.9+ and check-source.ps1 fails on any new one — but 40+ em-dashes remain in comments.) Windows PowerShell 5.1 reads BOM-less `.ps1` files using the ANSI codepage (1252 on most machines), which mangles those bytes and produces a parser error (`Unexpected token '$('` around the popup title), so the assembled script fails to launch. If an editor/tool re-saves without the BOM, re-add it (e.g. `Set-Content -Encoding utf8BOM`, or `[System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding $true))`).
 - **PS2EXE process and `Stop-Process`** — `Stop-Process -Force` DOES kill a widget exe launched from the same non-elevated session (verified 2026-07-15, and a hard kill releases the single-instance mutex). The historical "Access Denied" happens when the exe runs elevated or under a different token — in that case exit via the tray icon's "Exit" menu before rebuilding.
 - **Build requires exit first** — The exe file is locked while running, so the widget must be closed before `Build.ps1` can overwrite it.
 - **DPI label sizing** — Never use fixed `Size` on popup labels. Always use `AutoSize = $true` + `MaximumSize` to handle varying DPI/font scales.
@@ -69,7 +70,7 @@
 
 Three PS 5.1-safe helpers in `tools\`; all resolve repo paths via `$PSScriptRoot` and exit nonzero on failure.
 
-- **`tools\check-source.ps1`** — source health gate. Verifies `BatteryWidget.ps1` has its UTF-8 BOM, parse-checks `BatteryWidget.ps1` / `CheckBattery.ps1` / `Build.ps1`, inventories non-ASCII characters inside string tokens (the BOM-dependent hazard), and runs PSScriptAnalyzer across the repo with `PSScriptAnalyzerSettings.psd1`. **Warnings are fatal** — the gate exits nonzero on any warning or finding, so the build log stays clean; write display characters like the em-dash as `[char]0x2014` instead of literals, and justify any new analyzer rule exclusion inline in the settings file. Needs `-ExecutionPolicy Bypass` (as verify.sh uses) or PSScriptAnalyzer's format data won't load. Run after any edit to a `.ps1` and before committing or building.
+- **`tools\check-source.ps1`** — source health gate. Verifies every `src\*.ps1` module has its UTF-8 BOM, parse-checks each module plus the assembled whole plus `CheckBattery.ps1` / `Build.ps1` / `BatteryWidget.Run.ps1`, inventories non-ASCII characters inside string tokens (the BOM-dependent hazard), and runs PSScriptAnalyzer across the repo with `PSScriptAnalyzerSettings.psd1`. **Warnings are fatal** — the gate exits nonzero on any warning or finding, so the build log stays clean; write display characters like the em-dash as `[char]0x2014` instead of literals, and justify any new analyzer rule exclusion inline in the settings file. Needs `-ExecutionPolicy Bypass` (as verify.sh uses) or PSScriptAnalyzer's format data won't load. Run after any edit to a `.ps1` and before committing or building.
 - **`tools\format-source.ps1`** — autoformatter (PSScriptAnalyzer's `Invoke-Formatter`; house style: K&R braces, 4-space indent, aligned hashtable assignments). Run it bare to fix layout in place; `-Check` is what check-source.ps1 runs, so an unformatted `.ps1` fails verify.sh. Preserves each file's UTF-8 BOM and line endings, and refuses to write a file whose token stream changed — a reformat can only move whitespace. `PSUseCorrectCasing` is deliberately off: it rewrites `Invoke-PS2EXE -InputFile` into the module's declared `Invoke-ps2exe -inputFile`.
 - **`tools\check-types.ps1`** — type gate, run by `check-source.ps1` (so `verify.sh` enforces it) and standalone. AST-based, repo-wide, no allowlist: (1) every function/script parameter has an explicit type constraint, (2) every function declares `[OutputType(...)]` (`[void]` when it emits nothing), (3) `[object]` needs an `# any-typed:` justification comment on its own line or the one above, (4) a `[void]` function must not `return` a value from its own body. Add the attribute when you add a function — the gate is what keeps signatures honest.
 - **`tools\render-states.ps1`** — headless state renderer. Stages a message-loop-stripped copy of the widget in a temp dir, feeds it fake battery presets, and captures PNGs of popup/pill/settings states plus a control-geometry dump (`geometry.txt` — the reliable layout oracle: type, X, Right, Width, wrapped-line count, text) to `-OutDir` (default `%TEMP%\batterypill-renders`). Subset with `-States popup-discharge,settings`; add `-DrawToBitmap` under RDP where CopyFromScreen fails. Never touches repo files; kills its child process on timeout.
@@ -81,9 +82,9 @@ Three PS 5.1-safe helpers in `tools\`; all resolve repo paths via `$PSScriptRoot
 .\Build.ps1
 
 # Run
-.\BatteryWidget.exe
-# or directly:
-powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
+.\BatteryPill-<version>.exe
+# or straight from source (assembles src\ to a temp staging file):
+powershell -ExecutionPolicy Bypass -File .\BatteryWidget.Run.ps1
 ```
 
 ## Changelog

@@ -1,7 +1,8 @@
 # tools\render-states.ps1
 #
-# Headless state renderer for BatteryWidget.ps1 (Windows PowerShell 5.1).
-# Stages a modified copy of the widget in a temp dir (message loop stripped,
+# Headless state renderer for the widget source (Windows PowerShell 5.1).
+# Assembles the src\ modules (tools\_assemble.ps1), then
+# stages a modified copy of the widget in a temp dir (message loop stripped,
 # render harness appended, harness-specific mutex), runs it via a child
 # "powershell -STA -File" process, and captures:
 #   - PNGs of the requested states into -OutDir
@@ -34,9 +35,7 @@ foreach ($s in $States) {
     }
 }
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$srcPath = Join-Path $repoRoot 'BatteryWidget.ps1'
-if (-not (Test-Path $srcPath)) { Write-Host "FAIL: not found: $srcPath"; exit 1 }
+. (Join-Path $PSScriptRoot '_assemble.ps1')
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
 $OutDir = (Resolve-Path $OutDir).Path
 
@@ -53,10 +52,10 @@ $stageDir = Join-Path $env:TEMP ('batterypill-harness-' + [guid]::NewGuid().ToSt
 New-Item -ItemType Directory -Path $stageDir | Out-Null
 $harnessPath = Join-Path $stageDir 'harness.ps1'
 
-$text = [System.IO.File]::ReadAllText($srcPath, [System.Text.Encoding]::UTF8)
+$text = Get-AssembledWidgetText
 $runPattern = '\[System\.Windows\.Forms\.Application\]::Run\(\$script:mainForm\)'
 if ($text -notmatch $runPattern) {
-    Write-Host 'FAIL: Application::Run line not found in BatteryWidget.ps1 (source changed?)'
+    Write-Host 'FAIL: Application::Run line not found in the assembled widget source (source changed?)'
     Remove-Item $stageDir -Recurse -Force
     exit 1
 }
