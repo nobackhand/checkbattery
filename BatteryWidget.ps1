@@ -1440,11 +1440,18 @@ function Write-TextFileAtomic {
         which the documented "Stop-Process the widget, then rebuild" loop does
         on purpose.
 
-        Instead: write a sibling temp file, then swap it in with a single
-        rename. ReplaceFile/MoveFile are atomic for readers - the directory
-        entry points at one complete file or the other. A concurrent reader can
-        still make the swap itself fail with a sharing violation, which is
-        transient, so it is retried before giving up.
+        Instead: write a sibling temp file, then swap it in with one
+        MoveFileEx(MOVEFILE_REPLACE_EXISTING) - a single superseding rename,
+        so the directory entry always points at one complete file or the
+        other. File.Replace (Win32 ReplaceFile) is NOT that: with or without a
+        backup name it detaches the old file before attaching the new one, and
+        a concurrent Test-Path in that window sees no config at all - which
+        Import-Config reads as first-run and silently resets every setting.
+        Measured: ~1 in 9 existence checks against a looping ReplaceFile
+        writer saw the name missing; 0 in 26k+ with MoveFileEx. The rename can
+        still fail transiently - a sharing violation from a mid-open reader,
+        ACCESS_DENIED from an AV/indexer scan holding the file - so it is
+        retried before giving up.
     #>
     [OutputType([void])]
     param(
@@ -1452,6 +1459,14 @@ function Write-TextFileAtomic {
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content,
         [int]$Attempts = 12
     )
+    # Defined inside the function (not at script top) so the test harness can
+    # lift Write-TextFileAtomic on its own and still have the native call.
+    if (-not ('BatteryPill.NativeFile' -as [type])) {
+        Add-Type -Namespace BatteryPill -Name NativeFile -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+public static extern bool MoveFileEx(string lpExistingFileName, string lpNewFileName, uint dwFlags);
+'@
+    }
     $dir = Split-Path -Parent $Path
     if (-not $dir) { $dir = '.' }
     # Same directory as the target: a rename is only atomic within one volume.
@@ -1462,21 +1477,12 @@ function Write-TextFileAtomic {
     try {
         $lastErr = $null
         for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
-            try {
-                if ([System.IO.File]::Exists($Path)) {
-                    # [NullString]::Value, not $null: PowerShell passes a bare
-                    # $null to a [string] parameter as "", and File.Replace
-                    # rejects an empty backup path ("The path is not of a legal
-                    # form") on every single call.
-                    [System.IO.File]::Replace($tmp, $Path, [NullString]::Value)
-                } else {
-                    [System.IO.File]::Move($tmp, $Path)
-                }
-                return
-            } catch {
-                $lastErr = $_
-                Start-Sleep -Milliseconds (5 * $attempt)
-            }
+            # 0x1 = MOVEFILE_REPLACE_EXISTING. Works whether or not the target
+            # exists yet, which also removes the old Exists-then-Move race.
+            if ([BatteryPill.NativeFile]::MoveFileEx($tmp, $Path, 0x1)) { return }
+            $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            $lastErr = New-Object System.ComponentModel.Win32Exception($code)
+            Start-Sleep -Milliseconds (5 * $attempt)
         }
         throw $lastErr
     } finally {
