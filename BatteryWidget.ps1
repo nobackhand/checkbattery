@@ -148,14 +148,32 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 public class DarkCheckBox : CheckBox {
     public Color AccentColor = Color.FromArgb(45, 212, 100);
+    private Timer _anim;
+    private float _checkScale = 1f;   // 0..1, animates the check on toggle-on
     public DarkCheckBox() {
         this.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
             | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
         this.BackColor = Color.Transparent;
         this.FlatStyle = FlatStyle.Flat;
         this.Cursor = Cursors.Hand;
+        _anim = new Timer();
+        _anim.Interval = 16;
+        _anim.Tick += delegate {
+            _checkScale += (1f - _checkScale) * 0.35f + 0.06f;   // ease-out, ~120ms
+            if (_checkScale >= 1f) { _checkScale = 1f; _anim.Stop(); }
+            this.Invalidate();
+        };
     }
-    protected override void OnCheckedChanged(EventArgs e) { base.OnCheckedChanged(e); this.Invalidate(); }
+    protected override void OnCheckedChanged(EventArgs e) {
+        base.OnCheckedChanged(e);
+        if (this.Checked) { _checkScale = 0f; _anim.Start(); }   // pop the check in
+        else { _anim.Stop(); _checkScale = 1f; }
+        this.Invalidate();
+    }
+    protected override void Dispose(bool disposing) {
+        if (disposing && _anim != null) { _anim.Stop(); _anim.Dispose(); }
+        base.Dispose(disposing);
+    }
     protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); this.Invalidate(); }
     protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); this.Invalidate(); }
     protected override void OnPaint(PaintEventArgs e) {
@@ -171,6 +189,12 @@ public class DarkCheckBox : CheckBox {
         using (GraphicsPath path = Rounded(r, (int)(4 * u))) {
             if (this.Checked) {
                 using (SolidBrush b = new SolidBrush(AccentColor)) g.FillPath(b, path);
+                // Scale the check about the box center so it pops in on toggle
+                GraphicsState gs = g.Save();
+                float cx = r.X + box / 2f, cy = r.Y + box / 2f;
+                g.TranslateTransform(cx, cy);
+                g.ScaleTransform(_checkScale, _checkScale);
+                g.TranslateTransform(-cx, -cy);
                 using (Pen p = new Pen(Color.FromArgb(22, 22, 26), Math.Max(2f, 2f * u))) {
                     p.StartCap = LineCap.Round; p.EndCap = LineCap.Round; p.LineJoin = LineJoin.Round;
                     g.DrawLines(p, new PointF[] {
@@ -179,6 +203,7 @@ public class DarkCheckBox : CheckBox {
                         new PointF(r.X + 12f * u,  r.Y + 5f * u)
                     });
                 }
+                g.Restore(gs);
             } else {
                 using (SolidBrush b = new SolidBrush(Color.FromArgb(44, 44, 50))) g.FillPath(b, path);
                 Color bc = hot ? Color.FromArgb(130, 130, 142) : Color.FromArgb(92, 92, 102);
@@ -279,6 +304,9 @@ function Show-AppDialog {
     $btn.BackColor = $btnBg; $btn.ForeColor = $fg
     $btn.FlatAppearance.BorderColor = $Accent
     $btn.FlatAppearance.BorderSize = 1
+    # Tactile feedback: lift on hover, sink on press
+    $btn.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(58, 58, 66)
+    $btn.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(38, 38, 44)
     $btn.Size = New-Object System.Drawing.Size([int](100 * $ds), [int](32 * $ds))
     $btn.Location = New-Object System.Drawing.Point(
         ($f.ClientSize.Width - [int](100 * $ds) - [int](20 * $ds)),
@@ -3051,7 +3079,7 @@ function Show-SettingsPanel {
         $colorPanel.Size = New-Object System.Drawing.Size($circleSize, $circleSize)
         $colorPanel.Location = New-Object System.Drawing.Point(($m + $ci * $circleSpacing), $y)
         $colorPanel.BackColor = [System.Drawing.Color]::Transparent
-        $colorPanel.Tag = @{ Index = $ci; Hovered = $false }
+        $colorPanel.Tag = @{ Index = $ci; Hovered = $false; Pressed = $false }
         $colorPanel.Add_Paint({
             param($sender, $e)
             $cg = $e.Graphics
@@ -3059,11 +3087,12 @@ function Show-SettingsPanel {
             $tagData = $sender.Tag
             $idx = $tagData.Index
             $isHovered = $tagData.Hovered
+            $isPressed = $tagData.Pressed
             $color = $script:accentPresets[$idx]
             $brush = New-Object System.Drawing.SolidBrush($color)
-            # Scale circle radius 1.15x on hover
-            if ($isHovered) {
-                $scale = 1.15
+            # Tactile scale: shrink on press (0.9), grow on hover (1.15), else rest
+            $scale = if ($isPressed) { 0.9 } elseif ($isHovered) { 1.15 } else { 0 }
+            if ($scale -gt 0) {
                 $cw = $sender.Width - 5; $ch = $sender.Height - 5
                 $sw = [int]($cw * $scale); $sh = [int]($ch * $scale)
                 $sx = [int]((($sender.Width - $sw) / 2) - 0.5)
@@ -3093,7 +3122,9 @@ function Show-SettingsPanel {
             }
         })
         $colorPanel.Add_MouseEnter({ param($sender); $sender.Tag.Hovered = $true; $sender.Invalidate() })
-        $colorPanel.Add_MouseLeave({ param($sender); $sender.Tag.Hovered = $false; $sender.Invalidate() })
+        $colorPanel.Add_MouseLeave({ param($sender); $sender.Tag.Hovered = $false; $sender.Tag.Pressed = $false; $sender.Invalidate() })
+        $colorPanel.Add_MouseDown({ param($sender); $sender.Tag.Pressed = $true; $sender.Invalidate() })
+        $colorPanel.Add_MouseUp({ param($sender); $sender.Tag.Pressed = $false; $sender.Invalidate() })
         $colorPanel.Add_Click({
             param($sender)
             $script:config.AccentColorIndex = $sender.Tag.Index
@@ -3284,6 +3315,8 @@ function Show-SettingsPanel {
     $resetBtn.FlatAppearance.BorderSize = 0
     $resetBtn.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
     $resetBtn.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $resetBtn.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(62, 62, 70)
+    $resetBtn.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(42, 42, 50)
     $resetBtn.Add_Click({
         if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
             $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
@@ -3312,6 +3345,8 @@ function Show-SettingsPanel {
     $closeBtn.FlatAppearance.BorderSize = 0
     $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
     $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $closeBtn.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(62, 62, 70)
+    $closeBtn.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(42, 42, 50)
     $closeBtn.Add_Click({ $settings.Close() })
     $settings.Controls.Add($closeBtn)
 
