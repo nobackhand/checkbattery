@@ -2,24 +2,27 @@
 
 <#
 .SYNOPSIS
-    Compiles BatteryWidget.ps1 into a standalone .exe using ps2exe.
+    Compiles the widget source (src\ modules) into a standalone .exe using ps2exe.
+.DESCRIPTION
+    The widget ships as ordered modules under src\. This build concatenates
+    them byte-exactly (tools\_assemble.ps1) into a temp staging file and feeds
+    that single file to ps2exe - the compiled output is identical to compiling
+    the old single-file BatteryWidget.ps1.
 .EXAMPLE
     .\Build.ps1
 #>
 
 $scriptDir = $PSScriptRoot
-$inputFile = Join-Path $scriptDir "BatteryWidget.ps1"
 
-# Extract version from the script source
-$versionLine = Select-String -Path $inputFile -Pattern '^\$script:appVersion\s*=\s*"(.+?)"' | Select-Object -First 1
+# Assemble src\ modules into a per-process staging file (verify.sh runs this
+# stage concurrently with the tests, so the name must not collide).
+. (Join-Path $scriptDir 'tools\_assemble.ps1')
+$inputFile = Write-AssembledWidget -OutFile (Join-Path $env:TEMP ("BatteryWidget-build-{0}.ps1" -f $PID))
+
+# Extract version from the module source
+$versionLine = Select-String -Path (Join-Path $scriptDir 'src\*.ps1') -Pattern '^\$script:appVersion\s*=\s*"(.+?)"' | Select-Object -First 1
 $appVersion = if ($versionLine) { $versionLine.Matches[0].Groups[1].Value } else { "0.0.0" }
 $outputFile = Join-Path $scriptDir "BatteryPill-$appVersion.exe"
-
-# Verify source exists
-if (-not (Test-Path $inputFile)) {
-    Write-Host "ERROR: BatteryWidget.ps1 not found in $scriptDir" -ForegroundColor Red
-    exit 1
-}
 
 # Ensure ps2exe module is available.
 # Bootstrap first: stock Windows PowerShell 5.1 lacks a TLS 1.2 default and the
@@ -42,7 +45,7 @@ Get-ChildItem $scriptDir -Filter "BatteryPill-*.exe" | ForEach-Object {
 }
 
 # Compile
-Write-Host "Compiling BatteryWidget.ps1 -> BatteryPill-$appVersion.exe" -ForegroundColor Cyan
+Write-Host "Compiling src\*.ps1 (assembled) -> BatteryPill-$appVersion.exe" -ForegroundColor Cyan
 
 Invoke-PS2EXE -InputFile $inputFile `
     -OutputFile $outputFile `
@@ -53,6 +56,8 @@ Invoke-PS2EXE -InputFile $inputFile `
     -description "BatteryPill - floating battery widget for Windows" `
     -version "$appVersion.0" `
     -copyright "(c) 2026"
+
+Remove-Item $inputFile -Force -ErrorAction SilentlyContinue
 
 if (Test-Path $outputFile) {
     $fileSize = [math]::Round((Get-Item $outputFile).Length / 1KB)

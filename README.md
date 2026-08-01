@@ -1,5 +1,7 @@
 # BatteryPill
 
+[![verify](https://github.com/nobackhand/checkbattery/actions/workflows/verify.yml/badge.svg)](https://github.com/nobackhand/checkbattery/actions/workflows/verify.yml)
+
 BatteryPill is a Windows desktop battery widget built with PowerShell and WinForms. It displays a floating, draggable pill-shaped indicator on the desktop showing time remaining, a detailed information popup on hover (the tray icon opens a modal version on click), and a system tray icon. It is designed for Windows users who want a persistent, glanceable view of their battery status using smoothed estimates rather than just a percentage.
 
 ## Features
@@ -27,14 +29,16 @@ The only prerequisites are Windows, Windows PowerShell 5.1 (`powershell.exe` on 
 
 ## Usage
 
-Quit from the tray icon's **Exit** item. To start it again afterwards, run the compiled executable (the version suffix comes from `$script:appVersion` in the source):
+Quit from the tray icon's **Exit** item. To start it again afterwards, run the compiled executable (the version suffix comes from `$script:appVersion` in the source; end users grab the stable-named `BatteryPill.exe` from the [latest release](https://github.com/nobackhand/checkbattery/releases/latest/download/BatteryPill.exe) instead):
 ```powershell
 .\BatteryPill-<version>.exe
 ```
 
-To run the widget from source without building:
+The release exe is unsigned, so SmartScreen warns on first run and some AV engines flag PS2EXE output — see [DISTRIBUTION.md](DISTRIBUTION.md) for what users hit and the signing/rewrite decision record.
+
+To run the widget from source without building (assembles the `src/` modules to a staging file and runs it):
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
+powershell -ExecutionPolicy Bypass -File .\BatteryWidget.Run.ps1
 ```
 
 To rebuild the executable on its own:
@@ -61,9 +65,9 @@ or
 
 It runs (cheapest signal first, each with a wall-clock timeout so the whole run stays well under 10 minutes):
 
-1. **Lint** — `tools/check-source.ps1`: verifies `BatteryWidget.ps1` still carries its UTF-8 BOM, parse-checks every shipped `.ps1`, runs PSScriptAnalyzer (settings in `PSScriptAnalyzerSettings.psd1`), checks that every `.ps1` is autoformatted, and runs the type gate (`tools/check-types.ps1`, below). The gate fails on **any** warning, so the build log stays warning-free — write new non-ASCII display characters as `[char]0xNNNN` rather than literals.
+1. **Lint** — `tools/check-source.ps1`: verifies every `src/*.ps1` module still carries its UTF-8 BOM, parse-checks each module plus the assembled whole and every shipped `.ps1`, runs PSScriptAnalyzer (settings in `PSScriptAnalyzerSettings.psd1`), checks that every `.ps1` is autoformatted, and runs the type gate (`tools/check-types.ps1`, below). The gate fails on **any** warning, so the build log stays warning-free — write new non-ASCII display characters as `[char]0xNNNN` rather than literals.
 2. **Tests** — `scripts/run-tests.ps1`: runs every `tests/*.Tests.ps1`, each in its own `powershell.exe`.
-3. **Build** — `Build.ps1`: compiles `BatteryWidget.ps1` to `BatteryPill-<version>.exe` with ps2exe.
+3. **Build** — `Build.ps1`: assembles `src/*.ps1` and compiles the result to `BatteryPill-<version>.exe` with ps2exe.
 
 Requires Windows PowerShell 5.1 (`powershell.exe` on PATH) and a bash shell (Git Bash works). Typical runtime on a dev machine is a few seconds.
 
@@ -74,7 +78,7 @@ To run just the tests, or one file:
 .\scripts\run-tests.ps1 -Filter Formatting
 ```
 
-Tests dot-source individual functions out of `BatteryWidget.ps1` via the PowerShell AST (`Import-WidgetFunction` in `tests/_harness.ps1`) — the script itself ends in a WinForms message loop, so it can never be dot-sourced whole.
+Tests dot-source individual functions out of the assembled widget source via the PowerShell AST (`Import-WidgetFunction` in `tests/_harness.ps1`) — the script itself ends in a WinForms message loop, so it can never be dot-sourced whole.
 
 ### Formatting
 
@@ -102,6 +106,16 @@ It reads every `.ps1` with the AST and enforces four rules repo-wide, with no pe
 3. **No blanket `[object]`** — rule 1 cannot be satisfied by typing everything `[object]`. A genuinely polymorphic parameter needs an `# any-typed: ...` comment on its own line or the line above, saying what it holds.
 4. **Honest `[void]`** — a function declaring `[OutputType([void])]` must not `return` a value from its own body (returns inside nested functions and event-handler scriptblocks belong to those and are ignored). This is what keeps declared return types from drifting as the code changes.
 
+## Release
+
+Releases are one command. Bump `$script:appVersion` in `src/010-init.ps1`, commit, then:
+
+```powershell
+.\release.ps1
+```
+
+It refuses to run on a dirty tree or an already-released version, runs the full `scripts/verify.sh` gate, builds via `Build.ps1`, tags `v<version>`, pushes the tag, and creates the GitHub release with two assets: the versioned `BatteryPill-<version>.exe` and a stable-named `BatteryPill.exe`. The website's download button points at `.../releases/latest/download/BatteryPill.exe`, so it always serves the newest release without any site edit. Requires `git`, `gh` (authenticated), and bash on PATH.
+
 ## Configuration
 
 - **Position Persistence**: The widget saves its bar position to `BatteryWidget.config.json` on drag and exit.
@@ -116,10 +130,15 @@ It reads every `.ps1` with the AST and enforces four rules repo-wide, with no pe
 
 ## Project structure
 
-- `BatteryWidget.ps1`: Main widget logic and UI code.
-- `Build.ps1`: Script to compile the widget into a standalone `.exe` using `ps2exe`.
+- `src/`: The widget source, split into ordered modules (`010-init.ps1` … `140-main.ps1`) that concatenate byte-exactly into the shipped script (`tools/_assemble.ps1`).
+- `BatteryWidget.Run.ps1`: Runs the widget straight from `src/` without building.
+- `Build.ps1`: Script that assembles `src/` and compiles it into a standalone `.exe` using `ps2exe`.
+- `release.ps1`: One-command GitHub release (verify, build, tag, upload assets).
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
+- `DISTRIBUTION.md`: SmartScreen/AV expectations for the unsigned exe and the signing/rewrite decision record.
 - `scripts/`: `setup.sh` (one-command setup), `verify.sh` (the lint + tests + build gate), and `run-tests.ps1` (test runner).
 - `tests/`: Test suite - `_harness.ps1` (assertions + AST function loader) plus `*.Tests.ps1` files.
 - `tools/`: Dev harness - `check-source.ps1` (BOM + parse + PSScriptAnalyzer + formatting + typing gate), `format-source.ps1` (autoformatter), `check-types.ps1` (type gate), and `render-states.ps1` (headless renderer of popup/pill/settings states).
+- `.github/workflows/`: CI - `verify.yml` runs `scripts/verify.sh` on windows-latest for every push and PR.
 - `docs/`: Website files for the project landing page.
+- `history/`: Archived mission records and evidence from past improvement loops (historical reference only).
