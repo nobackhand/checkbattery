@@ -1,0 +1,11 @@
+--- HEAD:BatteryWidget.ps1 (fallback path, unguarded) ---
+  CRASH: Cannot convert value "4294967295" to type "System.Int32". Error: "Value was either too large or too small for an Int32."
+  CRASH: Cannot convert value "4294967295" to type "System.Int32". Error: "Value was either too large or too small for an Int32."
+--- HEAD:CheckBattery.ps1 (percent + dual battery) ---
+  [int]$null percent -> 0  (a false, alarming 0%)
+  CRASH: Cannot convert the "System.Object[]" value of type "System.Object[]" to type "System.Int32".
+--- HEAD:Import-Config (Opacity clamp) ---
+  clamped Opacity -> NaN ; IsNaN=True
+  no crash
+Opacity after NaN assign: NaN  IsNaN=True
+AllowTransparency=True

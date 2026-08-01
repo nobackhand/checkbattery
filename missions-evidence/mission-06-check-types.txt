@@ -1,0 +1,4 @@
+=== BatteryPill type check (C:\myprojects\checkbattery) ===
+INFO: checked 13 file(s), 64 function(s), 92 parameter(s)
+PASS: every function has typed parameters and a declared [OutputType]
+RESULT: PASS

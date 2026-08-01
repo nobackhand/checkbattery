@@ -1,0 +1,14 @@
+=== NEGATIVE CONTROL: inject bad whitespace into CheckBattery.ps1 ===
+INFO: no non-ASCII characters inside string tokens
+PASS: CheckBattery.ps1 parses with 0 errors
+PASS: Build.ps1 parses with 0 errors
+PASS: PSScriptAnalyzer reports 0 error/warning finding(s)
+=== BatteryPill format (C:\myprojects\checkbattery) [check] ===
+---
+12 file(s) scanned, 1 unformatted
+      CheckBattery.ps1
+RESULT: FAIL - run: powershell -ExecutionPolicy Bypass -File tools\format-source.ps1
+FAIL: unformatted .ps1 file(s) - run: powershell -ExecutionPolicy Bypass -File tools\format-source.ps1
+---
+RESULT: FAIL - 1 failing check(s), 0 warning(s)
+LINT_EXIT=1

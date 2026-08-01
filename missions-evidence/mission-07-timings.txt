@@ -1,0 +1,34 @@
+mission 07 - verify.sh speedup: interleaved A/B, 5 pairs
+DESKTOP-CUBE04, warm checkout, nothing else running.
+"old" = git show HEAD:scripts/verify.sh (serial stages)
+"new" = scripts/verify.sh (concurrent stages)
+Each pair runs old then new back-to-back to share machine conditions.
+
+pair1 old=17998ms new=10209ms
+pair2 old=16640ms new=11051ms
+pair3 old=15792ms new=9997ms
+pair4 old=19311ms new=9195ms
+pair5 old=15061ms new=7948ms
+
+mean:      old 16960ms -> new  9680ms   = 42.9% faster
+best-of-5: old 15061ms -> new  7948ms   = 47.2% faster
+
+Earlier standalone baseline (3 runs, before any edit): 18956 / 17010 / 21004 ms.
+
+COVERAGE PROOF - output is byte-identical modulo timing numbers:
+  $ ./scripts/_old_verify.sh > /tmp/old.log 2>&1   # exit 0
+  $ ./scripts/verify.sh      > /tmp/new.log 2>&1   # exit 0
+  $ diff <(norm /tmp/old.log) <(norm /tmp/new.log)  # norm blanks the "Ns" timings
+  IDENTICAL OUTPUT (modulo timings)
+  PASS-line counts: old=39 new=39
+Same three stages, same scripts, same arguments, same timeouts. No check was
+removed, relaxed, or skipped.
+
+NEGATIVE CONTROLS (the gate still fails when it should):
+  * failing test file (tests/ZzTemp.Tests.ps1, exit 3) ->
+      -- tests (scripts/run-tests.ps1) FAILED (exit 1) in 5s
+      RESULT: FAIL          verify.sh exit=1
+  * LINT_TIMEOUT forced to 2s ->
+      -- lint (tools/check-source.ps1) TIMED OUT after 2s
+      RESULT: FAIL          verify.sh exit=1
+  * VERIFY_JOBS=1 (serial fallback path) -> exit=0 in 23638ms

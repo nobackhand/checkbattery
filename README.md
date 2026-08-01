@@ -13,29 +13,33 @@ BatteryPill is a Windows desktop battery widget built with PowerShell and WinFor
 - **System Tray Integration**: Includes a tray icon with a context menu for settings and exiting.
 - **Single Instance**: Uses a global mutex to prevent multiple instances from running.
 
-## Requirements
+## Setup
 
-- Windows OS.
-- PowerShell 5.0 or higher.
-- `ps2exe` module (required for building the executable).
+One command takes a fresh clone to a running widget:
 
-## Installation
-
-To build the standalone executable:
-```powershell
-.\Build.ps1
+```bash
+./scripts/setup.sh
 ```
 
-To run the widget directly via PowerShell:
+It checks prerequisites, installs the `ps2exe` dependency (bootstrapping TLS 1.2 and the NuGet provider that stock PowerShell 5.1 lacks), builds `BatteryPill-<version>.exe`, and launches it. It is idempotent — re-run it any time. Use `./scripts/setup.sh --no-run` to build without launching, and `--help` for usage.
+
+The only prerequisites are Windows, Windows PowerShell 5.1 (`powershell.exe` on PATH), and a bash shell (Git Bash works). Everything else is installed for you.
+
+## Usage
+
+Quit from the tray icon's **Exit** item. To start it again afterwards, run the compiled executable (the version suffix comes from `$script:appVersion` in the source):
+```powershell
+.\BatteryPill-<version>.exe
+```
+
+To run the widget from source without building:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\BatteryWidget.ps1
 ```
 
-## Usage
-
-Run the compiled executable (the version suffix comes from `$script:appVersion` in the source):
+To rebuild the executable on its own:
 ```powershell
-.\BatteryPill-<version>.exe
+.\Build.ps1
 ```
 
 Quick battery status check via CLI:
@@ -46,6 +50,57 @@ or
 ```powershell
 .\CheckBattery.ps1
 ```
+
+## Verify
+
+`scripts/verify.sh` is the single gate for this repo: it runs lint, the full test suite, and a real build, and exits nonzero if any stage fails. Run it before committing.
+
+```bash
+./scripts/verify.sh
+```
+
+It runs (cheapest signal first, each with a wall-clock timeout so the whole run stays well under 10 minutes):
+
+1. **Lint** — `tools/check-source.ps1`: verifies `BatteryWidget.ps1` still carries its UTF-8 BOM, parse-checks every shipped `.ps1`, runs PSScriptAnalyzer (settings in `PSScriptAnalyzerSettings.psd1`), checks that every `.ps1` is autoformatted, and runs the type gate (`tools/check-types.ps1`, below). The gate fails on **any** warning, so the build log stays warning-free — write new non-ASCII display characters as `[char]0xNNNN` rather than literals.
+2. **Tests** — `scripts/run-tests.ps1`: runs every `tests/*.Tests.ps1`, each in its own `powershell.exe`.
+3. **Build** — `Build.ps1`: compiles `BatteryWidget.ps1` to `BatteryPill-<version>.exe` with ps2exe.
+
+Requires Windows PowerShell 5.1 (`powershell.exe` on PATH) and a bash shell (Git Bash works). Typical runtime on a dev machine is a few seconds.
+
+To run just the tests, or one file:
+
+```powershell
+.\scripts\run-tests.ps1
+.\scripts\run-tests.ps1 -Filter Formatting
+```
+
+Tests dot-source individual functions out of `BatteryWidget.ps1` via the PowerShell AST (`Import-WidgetFunction` in `tests/_harness.ps1`) — the script itself ends in a WinForms message loop, so it can never be dot-sourced whole.
+
+### Formatting
+
+House style is enforced by an autoformatter, so layout is never a review topic. If the lint stage reports unformatted files, fix them mechanically:
+
+```powershell
+.\tools\format-source.ps1           # rewrite every .ps1 in place
+.\tools\format-source.ps1 -Check    # what verify.sh runs; exits 1 if anything is unformatted
+```
+
+It wraps PSScriptAnalyzer's `Invoke-Formatter` (K&R braces, 4-space indent, aligned hashtable assignments), preserves each file's UTF-8 BOM and line endings, and refuses to write a file whose token stream changed — a reformat can only move whitespace.
+
+### Typing
+
+PowerShell has no compiler, so signatures are held to a written standard instead:
+
+```powershell
+.\tools\check-types.ps1    # also run by the lint stage; exits 1 on any violation
+```
+
+It reads every `.ps1` with the AST and enforces four rules repo-wide, with no per-file allowlist:
+
+1. **Typed parameters** — every parameter of every function, and of every script-level `param()` block, carries an explicit type constraint.
+2. **Declared return type** — every function declares `[OutputType(...)]`; functions that emit nothing declare `[OutputType([void])]`.
+3. **No blanket `[object]`** — rule 1 cannot be satisfied by typing everything `[object]`. A genuinely polymorphic parameter needs an `# any-typed: ...` comment on its own line or the line above, saying what it holds.
+4. **Honest `[void]`** — a function declaring `[OutputType([void])]` must not `return` a value from its own body (returns inside nested functions and event-handler scriptblocks belong to those and are ignored). This is what keeps declared return types from drifting as the code changes.
 
 ## Configuration
 
@@ -64,5 +119,7 @@ or
 - `BatteryWidget.ps1`: Main widget logic and UI code.
 - `Build.ps1`: Script to compile the widget into a standalone `.exe` using `ps2exe`.
 - `CheckBattery.ps1` / `.bat`: Standalone CLI scripts for battery status.
-- `tools/`: Dev harness - `check-source.ps1` (BOM + parse gate) and `render-states.ps1` (headless renderer of popup/pill/settings states).
+- `scripts/`: `setup.sh` (one-command setup), `verify.sh` (the lint + tests + build gate), and `run-tests.ps1` (test runner).
+- `tests/`: Test suite - `_harness.ps1` (assertions + AST function loader) plus `*.Tests.ps1` files.
+- `tools/`: Dev harness - `check-source.ps1` (BOM + parse + PSScriptAnalyzer + formatting + typing gate), `format-source.ps1` (autoformatter), `check-types.ps1` (type gate), and `render-states.ps1` (headless renderer of popup/pill/settings states).
 - `docs/`: Website files for the project landing page.

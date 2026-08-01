@@ -1,0 +1,200 @@
+=== mission 9 mutation testing: 18 mutations ===
+
+--------------------------------------------------------------
+BASELINE (no mutation): tests\Estimation.Tests.ps1 on the clean tree
+    | Estimation.Tests.ps1
+    |   PASS  Update-EMARate seeds from the first reading instead of easing up from zero
+    |   PASS  Update-EMARate smooths a jump instead of snapping to it
+    |   PASS  Update-EMARate keeps only the last 10 raw rates
+    |   PASS  Update-EMARate speeds up (alpha 0.30) when the rate is stable
+    |   PASS  Update-EMARate dampens harder (alpha 0.08) when the rate is volatile
+    |   PASS  Update-EMARate will not read a nonsensical window as a rock-steady rate
+    |   PASS  Update-EMARate returns a whole mW figure but keeps full precision internally
+    |   PASS  Get-CapacityDerivedRate has nothing to measure on the first sample
+    |   PASS  Get-CapacityDerivedRate refuses to extrapolate from under 30 seconds
+    |   PASS  Get-CapacityDerivedRate resyncs when the wall clock jumps backward
+    |   PASS  Get-CapacityDerivedRate measures mW from the capacity drop
+    |   PASS  Get-CapacityDerivedRate advances its sample so the next reading is incremental
+    |   PASS  Get-CapacityDerivedRate reports nothing while capacity is rising
+    |   PASS  computes time remaining from the smoothed discharge rate
+    |   PASS  holds the last valid rate through a momentary WMI dropout
+    |   PASS  suppresses the estimate during the post-plug hysteresis window
+    |   PASS  does not reuse the pre-unplug discharge rate as a charge rate
+    |   PASS  uses the real charge rate once the charger reports one
+    |   PASS  unplugging does not reuse the charge rate as a discharge rate either
+    |   PASS  drops a held rate that has gone stale (older than 60s)
+    |   PASS  still holds a rate that is just inside the 60s freshness window
+    |   PASS  invents nothing on a cold start with no rate at all
+    |   PASS  reports no estimate when the pack capacity is unknown
+    |   PASS  reports no estimate when the battery reads 0%
+    |   PASS  charging at 100% is 0 minutes to full, not a full-pack runtime
+    |   PASS  prefers the capacity-derived rate after 3 consecutive divergent samples
+    |   PASS  a single divergent sample does not stick - agreement resets the counter
+    |   --- 27 run, 0 failed
+  baseline exit: 0
+
+--------------------------------------------------------------
+MUTATION 1/18: let the raw-rate window grow past 10
+  target test : Update-EMARate keeps only the last 10 raw rates
+  BatteryWidget.ps1  - if ($script:rateHistory.Count -gt 10) { $script:rateHistory.RemoveAt(0) }
+                     + if ($script:rateHistory.Count -gt 100) { $script:rateHistory.RemoveAt(0) }
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 10 [Int32] but got 12 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 2/18: drop the stable-rate alpha boost
+  target test : Update-EMARate speeds up (alpha 0.30) when the rate is stable
+  BatteryWidget.ps1  - $alpha = 0.30
+                     + $alpha = 0.15
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 10150 [Int32] but got 10075 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 3/18: drop the volatile-rate damping
+  target test : Update-EMARate dampens harder (alpha 0.08) when the rate is volatile
+  BatteryWidget.ps1  - $alpha = 0.08
+                     + $alpha = 0.15
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 10800 [Int32] but got 11500 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 4/18: weaken the mean guard so a negative-mean window still feeds the volatility test
+  target test : Update-EMARate will not read a nonsensical window as a rock-steady rate
+  BatteryWidget.ps1  - if ($mean -gt 0) {
+                     + if ($mean -ne 0) {
+  RESULT: target test FAILED as required (suite exit 1)
+          expected -5000 [Int32] but got -110000 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 5/18: stop converting the returned rate to int
+  target test : Update-EMARate returns a whole mW figure but keeps full precision internally
+  BatteryWidget.ps1  - return [int]$script:emaRate
+                     + return $script:emaRate
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 10001 [Int32] but got 10000.75 [Double]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 6/18: remove the first-sample seed branch
+  target test : Get-CapacityDerivedRate has nothing to measure on the first sample
+  BatteryWidget.ps1  - if ($null -eq $script:lastCapacityCheck) {
+                     + if ($false) {
+  RESULT: target test FAILED as required (suite exit 1)
+          Cannot find an overload for "op_Subtraction" and the argument count: "2".
+         --- 27 run, 16 failed
+
+--------------------------------------------------------------
+MUTATION 7/18: drop the 30-second minimum sampling interval
+  target test : Get-CapacityDerivedRate refuses to extrapolate from under 30 seconds
+  BatteryWidget.ps1  - if ($elapsed -lt 0.0083) { return -1 }
+                     + if ($elapsed -lt 0.0000001) { return -1 }
+  RESULT: target test FAILED as required (suite exit 1)
+          expected -1 [Int32] but got 90000 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 8/18: stop resyncing the sample time after a backward clock jump
+  target test : Get-CapacityDerivedRate resyncs when the wall clock jumps backward
+  BatteryWidget.ps1  - $script:lastCapacityCheck = @{ Time = $Now; Capacity = $currentCapacity }
+                     + $script:lastCapacityCheck = @{ Time = $script:lastCapacityCheck.Time; Capacity = $currentCapacity }
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 07/29/2026 08:59:00 [DateTime] but got 07/29/2026 09:00:00 [DateTime]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 9/18: invert the capacity-delta subtraction
+  target test : Get-CapacityDerivedRate measures mW from the capacity drop
+  BatteryWidget.ps1  - $capDelta = $script:lastCapacityCheck.Capacity - $currentCapacity
+                     + $capDelta = $currentCapacity - $script:lastCapacityCheck.Capacity
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 10000 [Int32] but got -1 [Int32]
+         --- 27 run, 5 failed
+
+--------------------------------------------------------------
+MUTATION 10/18: stop advancing the stored capacity sample
+  target test : Get-CapacityDerivedRate advances its sample so the next reading is incremental
+  BatteryWidget.ps1  - $script:lastCapacityCheck.Capacity = $currentCapacity
+                     + $script:lastCapacityCheck.Capacity = $script:lastCapacityCheck.Capacity
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 5000 [Int32] but got 15000 [Int32]
+         --- 27 run, 2 failed
+
+--------------------------------------------------------------
+MUTATION 11/18: let a negative (charging) derived rate through
+  target test : Get-CapacityDerivedRate reports nothing while capacity is rising
+  BatteryWidget.ps1  - if ($derivedRate -gt 0) { return $derivedRate }
+                     + if ($derivedRate -ne 0) { return $derivedRate }
+  RESULT: target test FAILED as required (suite exit 1)
+          expected -1 [Int32] but got -10000 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 12/18: shrink the held-rate freshness window to 30s
+  target test : still holds a rate that is just inside the 60s freshness window
+  BatteryWidget.ps1  - if ($rateAge -lt 60) {
+                     + if ($rateAge -lt 30) {
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 150 [Int32] but got -1 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 13/18: accept a sentinel (-1) rate as a usable rate
+  target test : invents nothing on a cold start with no rate at all
+  BatteryWidget.ps1  - if ($effectiveRate -gt 0 -and $FullChargeCapacity -gt 0 -and $PercentExact -gt 0) {
+                     + if ($effectiveRate -ne 0 -and $FullChargeCapacity -gt 0 -and $PercentExact -gt 0) {
+  RESULT: target test FAILED as required (suite exit 1)
+          expected -1 [Int32] but got -1500000 [Int32]
+         --- 27 run, 4 failed
+
+--------------------------------------------------------------
+MUTATION 14/18: drop the FullChargeCapacity > 0 guard
+  target test : reports no estimate when the pack capacity is unknown
+  BatteryWidget.ps1  - if ($effectiveRate -gt 0 -and $FullChargeCapacity -gt 0 -and $PercentExact -gt 0) {
+                     + if ($effectiveRate -gt 0 -and $PercentExact -gt 0) {
+  RESULT: target test FAILED as required (suite exit 1)
+          expected -1 [Int32] but got 0 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 15/18: drop the PercentExact > 0 guard
+  target test : reports no estimate when the battery reads 0%
+  BatteryWidget.ps1  - if ($effectiveRate -gt 0 -and $FullChargeCapacity -gt 0 -and $PercentExact -gt 0) {
+                     + if ($effectiveRate -gt 0 -and $FullChargeCapacity -gt 0) {
+  RESULT: target test FAILED as required (suite exit 1)
+          expected -1 [Int32] but got 0 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 16/18: measure charge-remaining instead of charge-to-fill
+  target test : charging at 100% is 0 minutes to full, not a full-pack runtime
+  BatteryWidget.ps1  - $remainingCapacity = $FullChargeCapacity * ((100 - $PercentExact) / 100)
+                     + $remainingCapacity = $FullChargeCapacity * ($PercentExact / 100)
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 0 [Int32] but got 150 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 17/18: never switch over to the capacity-derived rate
+  target test : prefers the capacity-derived rate after 3 consecutive divergent samples
+  BatteryWidget.ps1  - if ($script:capacityRateMismatchCount -ge 3) {
+                     + if ($script:capacityRateMismatchCount -ge 300) {
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 65 [Int32] but got 60 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+MUTATION 18/18: stop resetting the divergence counter on agreement
+  target test : a single divergent sample does not stick - agreement resets the counter
+  BatteryWidget.ps1  - $script:capacityRateMismatchCount = 0
+                     + $script:capacityRateMismatchCount += 0
+  RESULT: target test FAILED as required (suite exit 1)
+          expected 0 [Int32] but got 1 [Int32]
+         --- 27 run, 1 failed
+
+--------------------------------------------------------------
+mutations caught: 18 / 18   uncaught/errors: 0
+BatteryWidget.ps1 restored byte-for-byte: True

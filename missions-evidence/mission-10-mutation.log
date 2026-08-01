@@ -1,0 +1,63 @@
+=== mission 10: do the new tests actually catch the pre-fix behavior? ===
+
+--- baseline: fixed tree ---
+  PASS  Write-IoFailure records path, reason and advice in one detail line
+  PASS  corrupt config: returns defaults instead of half-applied junk
+  PASS  corrupt config: reports an actionable failure naming file, reason and fallout
+  PASS  corrupt config: the unreadable file is preserved, not left to be overwritten
+  PASS  readable config still loads, and records nothing
+  PASS  missing config is not a failure - first run just gets defaults
+  PASS  unwritable config: reports an actionable failure instead of losing settings quietly
+  PASS  writable config: saves and records nothing
+  PASS  auto-start off is honest when the shortcut cannot be deleted
+  PASS  auto-start off succeeds quietly when the shortcut can be deleted
+  PASS  auto-start off with no shortcut present is a no-op success
+  PASS  a link the shell cannot open reports instead of escaping the click handler
+  --- 12 run, 0 failed
+exit=0
+
+--- mutated tree: the three fixes reverted to their pre-mission form ---
+    (1) Import-Config outer catch -> empty catch {} (no report, no backup)
+    (2) Save-Config Set-Content -> no -ErrorAction Stop (non-terminating, catch never fires)
+    (3) Set-AutoStart Remove-Item -> no -ErrorAction Stop (non-terminating, catch never fires)
+  PASS  Write-IoFailure records path, reason and advice in one detail line
+  PASS  corrupt config: returns defaults instead of half-applied junk
+  FAIL  corrupt config: reports an actionable failure naming file, reason and fallout
+        expected 1 [Int32] but got 0 [Int32]
+  FAIL  corrupt config: the unreadable file is preserved, not left to be overwritten
+        a config we cannot parse must be kept, not silently replaced
+  PASS  readable config still loads, and records nothing
+  PASS  missing config is not a failure - first run just gets defaults
+Set-Content : Could not find a part of the path 
+'C:\Users\daniel\AppData\Local\Temp\bp-io-43488\no-such-folder\deeper\BatteryWidget.config.json'.
+At line:213 char:39
++         } | ConvertTo-Json -Depth 3 | Set-Content $configPath -Force
++                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (C:\Users\daniel...get.config.json:String) [Set-Content], DirectoryNotFo 
+   undException
+    + FullyQualifiedErrorId : GetContentWriterDirectoryNotFoundError,Microsoft.PowerShell.Commands.SetContentCommand
+ 
+  FAIL  unwritable config: reports an actionable failure instead of losing settings quietly
+        expected 1 [Int32] but got 0 [Int32]
+  PASS  writable config: saves and records nothing
+Remove-Item : Cannot remove item C:\Users\daniel\AppData\Local\Temp\bp-io-43488\BatteryPill.lnk: The process cannot 
+access the file 'C:\Users\daniel\AppData\Local\Temp\bp-io-43488\BatteryPill.lnk' because it is being used by another 
+process.
+At line:277 char:17
++                 Remove-Item $ShortcutPath -Force
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (C:\Users\daniel...BatteryPill.lnk:FileInfo) [Remove-Item], IOException
+    + FullyQualifiedErrorId : RemoveFileSystemItemIOError,Microsoft.PowerShell.Commands.RemoveItemCommand
+  FAIL  auto-start off is honest when the shortcut cannot be deleted
+        expected $false but got $true (a blocked delete must report failure to the caller)
+  PASS  auto-start off succeeds quietly when the shortcut can be deleted
+  PASS  auto-start off with no shortcut present is a no-op success
+  PASS  a link the shell cannot open reports instead of escaping the click handler
+  --- 12 run, 4 failed
+exit=1
+
+--- restored ---
+ BatteryWidget.ps1 | 186 ++++++++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 159 insertions(+), 27 deletions(-)
+  PASS  a link the shell cannot open reports instead of escaping the click handler
+  --- 12 run, 0 failed
