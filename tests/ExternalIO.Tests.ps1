@@ -27,6 +27,7 @@
 . (Import-WidgetFunction @(
         'Write-IoFailure', 'Open-ExternalLink',
         'Get-ConfigPath', 'Read-ConfigField', 'Import-Config', 'Save-Config',
+        'Read-TextFileShared', 'Write-TextFileAtomic',
         'Get-StartupShortcutPath', 'Get-AutoStartEnabled', 'Set-AutoStart'))
 
 # Notifications stay off (no forms in a test host); failures are recorded only.

@@ -1225,6 +1225,46 @@ function Read-ConfigField {
     }
 }
 
+function Read-TextFileShared {
+    <#
+    .SYNOPSIS
+        Reads a whole text file, tolerating a writer that is mid-swap.
+
+    .DESCRIPTION
+        The other half of Write-TextFileAtomic. Swapping the new file in is a
+        rename, and a rename briefly cannot happen while someone holds the old
+        file open - so both sides can lose the coin toss: the reader gets
+        "the process cannot access the file", the writer gets a sharing
+        violation. Import-Config could not tell that transient collision apart
+        from a corrupt file: it reset every setting to defaults and quarantined
+        a perfectly good config as .corrupt.
+
+        So: open with FileShare.Delete (so a pending rename is not blocked BY
+        this read) and retry a locked file a few times. Only a file we still
+        cannot open after that, or one that will not parse, is a real failure.
+    #>
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [int]$Attempts = 12
+    )
+    $share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+    $lastErr = $null
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, $share)
+            try {
+                $reader = New-Object System.IO.StreamReader($stream, $true)
+                return $reader.ReadToEnd()
+            } finally { $stream.Dispose() }
+        } catch [System.IO.IOException] {
+            $lastErr = $_
+            Start-Sleep -Milliseconds (5 * $attempt)
+        }
+    }
+    throw $lastErr
+}
+
 function Import-Config {
     [OutputType([hashtable])]
     param(
@@ -1251,7 +1291,10 @@ function Import-Config {
     }
     if (Test-Path $configPath) {
         try {
-            $json = Get-Content $configPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            $raw = Read-TextFileShared -Path $configPath
+            # An empty file yields $null, exactly as `Get-Content -Raw` did:
+            # every field then falls back, with nothing reported.
+            $json = if ([string]::IsNullOrWhiteSpace($raw)) { $null } else { $raw | ConvertFrom-Json -ErrorAction Stop }
 
             # Position is a pair: take it only if BOTH coordinates parse
             $xv = Read-ConfigField -Raw $json.X -Fallback $null -Parse { param($r) [int]$r }
@@ -1343,6 +1386,70 @@ function Import-Config {
     return $default
 }
 
+function Write-TextFileAtomic {
+    <#
+    .SYNOPSIS
+        Writes $Content to $Path so that readers only ever see the complete old
+        file or the complete new one - never a half-written one.
+
+    .DESCRIPTION
+        Set-Content truncates the target and then streams into it. The config
+        file is the one piece of BatteryPill state shared BETWEEN processes
+        (a launching instance loads it while the running one saves), so that
+        truncate leaves a window in which the file on disk is empty or half a
+        JSON document. Import-Config cannot tell that apart from corruption:
+        it resets position, theme, accent, size and history to defaults. The
+        same window loses the file outright if the process dies mid-write -
+        which the documented "Stop-Process the widget, then rebuild" loop does
+        on purpose.
+
+        Instead: write a sibling temp file, then swap it in with a single
+        rename. ReplaceFile/MoveFile are atomic for readers - the directory
+        entry points at one complete file or the other. A concurrent reader can
+        still make the swap itself fail with a sharing violation, which is
+        transient, so it is retried before giving up.
+    #>
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content,
+        [int]$Attempts = 12
+    )
+    $dir = Split-Path -Parent $Path
+    if (-not $dir) { $dir = '.' }
+    # Same directory as the target: a rename is only atomic within one volume.
+    $tmp = Join-Path $dir ('.{0}.{1}.tmp' -f (Split-Path -Leaf $Path), [guid]::NewGuid().ToString('N').Substring(0, 8))
+    # No BOM: matches what Set-Content wrote before, so an existing config file
+    # keeps parsing byte-for-byte the same way.
+    [System.IO.File]::WriteAllText($tmp, $Content, (New-Object System.Text.UTF8Encoding $false))
+    try {
+        $lastErr = $null
+        for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+            try {
+                if ([System.IO.File]::Exists($Path)) {
+                    # [NullString]::Value, not $null: PowerShell passes a bare
+                    # $null to a [string] parameter as "", and File.Replace
+                    # rejects an empty backup path ("The path is not of a legal
+                    # form") on every single call.
+                    [System.IO.File]::Replace($tmp, $Path, [NullString]::Value)
+                } else {
+                    [System.IO.File]::Move($tmp, $Path)
+                }
+                return
+            } catch {
+                $lastErr = $_
+                Start-Sleep -Milliseconds (5 * $attempt)
+            }
+        }
+        throw $lastErr
+    } finally {
+        # Never leave debris next to the user's config.
+        if ([System.IO.File]::Exists($tmp)) {
+            try { [System.IO.File]::Delete($tmp) } catch { }
+        }
+    }
+}
+
 function Save-Config {
     [OutputType([void])]
     param(
@@ -1364,7 +1471,7 @@ function Save-Config {
                 }
             }
         }
-        @{
+        $json = @{
             X                  = $script:config.X
             Y                  = $script:config.Y
             Opacity            = $script:config.Opacity
@@ -1380,11 +1487,14 @@ function Save-Config {
             EmaRate            = $script:emaRate
             LastValidRate      = $script:lastValidRate
             ConfigSavedAt      = (Get-Date).ToString("o")
-        } | ConvertTo-Json -Depth 3 | Set-Content $configPath -Force -ErrorAction Stop
-        # -ErrorAction Stop is load-bearing: Set-Content's write errors are
-        # NON-terminating, so without it the catch below never ran and a
-        # read-only file or a missing folder lost every setting change with no
-        # error at all - the exact silent failure the card was meant to report.
+        } | ConvertTo-Json -Depth 3
+        Write-TextFileAtomic -Path $configPath -Content $json
+        # Write-TextFileAtomic replaced `Set-Content $configPath -ErrorAction
+        # Stop`. -ErrorAction Stop was load-bearing (Set-Content's write errors
+        # are non-terminating, so the catch below never ran and a read-only file
+        # lost every setting change silently); the helper throws outright, so
+        # the catch still fires. What it adds is that the write is all-or-
+        # nothing: no reader, and no crash, can catch the config half-written.
     } catch {
         Write-IoFailure -Operation "Couldn't save your settings" -Path $configPath `
             -Reason $_.Exception.Message `

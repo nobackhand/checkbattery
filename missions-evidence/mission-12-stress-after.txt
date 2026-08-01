@@ -1,0 +1,10 @@
+=== mission 12: the same stress test against the FIXED source ===
+
+  PASS  stress: every worker process completed and reported
+  PASS  stress: a concurrent save never makes a load reset the user settings
+  PASS  stress: no save or load reported an I/O failure
+  PASS  stress: the surviving file is a complete, valid config
+  PASS  stress: no config was quarantined as corrupt
+  PASS  a failed save leaves the previous config intact, not truncated
+  --- 6 run, 0 failed
+exit=0

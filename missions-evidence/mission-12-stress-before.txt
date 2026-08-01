@@ -1,0 +1,13 @@
+=== negative control: new stress test vs PRE-FIX BatteryWidget.ps1 ===
+  PASS  stress: every worker process completed and reported
+  FAIL  stress: a concurrent save never makes a load reset the user settings
+        expected 0 [Int32] but got 177 [Int32] (saw a half-written config: writer: C:\Users\daniel\AppData\Local\Temp\bp-race-18920\BatteryWidget.config.json - Stream was not readable. - Changes will be lost when BatteryPill closes - check the folder is writable | writer: C:\Users\daniel\AppData\Local\Temp\bp-race-18920\BatteryWidget.config.json - Stream was not readable. - Changes will be lost when BatteryPill closes - check the folder is writable | reader: reset to defaults (X=-1, Theme=dark) | reader: reset to defaults (X=-1, Theme=dark) | reader: reset to defaults (X=-1, Theme=dark))
+  FAIL  stress: no save or load reported an I/O failure
+        expected 0 [Int32] but got 294 [Int32] (I/O failures under concurrency: writer: C:\Users\daniel\AppData\Local\Temp\bp-race-18920\BatteryWidget.config.json - Stream was not readable. - Changes will be lost when BatteryPill closes - check the folder is writable | writer: C:\Users\daniel\AppData\Local\Temp\bp-race-18920\BatteryWidget.config.json - Stream was not readable. - Changes will be lost when BatteryPill closes - check the folder is writable | reader: reset to defaults (X=-1, Theme=dark) | reader: reset to defaults (X=-1, Theme=dark) | reader: reset to defaults (X=-1, Theme=dark))
+  FAIL  stress: the surviving file is a complete, valid config
+        final X should be one of the written values, got 
+  PASS  stress: no config was quarantined as corrupt
+  FAIL  a failed save leaves the previous config intact, not truncated
+        function not found in BatteryWidget.ps1: Write-TextFileAtomic
+  --- 6 run, 4 failed
+exit=1

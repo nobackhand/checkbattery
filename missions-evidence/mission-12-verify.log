@@ -1,0 +1,208 @@
+
+==============================================================
+== lint (tools/check-source.ps1)
+==============================================================
+=== BatteryPill source check (C:\myprojects\checkbattery) ===
+PASS: BatteryWidget.ps1 has a UTF-8 BOM
+PASS: BatteryWidget.ps1 parses with 0 errors
+INFO: no non-ASCII characters inside string tokens
+PASS: CheckBattery.ps1 parses with 0 errors
+PASS: Build.ps1 parses with 0 errors
+PASS: PSScriptAnalyzer reports 0 error/warning finding(s)
+=== BatteryPill format (C:\myprojects\checkbattery) [check] ===
+---
+19 file(s) scanned, 0 unformatted
+RESULT: PASS
+PASS: every .ps1 is autoformatted
+=== BatteryPill type check (C:\myprojects\checkbattery) ===
+INFO: checked 19 file(s), 78 function(s), 143 parameter(s)
+PASS: every function has typed parameters and a declared [OutputType]
+RESULT: PASS
+---
+RESULT: PASS (0 warning(s))
+-- lint (tools/check-source.ps1) OK in 10s
+
+==============================================================
+== tests (scripts/run-tests.ps1)
+==============================================================
+=== BatteryPill tests (C:\myprojects\checkbattery\tests) ===
+Adversarial.Tests.ps1
+  PASS  Read-DeviceNumber accepts an in-range number
+  PASS  Read-DeviceNumber accepts a numeric string (WMI hands back strings)
+  PASS  Read-DeviceNumber rejects the UInt32 sentinel that used to throw on [int]
+  PASS  Read-DeviceNumber rejects $null instead of letting it become a silent 0
+  PASS  Read-DeviceNumber rejects a non-numeric string
+  PASS  Read-DeviceNumber rejects an array (the dual-battery shape)
+  PASS  Read-DeviceNumber rejects a ONE-element array too
+  PASS  Read-DeviceNumber rejects a hashtable
+  PASS  Read-DeviceNumber rejects NaN and Infinity
+  PASS  Read-DeviceNumber rejects out-of-range values on both sides
+  PASS  Read-DeviceNumber keeps the boundaries themselves
+  PASS  healthy WMI reading still parses (the control case)
+  PASS  EstimatedRunTime 4294967295 does not crash the tick (it used to throw)
+  PASS  TimeToFullCharge 4294967295 while charging does not crash
+  PASS  EstimatedRunTime as a string does not crash
+  PASS  percent 255 (the WMI unknown sentinel) is not shown as 255%
+  PASS  percent $null does not become a false, alarming 0%
+  PASS  an unreadable percent is not reported as Critical
+  PASS  a real 8% still reports Critical (the guard did not disable the alarm)
+  PASS  negative percent is rejected
+  PASS  every numeric property arriving as garbage at once does not crash
+  PASS  every property arriving as $null does not crash
+  PASS  a dual-battery ARRAY is reduced to the first pack, not cast to [int]
+  PASS  array-valued properties (member access over two packs) do not crash
+  PASS  capacity of 0 does not produce a divide-by-zero wear figure
+  PASS  a FullChargeCapacity above DesignCapacity clamps wear at 0, never negative
+  PASS  out-of-range BatteryStatus is treated as unknown, not as a state
+  PASS  an array-valued BatteryStatus yields real booleans, not a filtered array
+  PASS  a numeric-string BatteryStatus still reads as the state it names
+  PASS  no WMI instance at all falls back to .NET without crashing
+  PASS  .NET BatteryLifePercent of 255 (its unknown value) is not shown as 25500%
+  PASS  a garbage BatteryChargeStatus does not crash the no-battery probe
+  PASS  the real no-battery flag (128) is still honoured
+  PASS  a garbage BatteryLifeRemaining does not crash the time fallback
+  PASS  an absurd runtime is suppressed rather than displayed
+  PASS  an object with no battery properties at all does not crash
+  PASS  a well-formed config still loads every field (the control case)
+  PASS  every field holding the wrong type falls back field-by-field
+  PASS  an enum field holding an unlisted value falls back instead of being trusted
+  PASS  out-of-range numbers are clamped into the range the UI can render
+  PASS  negative and zero refresh intervals cannot become a 100ms WMI storm
+  PASS  an Opacity of NaN never reaches Form.Opacity
+  PASS  an Opacity of Infinity is clamped, not propagated
+  PASS  a number too large for [int] falls back instead of throwing
+  PASS  a half-written position (X only) is ignored - the pair moves together
+  PASS  truncated JSON degrades to defaults and reports itself
+  PASS  a JSON array where an object belongs does not crash
+  PASS  a bare JSON scalar does not crash
+  PASS  an empty config file does not crash
+  PASS  BatteryHistory holding a scalar instead of a list does not crash
+  PASS  history entries with junk percents or timestamps are dropped, good ones kept
+  PASS  an oversized history is capped before it reaches the paint loop
+  PASS  a persisted EMA state with a junk timestamp is discarded, not trusted
+  PASS  a config with no fields at all yields the full default set
+  PASS  Read-ConfigField never lets a throwing parser escape
+  PASS  a normal powercfg listing parses (the control case)
+  PASS  a line whose id is not a GUID is dropped, not passed to powercfg
+  PASS  a plan row with an empty name is dropped (no unlabelled menu item)
+  PASS  empty, null and non-matching powercfg output yields an empty list
+  PASS  a localized name with brackets and unicode still parses
+  PASS  Set-ActivePowerPlan refuses an id that is not a GUID - without shelling out
+  PASS  a missing theme key means dark, not a crash
+  PASS  a theme value of 1 means light, 0 means dark
+  PASS  a hand-edited theme value of the wrong TYPE returns a real boolean
+  PASS  CheckBattery.ps1 ships the same validator, and it behaves the same
+  PASS  CheckBattery.ps1 takes the first pack of a dual-battery array
+  --- 66 run, 0 failed
+Appearance.Tests.ps1
+  PASS  no battery (-1) is neutral slate, not critical red
+  PASS  charging is yellow at any level
+  PASS  critical (<=10%) is red
+  PASS  low (11-20%) is orange
+  PASS  medium (21-50%) is yellow
+  PASS  New-RoundedRectPath returns a closed four-arc path
+  PASS  New-RoundedRectPath honours a non-zero origin
+  --- 7 run, 0 failed
+  PASS  stress: every worker process completed and reported
+  PASS  stress: a concurrent save never makes a load reset the user settings
+  PASS  stress: no save or load reported an I/O failure
+  PASS  stress: the surviving file is a complete, valid config
+  PASS  stress: no config was quarantined as corrupt
+  PASS  a failed save leaves the previous config intact, not truncated
+  --- 6 run, 0 failed
+Estimation.Tests.ps1
+  PASS  Update-EMARate seeds from the first reading instead of easing up from zero
+  PASS  Update-EMARate smooths a jump instead of snapping to it
+  PASS  Update-EMARate keeps only the last 10 raw rates
+  PASS  Update-EMARate speeds up (alpha 0.30) when the rate is stable
+  PASS  Update-EMARate dampens harder (alpha 0.08) when the rate is volatile
+  PASS  Update-EMARate will not read a nonsensical window as a rock-steady rate
+  PASS  Update-EMARate returns a whole mW figure but keeps full precision internally
+  PASS  Get-CapacityDerivedRate has nothing to measure on the first sample
+  PASS  Get-CapacityDerivedRate refuses to extrapolate from under 30 seconds
+  PASS  Get-CapacityDerivedRate resyncs when the wall clock jumps backward
+  PASS  Get-CapacityDerivedRate measures mW from the capacity drop
+  PASS  Get-CapacityDerivedRate advances its sample so the next reading is incremental
+  PASS  Get-CapacityDerivedRate reports nothing while capacity is rising
+  PASS  computes time remaining from the smoothed discharge rate
+  PASS  holds the last valid rate through a momentary WMI dropout
+  PASS  suppresses the estimate during the post-plug hysteresis window
+  PASS  does not reuse the pre-unplug discharge rate as a charge rate
+  PASS  uses the real charge rate once the charger reports one
+  PASS  unplugging does not reuse the charge rate as a discharge rate either
+  PASS  drops a held rate that has gone stale (older than 60s)
+  PASS  still holds a rate that is just inside the 60s freshness window
+  PASS  invents nothing on a cold start with no rate at all
+  PASS  reports no estimate when the pack capacity is unknown
+  PASS  reports no estimate when the battery reads 0%
+  PASS  charging at 100% is 0 minutes to full, not a full-pack runtime
+  PASS  prefers the capacity-derived rate after 3 consecutive divergent samples
+  PASS  a single divergent sample does not stick - agreement resets the counter
+  --- 27 run, 0 failed
+  PASS  Write-IoFailure records path, reason and advice in one detail line
+  PASS  corrupt config: returns defaults instead of half-applied junk
+  PASS  corrupt config: reports an actionable failure naming file, reason and fallout
+  PASS  corrupt config: the unreadable file is preserved, not left to be overwritten
+  PASS  readable config still loads, and records nothing
+  PASS  missing config is not a failure - first run just gets defaults
+  PASS  unwritable config: reports an actionable failure instead of losing settings quietly
+  PASS  writable config: saves and records nothing
+  PASS  auto-start off is honest when the shortcut cannot be deleted
+  PASS  auto-start off succeeds quietly when the shortcut can be deleted
+  PASS  auto-start off with no shortcut present is a no-op success
+  PASS  a link the shell cannot open reports instead of escaping the click handler
+  --- 12 run, 0 failed
+Formatting.Tests.ps1
+  PASS  Format-Duration writes hours and minutes without zero-padding
+  PASS  Format-Duration drops the hour part below 60 minutes
+  PASS  Format-Duration renders zero as 0m
+  PASS  Format-Duration renders an exact hour as Xh 0m
+  PASS  Format-Duration handles multi-day estimates
+  PASS  Read-ConfigField returns the fallback when the value is absent
+  PASS  Read-ConfigField returns the fallback when parsing throws
+  PASS  Read-ConfigField returns the fallback when the parser rejects the value
+  PASS  Read-ConfigField returns the parsed value when it is valid
+  --- 9 run, 0 failed
+Harness.Tests.ps1
+  PASS  a body that emits a non-terminating error fails the file
+  PASS  a clean body still reports PASS
+  PASS  Assert-Equal rejects a bool matched against a truthy non-bool
+  PASS  Assert-Equal rejects a number matched against its string form
+  PASS  Assert-Equal still matches equal numbers across widths
+  PASS  Assert-Equal compares collections element-wise
+  PASS  Assert-Equal reports collections readably, not as System.Object[]
+  PASS  Assert-Equal handles null on either side
+  PASS  a file that runs zero tests fails instead of reporting a hollow PASS
+  PASS  Import-WidgetFunction throws for a function that does not exist
+  PASS  Import-WidgetFunction returns a usable definition
+  --- 11 run, 0 failed
+---
+RESULT: PASS (7 test file(s))
+-- tests (scripts/run-tests.ps1) OK in 14s
+
+==============================================================
+== build (Build.ps1)
+==============================================================
+Removing previous build: BatteryPill-1.1.9.exe...
+Compiling BatteryWidget.ps1 -> BatteryPill-1.1.9.exe
+PS2EXE-GUI v0.5.0.34 by Ingo Karstein, reworked and GUI support by Markus Scholtes
+
+
+Reading input file C:\myprojects\checkbattery\BatteryWidget.ps1
+Compiling file...
+
+Output file C:\myprojects\checkbattery\BatteryPill-1.1.9.exe written
+
+Build successful!
+  Output: C:\myprojects\checkbattery\BatteryPill-1.1.9.exe
+  Size:   238 KB
+-- build (Build.ps1) OK in 4s
+
+==============================================================
+== verify summary
+==============================================================
+  ok    lint (tools/check-source.ps1) (10s)
+  ok    tests (scripts/run-tests.ps1) (14s)
+  ok    build (Build.ps1) (4s)
+  total: 14s
+RESULT: PASS

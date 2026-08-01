@@ -29,7 +29,8 @@
         'Read-DeviceNumber', 'Get-BatteryInfo', 'Get-SmoothedTimeRemaining',
         'Update-EMARate', 'Get-CapacityDerivedRate',
         'Get-PowerPlans', 'Set-ActivePowerPlan', 'Get-SystemTheme',
-        'Write-IoFailure', 'Read-ConfigField', 'Import-Config', 'Get-ConfigPath'))
+        'Write-IoFailure', 'Read-ConfigField', 'Import-Config', 'Get-ConfigPath',
+        'Read-TextFileShared'))
 
 Write-Host 'Adversarial.Tests.ps1'
 
