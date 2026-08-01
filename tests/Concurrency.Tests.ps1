@@ -10,7 +10,7 @@
 # serialized by the pump. Even the two Microsoft.Win32.SystemEvents handlers -
 # the one place that LOOKS cross-thread - share the app's STA thread, because
 # SystemEvents only spins up its own window thread when it is first initialized
-# from a non-STA thread (see missions-evidence\mission-12-systemevents-thread.txt).
+# from a non-STA thread (see history\missions-evidence\mission-12-systemevents-thread.txt).
 #
 # BatteryWidget.config.json is different. It outlives the process, and it is
 # read and written by whole processes: the widget saves on drag, on every

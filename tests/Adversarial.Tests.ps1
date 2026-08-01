@@ -34,7 +34,7 @@
 
 Write-Host 'Adversarial.Tests.ps1'
 
-# powercfg GUID shape, as BatteryWidget.ps1 defines it at script scope.
+# powercfg GUID shape, as the widget source defines it at script scope.
 $script:powerPlanGuidPattern = '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
 
 # Notifications off: failures are recorded, not rendered (no forms in a test host).

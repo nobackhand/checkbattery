@@ -101,7 +101,7 @@ TOTAL_START=$(date +%s)
 
 # 1) Lint / source health: UTF-8 BOM gate + parse check of every .ps1 we ship.
 # 2) Full test suite: every tests/*.Tests.ps1.
-# 3) Build: compile BatteryWidget.ps1 to BatteryPill-<version>.exe via ps2exe.
+# 3) Build: assemble src/*.ps1 and compile to BatteryPill-<version>.exe via ps2exe.
 if [ "$JOBS" -gt 1 ]; then
   run_stage_to_log lint  "$LINT_TIMEOUT"  "${PS_ARGS[@]}" tools/check-source.ps1 &
   run_stage_to_log tests "$TEST_TIMEOUT"  "${PS_ARGS[@]}" scripts/run-tests.ps1 &

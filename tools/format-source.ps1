@@ -12,9 +12,10 @@
 #
 # Two properties this tool guarantees, because BatteryPill is unusually
 # sensitive to both:
-#   * BOM preservation. BatteryWidget.ps1 MUST keep its UTF-8 BOM (PS 5.1 reads
-#     a BOM-less .ps1 as ANSI and mangles its non-ASCII display strings into a
-#     parser error). Each file is rewritten with the BOM state it already had.
+#   * BOM preservation. The widget source modules (src\*.ps1) MUST keep their
+#     UTF-8 BOM (PS 5.1 reads a BOM-less .ps1 as ANSI and mangles non-ASCII
+#     characters into a parser error). Each file is rewritten with the BOM
+#     state it already had.
 #   * Line-ending preservation. A file's dominant newline (CRLF or LF) is
 #     restored after formatting so reformatting never shows up as a whole-file
 #     diff.

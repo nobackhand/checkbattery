@@ -1,7 +1,5 @@
 # Compiled executable (local build artifacts at repo root)
 BatteryPill-*.exe
-# ...but the released exe ships with the website so git-driven deploys serve it
-!docs/BatteryPill-*.exe
 
 # Runtime config (user-specific position data)
 BatteryWidget.config.json
@@ -11,4 +9,6 @@ debug_dpi.ps1
 
 # Claude plans
 .claude/
-.vercel
+
+# Playwright MCP session logs
+.playwright-mcp/

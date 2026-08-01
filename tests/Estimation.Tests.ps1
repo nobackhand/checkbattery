@@ -1,6 +1,6 @@
 # tests\Estimation.Tests.ps1
 #
-# Regression suite for the battery-estimation module in BatteryWidget.ps1 - the
+# Regression suite for the battery-estimation module (src\030-estimation.ps1) - the
 # three functions that turn raw WMI readings into the single number the pill
 # exists to show:
 #
@@ -18,14 +18,14 @@
 # capacity cross-validation).
 #
 # Every test below was confirmed to FAIL against a deliberate one-line mutation
-# of the code it covers; see missions-evidence/mission-09-mutation.log.
+# of the code it covers; see history/missions-evidence/mission-09-mutation.log.
 
 . (Join-Path $PSScriptRoot '_harness.ps1')
 . (Import-WidgetFunction 'Update-EMARate', 'Get-CapacityDerivedRate', 'Get-SmoothedTimeRemaining')
 
 Write-Host 'Estimation.Tests.ps1'
 
-# The module-level estimator state, exactly as BatteryWidget.ps1 initializes it.
+# The module-level estimator state, exactly as the widget source initializes it.
 function Reset-EstimatorState {
     [OutputType([void])]
     param()

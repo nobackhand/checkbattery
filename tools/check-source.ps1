@@ -2,15 +2,18 @@
 #
 # Source health gate for BatteryPill (Windows PowerShell 5.1).
 # Checks, relative to the repo root (parent of this tools folder):
-#   1. BatteryWidget.ps1 starts with a UTF-8 BOM (EF BB BF). PS 5.1 reads
-#      BOM-less .ps1 files as ANSI, which mangles the non-ASCII display
-#      strings into parser errors at launch ("powershell -File" fails).
-#   2. BatteryWidget.ps1 parses with zero errors.
-#      NOTE: the Parser API reads the file as UTF-8 regardless of BOM, so a
+#   1. Every widget source module (src\*.ps1) starts with a UTF-8 BOM
+#      (EF BB BF). PS 5.1 reads BOM-less .ps1 files as ANSI, which mangles
+#      non-ASCII characters into parser errors at launch.
+#   2. Every src module parses with zero errors, and so does the assembled
+#      whole (the byte-exact concatenation tools\_assemble.ps1 produces -
+#      what actually ships).
+#      NOTE: the Parser API reads files as UTF-8 regardless of BOM, so a
 #      clean parse here does NOT prove the BOM is present - check 1 does that.
-#   3. Inventory of non-ASCII characters inside string tokens (WARN only -
-#      these are exactly the characters that depend on the BOM to survive).
-#   4. CheckBattery.ps1 and Build.ps1 also parse cleanly.
+#   3. Inventory of non-ASCII characters inside string tokens of the assembled
+#      source (WARN only - these are exactly the characters that depend on the
+#      BOM to survive).
+#   4. CheckBattery.ps1, Build.ps1 and BatteryWidget.Run.ps1 also parse cleanly.
 #   5. PSScriptAnalyzer reports zero Error/Warning findings across every .ps1
 #      in the repo, using PSScriptAnalyzerSettings.psd1 (which documents the
 #      one-line justification for each rule that is switched off).
@@ -30,34 +33,61 @@ $warnings = 0
 
 Write-Host "=== BatteryPill source check ($repoRoot) ==="
 
-# ---- 1) BOM check on BatteryWidget.ps1 ----
-$mainPath = Join-Path $repoRoot 'BatteryWidget.ps1'
-if (-not (Test-Path $mainPath)) {
-    Write-Host "FAIL: not found: $mainPath"
+# ---- 1) BOM check on every widget source module (src\*.ps1) ----
+. (Join-Path $PSScriptRoot '_assemble.ps1')
+$srcDir = Join-Path $repoRoot 'src'
+$moduleFiles = @()
+if (Test-Path $srcDir) {
+    $moduleFiles = @(Get-ChildItem -Path $srcDir -Filter '*.ps1' -File | Sort-Object Name)
+}
+if ($moduleFiles.Count -eq 0) {
+    Write-Host "FAIL: no widget source modules found in $srcDir"
     Write-Host 'RESULT: FAIL'
     exit 1
 }
-$head = New-Object byte[] 3
-$fs = [System.IO.File]::OpenRead($mainPath)
-$bytesRead = $fs.Read($head, 0, 3)
-$fs.Close()
-if ($bytesRead -eq 3 -and $head[0] -eq 0xEF -and $head[1] -eq 0xBB -and $head[2] -eq 0xBF) {
-    Write-Host 'PASS: BatteryWidget.ps1 has a UTF-8 BOM'
+$bomMissing = 0
+foreach ($moduleFile in $moduleFiles) {
+    $head = New-Object byte[] 3
+    $fs = [System.IO.File]::OpenRead($moduleFile.FullName)
+    $bytesRead = $fs.Read($head, 0, 3)
+    $fs.Close()
+    if (-not ($bytesRead -eq 3 -and $head[0] -eq 0xEF -and $head[1] -eq 0xBB -and $head[2] -eq 0xBF)) {
+        Write-Host "FAIL: src\$($moduleFile.Name) is MISSING its UTF-8 BOM (first bytes must be EF BB BF)."
+        $bomMissing++
+    }
+}
+if ($bomMissing -eq 0) {
+    Write-Host "PASS: all $($moduleFiles.Count) src module(s) have a UTF-8 BOM"
 } else {
-    Write-Host 'FAIL: BatteryWidget.ps1 is MISSING its UTF-8 BOM (first bytes must be EF BB BF).'
-    Write-Host '      PS 5.1 will read the file as ANSI and mangle non-ASCII display strings into parser errors.'
+    Write-Host '      PS 5.1 will read a BOM-less file as ANSI and mangle non-ASCII characters into parser errors.'
     Write-Host '      Fix: [System.IO.File]::WriteAllText($p, [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8), (New-Object System.Text.UTF8Encoding $true))'
     $failures++
 }
 
-# ---- 2) Parse BatteryWidget.ps1 (keep tokens for check 3) ----
+# ---- 2) Parse every src module, then the assembled whole (tokens for check 3) ----
+$moduleParseFailures = 0
+foreach ($moduleFile in $moduleFiles) {
+    $errs = $null
+    $null = [System.Management.Automation.Language.Parser]::ParseFile($moduleFile.FullName, [ref]$null, [ref]$errs)
+    if ($errs.Count -gt 0) {
+        Write-Host "FAIL: src\$($moduleFile.Name) has $($errs.Count) parser error(s):"
+        foreach ($e in $errs) { Write-Host "      line $($e.Extent.StartLineNumber): $($e.Message)" }
+        $moduleParseFailures++
+    }
+}
+if ($moduleParseFailures -eq 0) {
+    Write-Host "PASS: all $($moduleFiles.Count) src module(s) parse with 0 errors"
+} else {
+    $failures++
+}
+
 $tokens = $null
 $parseErrors = $null
-$null = [System.Management.Automation.Language.Parser]::ParseFile($mainPath, [ref]$tokens, [ref]$parseErrors)
+$null = [System.Management.Automation.Language.Parser]::ParseInput((Get-AssembledWidgetText), [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count -eq 0) {
-    Write-Host 'PASS: BatteryWidget.ps1 parses with 0 errors'
+    Write-Host 'PASS: the assembled widget source parses with 0 errors'
 } else {
-    Write-Host "FAIL: BatteryWidget.ps1 has $($parseErrors.Count) parser error(s):"
+    Write-Host "FAIL: the assembled widget source has $($parseErrors.Count) parser error(s):"
     $shown = 0
     foreach ($e in $parseErrors) {
         if ($shown -ge 10) { Write-Host "      ... and $($parseErrors.Count - 10) more"; break }
@@ -100,7 +130,7 @@ if ($hits.Count -eq 0) {
 }
 
 # ---- 4) Parse-check sibling scripts ----
-foreach ($name in @('CheckBattery.ps1', 'Build.ps1')) {
+foreach ($name in @('CheckBattery.ps1', 'Build.ps1', 'BatteryWidget.Run.ps1')) {
     $p = Join-Path $repoRoot $name
     if (-not (Test-Path $p)) {
         Write-Host "FAIL: not found: $p"
