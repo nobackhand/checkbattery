@@ -1,0 +1,35 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Warm up the modules verify.sh's stages need, in Windows PowerShell 5.1
+      # (shell: powershell) so they land in the module path the stages use.
+      # Without this, a cold runner pays the Install-Module bootstrap inside a
+      # stage and can blow its timeout.
+      - name: Warm up PowerShell modules
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          if (-not (Get-PackageProvider -ListAvailable -Name NuGet -ErrorAction SilentlyContinue)) {
+              Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+          }
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+              Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
+          }
+          if (-not (Get-Module -ListAvailable -Name ps2exe)) {
+              Install-Module -Name ps2exe -Scope CurrentUser -Force
+          }
+
+      - name: Run verify gate
+        shell: bash
+        run: ./scripts/verify.sh
