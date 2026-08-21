@@ -393,6 +393,15 @@ function Show-SettingsPanel {
             $modeMap = @("time", "percent", "both")
             $script:config.DisplayMode = $modeMap[$displayCombo.SelectedIndex]
             Update-PillSize
+            # Update-PillSize resizes and re-fonts the pill but does NOT rebuild
+            # its text - only Update-FloatingBar does. Without this, picking
+            # "Both" here grew the pill to two lines while $barDisplayText2 was
+            # still empty, so it sat noticeably taller showing one stale line
+            # until the next refresh tick (up to 10s on the slowest setting).
+            # Invoke-CycleDisplayMode already does exactly this on pill click.
+            if ($null -ne $script:lastBatteryInfo) {
+                Update-FloatingBar -BatteryInfo $script:lastBatteryInfo
+            }
             Save-Config
         })
     Set-DarkComboBox -Combo $displayCombo
@@ -430,6 +439,12 @@ function Show-SettingsPanel {
             $sizeMap = @("compact", "normal", "expanded")
             $script:config.PillSize = $sizeMap[$sizeCombo.SelectedIndex]
             Update-PillSize
+            # Same reason as the display combo: "compact" drops the second line
+            # entirely (FontSize2 = 0), so the pill must re-derive its text for
+            # the new geometry instead of waiting for the next tick.
+            if ($null -ne $script:lastBatteryInfo) {
+                Update-FloatingBar -BatteryInfo $script:lastBatteryInfo
+            }
             Save-Config
         })
     Set-DarkComboBox -Combo $sizeCombo
