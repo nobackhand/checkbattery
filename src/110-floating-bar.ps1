@@ -155,7 +155,13 @@ function New-FloatingBar {
 
     # Region-based clipping for rounded corners (no TransparencyKey = no purple fringe)
     $form.BackColor = $script:theme.PillBg  # themed: hardcoded dark left a fringe ring around the pill in Light theme
-    $rd = ($dims.Height - 2)   # capsule: corner diameter spans the pill height
+    # $script:pillRadius is what the Paint handler measures its own path from.
+    # It used to be set ONLY by Update-PillSize, which nothing calls at startup:
+    # every fresh launch painted the fill/border as a radius-8 rounded rect
+    # inside a radius-16 capsule Region, so the pill's ends looked clipped flat
+    # until the user happened to change pill size or display mode.
+    $script:pillRadius = [int](($dims.Height - 2) / 2)
+    $rd = $script:pillRadius * 2   # capsule: corner diameter spans the pill height
     $regionPath = New-RoundedRectPath -Right ($dims.Width - $rd - 1) -Bottom ($dims.Height - $rd - 1) -Diameter $rd
     $form.Region = New-Object System.Drawing.Region($regionPath)
     $regionPath.Dispose()
@@ -998,6 +1004,18 @@ function Update-FloatingBar {
             $script:lowBatOpacityPulse = $false
             $script:floatingBar.Opacity = $script:config.Opacity
         }
+    } elseif ($BatteryInfo.Percent -lt 0) {
+        # No source gave a percent this tick. That is not "the battery is at 0",
+        # so it must not raise an alarm - and it must not silently HOLD one
+        # either: every band below is a `-le`/`-gt` test that -1 falls through,
+        # so a pill already pulsing red kept pulsing (and oscillating its
+        # opacity) for as long as the reading stayed unavailable.
+        $script:lowBatPulseActive = $false
+        $script:lowBatBorderAlpha = 0
+        if ($script:lowBatOpacityPulse) {
+            $script:lowBatOpacityPulse = $false
+            $script:floatingBar.Opacity = $script:config.Opacity
+        }
     } else {
         $pct = $BatteryInfo.Percent
         if ($pct -gt 15) {
@@ -1024,8 +1042,11 @@ function Update-FloatingBar {
                 Show-BatteryNotification -Message "Low Battery - $pct%" -SubMessage "Connect charger soon"
             }
         }
-        # 5% — critical notification
-        if ($pct -le 5 -and $pct -gt 0) {
+        # 5% and below — critical notification. `-ge 0`, not `-gt 0`: a battery
+        # reporting a hard 0% fell through EVERY band, so the one moment the
+        # user most needs the critical card was the one moment it never fired.
+        # (-1 "no reading" is handled by the branch above, not here.)
+        if ($pct -le 5 -and $pct -ge 0) {
             $script:lowBatPulseActive = $true
             $script:lowBatOpacityPulse = $true
             if (-not $script:lowBatShown5) {

@@ -280,6 +280,14 @@ function Get-BatteryInfo {
         $script:lastStateChange.State = $info.StatusText
     }
 
+    # A backward wall-clock jump (DST, an NTP correction, the machine waking
+    # with a stale RTC) makes this span negative, and [math]::Floor(-0.4) = -1
+    # with .Minutes = -24 rendered as the nonsense "-1:-24". Resync the anchor
+    # to now and report 0:00 - the same self-heal Get-CapacityDerivedRate does.
+    if ($Now -lt $script:lastStateChange.Time) {
+        $script:lastStateChange.Time = $Now
+        $script:lastStateChange.Percent = $info.PercentExact
+    }
     $elapsed = $Now - $script:lastStateChange.Time
     $elapsedHours = [math]::Floor($elapsed.TotalHours)
     $elapsedMins = $elapsed.Minutes

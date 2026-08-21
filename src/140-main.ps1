@@ -29,7 +29,7 @@ function Update-TrayIcon {
         $script:cachedIconFullyCharged = $info.IsFullyCharged
     }
 
-    # Build tooltip (max 127 chars)
+    # Build tooltip (NotifyIcon.Text caps at 63 chars)
     if ($info.NoBattery) {
         $script:notifyIcon.Text = "BatteryPill - on AC power (no battery detected)"
     } else {
@@ -37,7 +37,11 @@ function Update-TrayIcon {
         if ($info.TimeString -and $info.TimeString -ne "N/A (plugged in)") {
             $tipText += " | $($info.TimeString)"
         }
-        if ($tipText.Length -gt 127) { $tipText = $tipText.Substring(0, 124) + "..." }
+        # NotifyIcon.Text throws ArgumentOutOfRangeException above 63 characters
+        # (verified) - the old 127 guard was the Win32 NOTIFYICONDATA size, not
+        # the .NET one, so an over-long tooltip would throw out of
+        # Update-TrayIcon and take the pill's whole refresh with it.
+        if ($tipText.Length -gt 63) { $tipText = $tipText.Substring(0, 60) + "..." }
         $script:notifyIcon.Text = $tipText
     }
 
@@ -211,10 +215,14 @@ $pillSeparator2 = New-Object System.Windows.Forms.ToolStripSeparator
 
 $pillExitItem = New-Object System.Windows.Forms.ToolStripMenuItem("Exit")
 $pillExitItem.Add_Click({
-        $script:timer.Stop()
-        $script:notifyIcon.Visible = $false
-        $script:notifyIcon.Dispose()
-        $script:floatingBar.Close()
+        # Close the main form and let its FormClosing handler do ALL teardown.
+        # Disposing the NotifyIcon here first made FormClosing's own
+        # `$script:notifyIcon.Visible = $false` throw (NotifyIcon.Visible on a
+        # disposed instance NREs inside UpdateIcon), which aborted the rest of
+        # that handler - so the tray icon handle, the GDI cache, the
+        # SystemEvents subscriptions and the single-instance mutex were all
+        # left un-released, and the exe surfaced an unhandled-exception dialog
+        # on the way out. One owner for teardown, not two.
         $script:mainForm.Close()
     })
 
@@ -265,10 +273,14 @@ $separatorItem = New-Object System.Windows.Forms.ToolStripSeparator
 
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem("Exit")
 $exitItem.Add_Click({
-        $script:timer.Stop()
-        $script:notifyIcon.Visible = $false
-        $script:notifyIcon.Dispose()
-        $script:floatingBar.Close()
+        # Close the main form and let its FormClosing handler do ALL teardown.
+        # Disposing the NotifyIcon here first made FormClosing's own
+        # `$script:notifyIcon.Visible = $false` throw (NotifyIcon.Visible on a
+        # disposed instance NREs inside UpdateIcon), which aborted the rest of
+        # that handler - so the tray icon handle, the GDI cache, the
+        # SystemEvents subscriptions and the single-instance mutex were all
+        # left un-released, and the exe surfaced an unhandled-exception dialog
+        # on the way out. One owner for teardown, not two.
         $script:mainForm.Close()
     })
 
@@ -420,8 +432,12 @@ $script:mainForm.Add_FormClosing({
             $script:hoverPopup.Close(); $script:hoverPopup.Dispose(); $script:hoverPopup = $null
         }
         $script:hoverPopupVisible = $false
-        $script:notifyIcon.Visible = $false
-        $script:notifyIcon.Dispose()
+        # Guarded: a second pass through here (Close() re-entered, or a caller
+        # that disposed it first) must not throw and strand the cleanup below.
+        try {
+            $script:notifyIcon.Visible = $false
+            $script:notifyIcon.Dispose()
+        } catch {}
         if ($script:floatingBar -and -not $script:floatingBar.IsDisposed) {
             $script:floatingBar.Close()
             $script:floatingBar.Dispose()
@@ -436,6 +452,7 @@ $script:mainForm.Add_FormClosing({
         if ($null -ne $script:pillBgBrush) { $script:pillBgBrush.Dispose() }
         if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
         if ($null -ne $script:pillBorderPen) { $script:pillBorderPen.Dispose() }
+        if ($null -ne $script:pillBorderHoverPen) { $script:pillBorderHoverPen.Dispose() }
         # Unregister system events to avoid leaks
         [Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($script:powerModeHandler)
         [Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($script:displaySettingsHandler)
