@@ -81,6 +81,39 @@ function Read-TextFileShared {
     throw $lastErr
 }
 
+function ConvertTo-ConfigBool {
+    <#
+    .SYNOPSIS
+        Reads one JSON boolean field, tolerating the string spellings.
+
+    .DESCRIPTION
+        [bool]"false" is $true in PowerShell - every non-empty string is - so a
+        config holding "false" (a hand edit, or another tool's writer) turned
+        the setting ON. Accept real booleans and numbers, accept the obvious
+        string spellings case-insensitively, and return $null ("no reading",
+        which Read-ConfigField turns into the caller's default) for the rest
+        rather than guessing.
+    #>
+    [OutputType([object])]
+    param(
+        # any-typed: one raw JSON field - bool, string, number, or $null.
+        [AllowNull()][object]$Raw
+    )
+    if ($null -eq $Raw) { return $null }
+    if ($Raw -is [bool]) { return $Raw }
+    if ($Raw -is [string]) {
+        switch -Regex ($Raw.Trim()) {
+            '^(?i:true|yes|1)$' { return $true }
+            '^(?i:false|no|0)$' { return $false }
+            default { return $null }
+        }
+    }
+    $num = 0.0
+    try { $num = [double]$Raw } catch { return $null }
+    if ([double]::IsNaN($num)) { return $null }
+    return ($num -ne 0)
+}
+
 function Import-Config {
     [OutputType([hashtable])]
     param(
@@ -132,8 +165,13 @@ function Import-Config {
             # the WinForms default of 100ms - a WMI query 10x/second
             $default.RefreshInterval = Read-ConfigField -Raw $json.RefreshInterval -Fallback $default.RefreshInterval -Parse {
                 param($r) [math]::Max(1000, [math]::Min(60000, [int]$r)) }
+            # ConvertTo-Json writes real JSON booleans, but a hand-edited file
+            # (or one written by another tool) can hold the STRING "false" -
+            # and in PowerShell [bool]"false" is $true, because any non-empty
+            # string is truthy. That silently inverted the setting. Parse the
+            # string form explicitly and reject anything else as "no reading".
             $default.PositionLocked = Read-ConfigField -Raw $json.PositionLocked -Fallback $default.PositionLocked -Parse {
-                param($r) [bool]$r }
+                param($r) ConvertTo-ConfigBool -Raw $r }
             $default.DisplayMode = Read-ConfigField -Raw $json.DisplayMode -Fallback $default.DisplayMode -Parse {
                 param($r) if ([string]$r -in @("time", "percent", "both")) { [string]$r } else { $null } }
             $default.PillSize = Read-ConfigField -Raw $json.PillSize -Fallback $default.PillSize -Parse {
@@ -143,9 +181,9 @@ function Import-Config {
             $default.AccentColorIndex = Read-ConfigField -Raw $json.AccentColorIndex -Fallback $default.AccentColorIndex -Parse {
                 param($r) [math]::Max(0, [math]::Min(7, [int]$r)) }
             $default.AutoHideFullscreen = Read-ConfigField -Raw $json.AutoHideFullscreen -Fallback $default.AutoHideFullscreen -Parse {
-                param($r) [bool]$r }
+                param($r) ConvertTo-ConfigBool -Raw $r }
             $default.FirstRunShown = Read-ConfigField -Raw $json.FirstRunShown -Fallback $default.FirstRunShown -Parse {
-                param($r) [bool]$r }
+                param($r) ConvertTo-ConfigBool -Raw $r }
 
             # Battery history: per-entry validation, percent range-checked, and
             # capped at the same 2400 the recorder enforces - a corrupt or
