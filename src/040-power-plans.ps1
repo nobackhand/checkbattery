@@ -61,7 +61,14 @@ function Set-ActivePowerPlan {
 function Update-PowerPlanMenu {
     [OutputType([void])]
     param([System.Windows.Forms.ToolStripMenuItem]$MenuItem)
+    # ToolStripItemCollection.Clear() detaches items but does NOT dispose them,
+    # and this runs on EVERY context-menu Opening - both menus, for the whole
+    # life of a widget meant to sit in the tray for days. Each right-click
+    # abandoned one ToolStripMenuItem per power plan, each holding its own
+    # native resources. Dispose them on the way out.
+    $stale = @($MenuItem.DropDownItems)
     $MenuItem.DropDownItems.Clear()
+    foreach ($old in $stale) { if ($null -ne $old) { $old.Dispose() } }
     $plans = Get-PowerPlans
     foreach ($plan in $plans) {
         $item = New-Object System.Windows.Forms.ToolStripMenuItem($plan.Name)
