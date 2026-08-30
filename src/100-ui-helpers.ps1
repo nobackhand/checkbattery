@@ -10,6 +10,36 @@ function Enable-DoubleBuffering {
     ).SetValue($Form, $true, $null)
 }
 
+function Set-NativeRoundedCorners {
+    [OutputType([void])]
+    param(
+        [System.Windows.Forms.Form]$Form,
+        # Radius for the Region fallback when DWM rounding is unavailable (Win10)
+        [int]$FallbackRadius = 10
+    )
+    # Native window dressing for borderless popups/cards. Win11: real DWM
+    # rounded corners - antialiased edges plus the system's own window shadow,
+    # exactly what native flyouts get. Win10 (or DWM failure): CS_DROPSHADOW +
+    # the old Region clip. Registered on HandleCreated so it applies whenever
+    # the handle materializes, after the caller has finished sizing the form.
+    # GetNewClosure is safe here: the handler touches only the captured
+    # $FallbackRadius local, never $script: state (see the scoping gotcha).
+    $Form.Add_HandleCreated({
+            param($sender, $e)
+            $ok = $false
+            try { $ok = [Win32Icon]::TryRoundCorners($sender.Handle) } catch { $ok = $false }
+            if (-not $ok) {
+                [Win32Icon]::EnableDropShadow($sender.Handle)
+                $d = $FallbackRadius * 2
+                $p = New-RoundedRectPath -Right ($sender.Width - $d - 1) -Bottom ($sender.Height - $d - 1) -Diameter $d
+                $oldRegion = $sender.Region
+                $sender.Region = New-Object System.Drawing.Region($p)
+                if ($null -ne $oldRegion) { $oldRegion.Dispose() }
+                $p.Dispose()
+            }
+        }.GetNewClosure())
+}
+
 $script:darkMenuRenderer = $null
 
 function Set-RoundedMenuCorners {

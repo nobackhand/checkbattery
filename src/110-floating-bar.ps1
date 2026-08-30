@@ -1166,12 +1166,8 @@ function Show-BatteryNotification {
 
     $notif.Location = New-Object System.Drawing.Point(($screen.Right - $nW - 10), ($screen.Bottom - 10))
 
-    # Rounded region (DPI-scaled)
-    $nr = 10; $nd = $nr * 2
-    $nrW = $nW - 2; $nrH = $nH - 2
-    $nPath = New-RoundedRectPath -Right $nrW -Bottom $nrH -Diameter $nd
-    $notif.Region = New-Object System.Drawing.Region($nPath)
-    $nPath.Dispose()
+    # Native rounded corners + shadow (Region-clip fallback on Win10)
+    Set-NativeRoundedCorners -Form $notif -FallbackRadius 10
 
     # Closure captures $Accent per-card (Add_* handlers resolve at fire time)
     $notif.Add_Paint({

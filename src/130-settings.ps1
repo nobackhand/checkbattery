@@ -129,11 +129,8 @@ function Show-FirstRunTooltip {
     $script:firstRunTip.Opacity = 0
     Enable-DoubleBuffering -Form $script:firstRunTip
 
-    # Rounded region
-    $tr = 10; $td = $tr * 2   # card radius matches notification/popup/About (was 8, the odd one out)
-    $tPath = New-RoundedRectPath -Right ($ttW - $td - 2) -Bottom ($ttH - $td - 2) -Diameter $td
-    $script:firstRunTip.Region = New-Object System.Drawing.Region($tPath)
-    $tPath.Dispose()
+    # Native rounded corners + shadow (Region-clip fallback on Win10)
+    Set-NativeRoundedCorners -Form $script:firstRunTip -FallbackRadius 10
 
     $script:firstRunTip.Add_Paint({
             param($sender, $e)
@@ -852,7 +849,8 @@ function Show-BatteryHealthCard {
     $card.KeyPreview = $true
     $card.ClientSize = New-Object System.Drawing.Size($fw, $fh)
     Enable-DoubleBuffering -Form $card
-    $card.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($card.Handle) })
+    # Native rounded corners + shadow (Region-clip fallback on Win10)
+    Set-NativeRoundedCorners -Form $card -FallbackRadius 11
 
     $card.Add_Paint({
             param($sender, $e)
@@ -939,9 +937,7 @@ function Show-BatteryHealthCard {
         $fontsToDispose += (Add-CenterLabel -Text "This PC is running on AC power." -YPos 150 -FontSize 8.5 -Bold $false -Color $script:theme.TextDim).Font
     }
 
-    # rounded region
-    $prd = 22; $pw = $card.ClientSize.Width; $ph = $card.ClientSize.Height
-    $card.Region = New-Object System.Drawing.Region((New-RoundedRectPath -Right ($pw - $prd - 1) -Bottom ($ph - $prd - 1) -Diameter $prd))
+    # (corner rounding handled by Set-NativeRoundedCorners above)
 
     $card.Add_KeyDown({ param($s, $e) if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $card.Close() } })
     $card.Add_Deactivate({ $card.Close() })
@@ -965,8 +961,8 @@ function Show-AboutDialog {
     $about.KeyPreview = $true
     Enable-DoubleBuffering -Form $about
 
-    # Drop shadow
-    $about.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($about.Handle) })
+    # Native rounded corners + shadow (Region-clip fallback on Win10)
+    Set-NativeRoundedCorners -Form $about -FallbackRadius 10
 
     # Rounded border paint
     $about.Add_Paint({
@@ -1061,10 +1057,7 @@ function Show-AboutDialog {
     $fh = $y + $m
     $about.ClientSize = New-Object System.Drawing.Size($fw, $fh)
 
-    # Rounded region
-    $prd = 20; $pw = $about.ClientSize.Width; $ph = $about.ClientSize.Height
-    $regionPath = New-RoundedRectPath -Right ($pw - $prd - 1) -Bottom ($ph - $prd - 1) -Diameter $prd
-    $about.Region = New-Object System.Drawing.Region($regionPath)
+    # (corner rounding handled by Set-NativeRoundedCorners above)
 
     # Close on Escape
     $about.Add_KeyDown({

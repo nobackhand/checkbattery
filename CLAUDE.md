@@ -23,8 +23,12 @@
 
 ## Key Technical Decisions
 
+### Rounded Corners (two mechanisms)
+- **The pill** uses Region-based clipping with `GraphicsPath` (no `TransparencyKey` = no purple fringe) — it's a capsule, which DWM can't produce.
+- **Popups/cards/notifications/tips** use native Win11 DWM rounded corners (`Set-NativeRoundedCorners` → `Win32Icon.TryRoundCorners`, DWMWA 33 = DWMWCP_ROUND): antialiased edges + the system window shadow. On Win10 (DWM call fails) they fall back to CS_DROPSHADOW + the old Region clip inside the same helper.
+- All C# helper types (`Win32Icon`, `DarkMenuColorTable`, `DarkCheckBox`, `PillMenuRenderer`) compile in ONE `Add-Type` call in `010-init.ps1` — splitting them back into separate calls costs ~1s of launch time (measured).
+
 ### Floating Pill Bar
-- Uses Region-based clipping with `GraphicsPath` for rounded corners (no `TransparencyKey` = no purple fringe).
 - `AutoScaleMode = None` set **before** `Size`, plus `MinimumSize`/`MaximumSize` constraints (108x34) to prevent WinForms DPI auto-scaling.
 - Custom `Paint` handler draws gradient battery fill, glass highlight, centered text, and border using GDI+.
 - Double-buffered via reflection for flicker-free rendering.
