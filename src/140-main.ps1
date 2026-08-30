@@ -8,10 +8,18 @@ function Update-TrayIcon {
     $now = Get-Date
     $info = Get-BatteryInfo -Now $now
 
-    # Only regenerate icon when state actually changes
+    # While charging, advance a 4-step gloss phase each tick so the tray icon
+    # subtly animates its fill (skipped when Windows animations are off)
+    if ($info.IsCharging -and $script:animOK) {
+        $script:trayAnimPhase = ($script:trayAnimPhase + 1) % 4
+    }
+
+    # Only regenerate icon when state actually changes (or every tick while the
+    # charging animation is running)
     $needsNewIcon = ($info.Percent -ne $script:cachedIconPercent) -or
     ($info.IsCharging -ne $script:cachedIconCharging) -or
-    ($info.IsFullyCharged -ne $script:cachedIconFullyCharged)
+    ($info.IsFullyCharged -ne $script:cachedIconFullyCharged) -or
+    ($info.IsCharging -and $script:animOK)
 
     if ($needsNewIcon) {
         # Destroy previous icon handle
@@ -20,7 +28,8 @@ function Update-TrayIcon {
             $script:lastIconHandle = $null
         }
 
-        $iconResult = New-BatteryIcon -Percent $info.Percent -Status $info.StatusText
+        $animPhase = if ($info.IsCharging -and $script:animOK) { $script:trayAnimPhase } else { -1 }
+        $iconResult = New-BatteryIcon -Percent $info.Percent -Status $info.StatusText -AnimPhase $animPhase
         $script:lastIconHandle = $iconResult.Handle
         $script:notifyIcon.Icon = $iconResult.Icon
 
@@ -92,6 +101,7 @@ $script:lastBatteryInfo = $null
 $script:cachedIconPercent = -1
 $script:cachedIconCharging = $null
 $script:cachedIconFullyCharged = $null
+$script:trayAnimPhase = 0
 
 # Hidden main form (message pump owner)
 $script:mainForm = New-Object System.Windows.Forms.Form
@@ -333,6 +343,63 @@ $script:pulseTimer.Add_Tick({
                 $script:flashAlpha = [math]::Max(0, $script:flashAlpha - 12)
                 $needsRepaint = $true
             }
+            # Fill level eases toward the real percent (smooth transitions)
+            if ([math]::Abs($script:displayedFillPct - $script:barDisplayPercent) -gt 0.4) {
+                $script:displayedFillPct += ($script:barDisplayPercent - $script:displayedFillPct) * 0.18
+                if ([math]::Abs($script:displayedFillPct - $script:barDisplayPercent) -le 0.4) {
+                    $script:displayedFillPct = [double]$script:barDisplayPercent
+                }
+                $needsRepaint = $true
+            }
+            # Changed pill text fades back in
+            if ($script:textFadeAlpha -lt 255) {
+                $script:textFadeAlpha = [math]::Min(255, $script:textFadeAlpha + 22)
+                $needsRepaint = $true
+            }
+            # Moment overlays animate purely off elapsed time - just repaint
+            if ($null -ne $script:shimmerStart -or $null -ne $script:boltPopStart) {
+                $needsRepaint = $true
+            }
+            # Theme switch: crossfade the pill background surface (~220ms)
+            if ($null -ne $script:themeFade) {
+                $tf = $script:themeFade
+                $tft = [math]::Min(1.0, ((Get-Date) - $tf.Start).TotalMilliseconds / 220.0)
+                if ($tft -ge 1.0) {
+                    $script:themeFade = $null
+                    # Land exactly on the theme palette (rebuilds all cached brushes)
+                    Initialize-PillBrushes
+                    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+                        $script:floatingBar.BackColor = $script:theme.PillBg
+                    }
+                } else {
+                    $blend = [System.Drawing.Color]::FromArgb(
+                        [int]($tf.From.R + ($tf.To.R - $tf.From.R) * $tft),
+                        [int]($tf.From.G + ($tf.To.G - $tf.From.G) * $tft),
+                        [int]($tf.From.B + ($tf.To.B - $tf.From.B) * $tft))
+                    if ($null -ne $script:pillBgBrush) { $script:pillBgBrush.Dispose() }
+                    $script:pillBgBrush = New-Object System.Drawing.SolidBrush($blend)
+                    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+                        $script:floatingBar.BackColor = $blend
+                    }
+                }
+                $needsRepaint = $true
+            }
+            # Fast accent fade (accent swatch click): converge in ~0.3s instead
+            # of riding the slow per-refresh lerp
+            if ($script:colorFadeActive) {
+                $cfc = $script:currentDisplayColor; $cft = $script:targetAccentColor
+                if (([math]::Abs($cfc.R - $cft.R) + [math]::Abs($cfc.G - $cft.G) + [math]::Abs($cfc.B - $cft.B)) -le 6) {
+                    $script:currentDisplayColor = $cft
+                    $script:colorFadeActive = $false
+                } else {
+                    $script:currentDisplayColor = [System.Drawing.Color]::FromArgb(
+                        [int]($cfc.R + ($cft.R - $cfc.R) * 0.25),
+                        [int]($cfc.G + ($cft.G - $cfc.G) * 0.25),
+                        [int]($cfc.B + ($cft.B - $cfc.B) * 0.25))
+                }
+                $script:barAccentColor = $script:currentDisplayColor
+                $needsRepaint = $true
+            }
             # Low battery warning animations
             if ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) {
                 # Pulsing red border (~3.1s cycle at 33ms tick = ~94 ticks)
@@ -366,7 +433,14 @@ function Update-PulseTimerState {
     [OutputType([void])]
     param()
     # Start pulse timer only when animations need it, stop when idle
-    $anyActive = $script:barIsCharging -or ($script:flashAlpha -gt 0) -or ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed)
+    $anyActive = $script:barIsCharging -or ($script:flashAlpha -gt 0) -or
+    ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or
+    ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed) -or
+    ($null -ne $script:shimmerStart) -or ($null -ne $script:boltPopStart) -or
+    ($null -ne $script:themeFade) -or
+    ($null -ne $script:colorFadeActive -and $script:colorFadeActive) -or
+    ($script:textFadeAlpha -lt 255) -or
+    ([math]::Abs($script:displayedFillPct - $script:barDisplayPercent) -gt 0.4)
     if ($anyActive) {
         if (-not $script:pulseTimer.Enabled) { $script:pulseTimer.Start() }
     } else {
@@ -425,6 +499,11 @@ $script:mainForm.Add_FormClosing({
             $script:menuDismissTimer.Stop()
             $script:menuDismissTimer.Dispose()
         }
+        if ($null -ne $script:settleTimer) {
+            $script:settleTimer.Stop()
+            $script:settleTimer.Dispose()
+            $script:settleTimer = $null
+        }
         # Close hover popup and fade timers
         if ($null -ne $script:fadeInTimer) { $script:fadeInTimer.Stop(); $script:fadeInTimer.Dispose() }
         if ($null -ne $script:fadeOutTimer) { $script:fadeOutTimer.Stop(); $script:fadeOutTimer.Dispose() }
@@ -450,6 +529,7 @@ $script:mainForm.Add_FormClosing({
         if ($null -ne $script:pillFont2) { $script:pillFont2.Dispose() }
         if ($null -ne $script:pillStringFormat) { $script:pillStringFormat.Dispose() }
         if ($null -ne $script:pillBgBrush) { $script:pillBgBrush.Dispose() }
+        if ($null -ne $script:pillBgHoverBrush) { $script:pillBgHoverBrush.Dispose() }
         if ($null -ne $script:pillTextBrush) { $script:pillTextBrush.Dispose() }
         if ($null -ne $script:pillBorderPen) { $script:pillBorderPen.Dispose() }
         if ($null -ne $script:pillBorderHoverPen) { $script:pillBorderHoverPen.Dispose() }

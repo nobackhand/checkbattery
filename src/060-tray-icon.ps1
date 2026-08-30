@@ -6,7 +6,9 @@ function New-BatteryIcon {
     [OutputType([hashtable])]
     param(
         [int]$Percent,
-        [string]$Status
+        [string]$Status,
+        # Charging gloss animation step (0..3); -1 = no animation frame
+        [int]$AnimPhase = -1
     )
 
     $bmp = New-Object System.Drawing.Bitmap(16, 16)
@@ -47,6 +49,14 @@ function New-BatteryIcon {
         $fillBrush = New-Object System.Drawing.SolidBrush($accent)
         $g.FillRectangle($fillBrush, $pillX, $pillY, $fillWidth, $pillH)
         $fillBrush.Dispose()
+        # Charging animation: a small bright gloss band walks across the fill
+        # one step per refresh tick, so the tray icon reads as "actively filling"
+        if ($AnimPhase -ge 0 -and $fillWidth -gt 4) {
+            $glossX = $pillX + [int](($AnimPhase / 4.0) * ($fillWidth - 2))
+            $glossBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(90, 255, 255, 255))
+            $g.FillRectangle($glossBrush, $glossX, $pillY, 3, $pillH)
+            $glossBrush.Dispose()
+        }
         $g.Clip = $oldClip
     }
 

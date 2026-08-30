@@ -237,6 +237,43 @@ public class DarkCheckBox : CheckBox {
 }
 "@
 
+# Modern menu renderer - the stock ProfessionalRenderer highlight is a flat
+# square block; this one draws a rounded, accent-tinted selection pill so the
+# right-click menus feel like part of the app instead of Windows 95 chrome.
+Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing @"
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+public class PillMenuRenderer : ToolStripProfessionalRenderer {
+    private readonly Color _accent;
+    public PillMenuRenderer(ProfessionalColorTable table, Color accent) : base(table) {
+        _accent = accent;
+    }
+    protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e) {
+        if (!e.Item.Selected || !e.Item.Enabled) { base.OnRenderMenuItemBackground(e); return; }
+        Graphics g = e.Graphics;
+        SmoothingMode old = g.SmoothingMode;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        Rectangle r = new Rectangle(2, 1, e.Item.Width - 5, e.Item.Height - 3);
+        using (GraphicsPath p = Rounded(r, 5)) {
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(38, _accent))) g.FillPath(b, p);
+            using (Pen pen = new Pen(Color.FromArgb(110, _accent), 1f)) g.DrawPath(pen, p);
+        }
+        g.SmoothingMode = old;
+    }
+    static GraphicsPath Rounded(Rectangle b, int radius) {
+        int d = radius * 2;
+        GraphicsPath p = new GraphicsPath();
+        p.AddArc(b.X, b.Y, d, d, 180, 90);
+        p.AddArc(b.Right - d, b.Y, d, d, 270, 90);
+        p.AddArc(b.Right - d, b.Bottom - d, d, d, 0, 90);
+        p.AddArc(b.X, b.Bottom - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+}
+"@
+
 # Declare DPI awareness before any forms are created
 [Win32Icon]::SetProcessDPIAware() | Out-Null
 
@@ -357,7 +394,7 @@ $script:theme = @{
     SparkGuide  = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.1.9"
+$script:appVersion = "1.2.0"
 
 function Get-SystemTheme {
     [OutputType([bool])]
@@ -380,6 +417,9 @@ function Get-SystemTheme {
 function Set-Theme {
     [OutputType([void])]
     param()
+    # Remembered so a runtime theme switch can crossfade the pill's background
+    # instead of snapping (the fade runs in the pulse timer).
+    $oldPillBg = $script:theme.PillBg
     $useDark = $true
     $themeSetting = $script:config.Theme
     if ($themeSetting -eq "light") { $useDark = $false }
@@ -414,6 +454,18 @@ function Set-Theme {
     # Apply to floating bar immediately
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
         $script:floatingBar.BackColor = $script:theme.PillBg
+        # Runtime theme switch: crossfade the pill background from the old
+        # surface to the new one (~220ms in the pulse timer) rather than
+        # snapping. Startup calls land here before the bar exists, so a fade
+        # only ever starts from a real visible state.
+        if ($script:animOK -and $oldPillBg -ne $script:theme.PillBg) {
+            $script:themeFade = @{
+                From  = $oldPillBg
+                To    = $script:theme.PillBg
+                Start = Get-Date
+            }
+            if (Get-Command Update-PulseTimerState -ErrorAction SilentlyContinue) { Update-PulseTimerState }
+        }
         $script:floatingBar.Invalidate()
     }
 }
