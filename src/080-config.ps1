@@ -133,6 +133,7 @@ function Import-Config {
         AccentColorIndex   = 0
         AutoHideFullscreen = $false
         FirstRunShown      = $false
+        FunLines           = $true
         BatteryHistory     = @()
         EmaRate            = -1
         LastValidRate      = -1
@@ -183,6 +184,8 @@ function Import-Config {
             $default.AutoHideFullscreen = Read-ConfigField -Raw $json.AutoHideFullscreen -Fallback $default.AutoHideFullscreen -Parse {
                 param($r) ConvertTo-ConfigBool -Raw $r }
             $default.FirstRunShown = Read-ConfigField -Raw $json.FirstRunShown -Fallback $default.FirstRunShown -Parse {
+                param($r) ConvertTo-ConfigBool -Raw $r }
+            $default.FunLines = Read-ConfigField -Raw $json.FunLines -Fallback $default.FunLines -Parse {
                 param($r) ConvertTo-ConfigBool -Raw $r }
 
             # Battery history: per-entry validation, percent range-checked, and
@@ -343,6 +346,7 @@ function Save-Config {
             AccentColorIndex   = $script:config.AccentColorIndex
             AutoHideFullscreen = $script:config.AutoHideFullscreen
             FirstRunShown      = $script:config.FirstRunShown
+            FunLines           = $script:config.FunLines
             BatteryHistory     = $historyToSave
             EmaRate            = $script:emaRate
             LastValidRate      = $script:lastValidRate

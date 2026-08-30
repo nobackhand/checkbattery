@@ -92,6 +92,48 @@ function Test-PositionOnScreen {
     return $false
 }
 
+function Start-PillSettle {
+    [OutputType([void])]
+    param([int]$TargetX, [int]$TargetY)
+    # Short eased glide (160ms) from the pill's current spot to a snapped
+    # resting position after a drag release. Cosmetic only - the caller has
+    # already written the target to config. Instant when animations are off.
+    if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) { return }
+    if (-not $script:animOK) {
+        $script:floatingBar.Location = New-Object System.Drawing.Point($TargetX, $TargetY)
+        return
+    }
+    if ($null -ne $script:settleTimer) { $script:settleTimer.Stop(); $script:settleTimer.Dispose(); $script:settleTimer = $null }
+    $script:settleState = @{
+        Start = Get-Date
+        FromX = $script:floatingBar.Left
+        FromY = $script:floatingBar.Top
+        ToX   = $TargetX
+        ToY   = $TargetY
+    }
+    $script:settleTimer = New-Object System.Windows.Forms.Timer
+    $script:settleTimer.Interval = 16
+    $script:settleTimer.Add_Tick({
+            # Plain scriptblock + $script: state on purpose (GetNewClosure would
+            # resolve $script: against the closure module - see CLAUDE.md)
+            if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed -or $script:isDragging) {
+                $script:settleTimer.Stop(); $script:settleTimer.Dispose(); $script:settleTimer = $null
+                return
+            }
+            $st = $script:settleState
+            $t = [math]::Min(1.0, ((Get-Date) - $st.Start).TotalMilliseconds / 160.0)
+            $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
+            $nx = [int]($st.FromX + ($st.ToX - $st.FromX) * $eased)
+            $ny = [int]($st.FromY + ($st.ToY - $st.FromY) * $eased)
+            $script:floatingBar.Location = New-Object System.Drawing.Point($nx, $ny)
+            if ($t -ge 1.0) {
+                $script:floatingBar.Location = New-Object System.Drawing.Point($st.ToX, $st.ToY)
+                $script:settleTimer.Stop(); $script:settleTimer.Dispose(); $script:settleTimer = $null
+            }
+        })
+    $script:settleTimer.Start()
+}
+
 function New-FloatingBar {
     [OutputType([System.Windows.Forms.Form])]
     param()
@@ -104,6 +146,29 @@ function New-FloatingBar {
     # Pulse animation state for charging effect
     $script:pulseAlpha = 105
     $script:wasChargingLastUpdate = $false
+
+    # One gate for every animation this file starts: respect the user's
+    # Windows "show animations" setting, sampled once at startup
+    $script:animOK = [Win32Icon]::AnimationsEnabled()
+
+    # Smooth value transitions: the painted fill level eases toward the real
+    # percent (pulse timer), and the pill text fades back in when it changes
+    $script:displayedFillPct = 50.0
+    $script:textFadeAlpha = 255
+    $script:prevDisplayText = ""
+
+    # Moment animations: full-charge shimmer sweep, plug-in bolt pop
+    $script:shimmerStart = $null
+    $script:boltPopStart = $null
+    $script:wasFullyCharged = $false
+    $script:fullChargeShown = $false
+
+    # Theme crossfade + fast accent fade (driven by the pulse timer)
+    $script:themeFade = $null
+    $script:colorFadeActive = $false
+
+    # Eased edge-settle after a drag release
+    $script:settleState = $null
 
     # Smooth color transition state
     $script:currentDisplayColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
@@ -184,10 +249,18 @@ function New-FloatingBar {
             $path = New-RoundedRectPath -Right ($w - $d - 1) -Bottom ($h - $d - 1) -Diameter $d
 
             # --- Background (entire pill, theme-aware — cached brush) ---
-            $g.FillPath($script:pillBgBrush, $path)
+            # Hover: slightly lifted surface so the pill reads as touchable
+            if ($script:pillHovered -and $null -ne $script:pillBgHoverBrush) {
+                $g.FillPath($script:pillBgHoverBrush, $path)
+            } else {
+                $g.FillPath($script:pillBgBrush, $path)
+            }
 
             # --- Battery charge fill (left-to-right, clipped to pill shape) ---
-            $pct = [math]::Max(0, [math]::Min(100, $script:barDisplayPercent))
+            # Painted from the EASED level, not the raw one - the pulse timer
+            # glides displayedFillPct toward barDisplayPercent so level changes
+            # slide instead of snapping
+            $pct = [math]::Max(0, [math]::Min(100, $script:displayedFillPct))
             $fillWidth = [math]::Max(0, [math]::Round(($pct / 100) * $w))
             if ($fillWidth -gt 0) {
                 # Clip to the rounded pill shape
@@ -248,24 +321,100 @@ function New-FloatingBar {
             $g.Clip = $oldClip2
 
             # --- Text rendering (supports single-line and dual-line modes) ---
+            # Press feedback: text sinks 1px while the button is held (not dragging)
+            $pressY = if ($script:leftPressed -and -not $script:isDragging) { 1 } else { 0 }
+            # Text crossfade: when the value changes, the new text fades in
+            # (pulse timer ramps textFadeAlpha back to 255)
+            $txA = [int][math]::Max(0, [math]::Min(255, $script:textFadeAlpha))
             if ($script:barDisplayText2 -and $script:barDisplayText2.Length -gt 0 -and $null -ne $script:pillFont2) {
                 # Dual-line mode: top = accent-colored primary, bottom = dim secondary
                 $ac3 = $script:barAccentColor
-                $topBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, $ac3.R, $ac3.G, $ac3.B))
-                $topRect = New-Object System.Drawing.RectangleF(0, 2, $w, ($h / 2))
+                $topBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($txA, $ac3.R, $ac3.G, $ac3.B))
+                $topRect = New-Object System.Drawing.RectangleF(0, (2 + $pressY), $w, ($h / 2))
                 $g.DrawString($script:barDisplayText, $script:pillFont, $topBrush, $topRect, $script:pillStringFormat)
                 $topBrush.Dispose()
-                $botBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
+                $td = $script:theme.TextDim
+                $botBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($txA, $td.R, $td.G, $td.B))
                 # NOTE: the inner subtraction MUST be fully parenthesized - in an argument list the
                 # comma binds tighter than minus, so "($h / 2) - 2, $w" parses as array subtraction
                 # and throws op_Subtraction every paint, silently killing this second line.
-                $botRect = New-Object System.Drawing.RectangleF(0, (($h / 2) - 2), $w, ($h / 2))
+                $botRect = New-Object System.Drawing.RectangleF(0, ((($h / 2) - 2) + $pressY), $w, ($h / 2))
                 $g.DrawString($script:barDisplayText2, $script:pillFont2, $botBrush, $botRect, $script:pillStringFormat)
                 $botBrush.Dispose()
+            } elseif ($txA -lt 255) {
+                $tp = $script:theme.TextPrimary
+                $fadeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($txA, $tp.R, $tp.G, $tp.B))
+                $textRect = New-Object System.Drawing.RectangleF(0, $pressY, $w, $h)
+                $g.DrawString($script:barDisplayText, $script:pillFont, $fadeBrush, $textRect, $script:pillStringFormat)
+                $fadeBrush.Dispose()
             } else {
                 # Single-line mode (centered — cached brush)
-                $textRect = New-Object System.Drawing.RectangleF(0, 0, $w, $h)
+                $textRect = New-Object System.Drawing.RectangleF(0, $pressY, $w, $h)
                 $g.DrawString($script:barDisplayText, $script:pillFont, $script:pillTextBrush, $textRect, $script:pillStringFormat)
+            }
+
+            # --- Press feedback: gentle darkening while held ---
+            if ($pressY -gt 0) {
+                $pressBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(26, 0, 0, 0))
+                $g.FillPath($pressBrush, $path)
+                $pressBrush.Dispose()
+            }
+
+            # --- Full-charge shimmer: one bright band sweeps left-to-right ---
+            if ($null -ne $script:shimmerStart) {
+                $smMs = ((Get-Date) - $script:shimmerStart).TotalMilliseconds
+                $smT = $smMs / 700.0
+                if ($smT -ge 1.0) {
+                    $script:shimmerStart = $null
+                } else {
+                    $bandW = [math]::Max(10, [int]($w * 0.45))
+                    $bandX = [int]( - $bandW + (($w + 2 * $bandW) * $smT))
+                    $shimClip = $g.Clip
+                    $g.SetClip($path)
+                    $bandRect = New-Object System.Drawing.Rectangle($bandX, 0, $bandW, $h)
+                    $shimBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+                        $bandRect,
+                        [System.Drawing.Color]::FromArgb(0, 255, 255, 255),
+                        [System.Drawing.Color]::FromArgb(110, 255, 255, 255),
+                        [System.Drawing.Drawing2D.LinearGradientMode]::Horizontal)
+                    # Triangular blend: transparent -> bright at the middle -> transparent
+                    $shimBrush.SetBlendTriangularShape(0.5)
+                    $g.FillRectangle($shimBrush, $bandRect)
+                    $shimBrush.Dispose()
+                    $g.Clip = $shimClip
+                }
+            }
+
+            # --- Plug-in moment: a bolt pops in with overshoot, then fades ---
+            if ($null -ne $script:boltPopStart) {
+                $bpMs = ((Get-Date) - $script:boltPopStart).TotalMilliseconds
+                if ($bpMs -ge 1200) {
+                    $script:boltPopStart = $null
+                } else {
+                    # Ease-out-back over the first 280ms (slight overshoot = "pop")
+                    $bpT = [math]::Min(1.0, $bpMs / 280.0)
+                    $c1 = 1.70158; $c3 = $c1 + 1.0
+                    $bpScale = 1.0 + $c3 * [math]::Pow($bpT - 1.0, 3) + $c1 * [math]::Pow($bpT - 1.0, 2)
+                    $bpAlpha = if ($bpMs -gt 900) { [int](255 * (1.0 - (($bpMs - 900) / 300.0))) } else { 255 }
+                    $bpAlpha = [math]::Max(0, [math]::Min(255, $bpAlpha))
+                    if ($bpScale -gt 0.05) {
+                        # Bolt sized from pill height, centered
+                        $bu = ($h * 0.62) * $bpScale
+                        $bcx = $w / 2.0; $bcy = $h / 2.0
+                        [System.Drawing.PointF[]]$boltPts = @(
+                            (New-Object System.Drawing.PointF(($bcx + 0.12 * $bu), ($bcy - 0.50 * $bu))),
+                            (New-Object System.Drawing.PointF(($bcx - 0.28 * $bu), ($bcy + 0.10 * $bu))),
+                            (New-Object System.Drawing.PointF(($bcx - 0.02 * $bu), ($bcy + 0.10 * $bu))),
+                            (New-Object System.Drawing.PointF(($bcx - 0.12 * $bu), ($bcy + 0.50 * $bu))),
+                            (New-Object System.Drawing.PointF(($bcx + 0.28 * $bu), ($bcy - 0.12 * $bu))),
+                            (New-Object System.Drawing.PointF(($bcx + 0.02 * $bu), ($bcy - 0.12 * $bu)))
+                        )
+                        $boltEdge = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb([int]($bpAlpha * 0.6), 0, 0, 0), 1.6)
+                        $g.DrawPolygon($boltEdge, $boltPts); $boltEdge.Dispose()
+                        $boltFill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($bpAlpha, 255, 255, 255))
+                        $g.FillPolygon($boltFill, $boltPts); $boltFill.Dispose()
+                    }
+                }
             }
 
             # --- Plug/unplug flash overlay (green tint on light theme, white on dark) ---
@@ -367,6 +516,8 @@ function New-FloatingBar {
             $script:leftPressed = $true
             $script:didDrag = $false
             $script:dragOffset = $e.Location
+            # Repaint for the press-down visual (text sinks, slight darkening)
+            $script:floatingBar.Invalidate()
             # A press is manipulation, not a hover - never let the popup interrupt a drag
             $script:hoverTimer.Stop()
             if (-not $script:positionLocked) {
@@ -418,9 +569,24 @@ function New-FloatingBar {
             $script:isDragging = $false
             $script:floatingBar.Cursor = [System.Windows.Forms.Cursors]::Default
             if ($script:didDrag) {
-                $script:config.X = $script:floatingBar.Left
-                $script:config.Y = $script:floatingBar.Top
+                # Released within reach of a screen edge (a wider band than the
+                # hard mid-drag snap): glide the last stretch instead of leaving
+                # the pill hanging just off the margin. Config records the FINAL
+                # resting spot either way.
+                $relScreen = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position).WorkingArea
+                $settleT = 28; $settleM = 8
+                $sx = $script:floatingBar.Left; $sy = $script:floatingBar.Top
+                $sw2 = $script:floatingBar.Width; $sh2 = $script:floatingBar.Height
+                if ([math]::Abs($sx - $relScreen.Left) -lt $settleT) { $sx = $relScreen.Left + $settleM }
+                if ([math]::Abs(($sx + $sw2) - $relScreen.Right) -lt $settleT) { $sx = $relScreen.Right - $sw2 - $settleM }
+                if ([math]::Abs($sy - $relScreen.Top) -lt $settleT) { $sy = $relScreen.Top + $settleM }
+                if ([math]::Abs(($sy + $sh2) - $relScreen.Bottom) -lt $settleT) { $sy = $relScreen.Bottom - $sh2 - $settleM }
+                $script:config.X = $sx
+                $script:config.Y = $sy
                 Save-Config
+                if ($sx -ne $script:floatingBar.Left -or $sy -ne $script:floatingBar.Top) {
+                    Start-PillSettle -TargetX $sx -TargetY $sy
+                }
             }
         }
         # Left-click without drag cycles the display mode (works even when position is locked)
@@ -428,6 +594,7 @@ function New-FloatingBar {
             Invoke-CycleDisplayMode
         }
         $script:leftPressed = $false
+        $script:floatingBar.Invalidate()
     }
 
     # Apply drag/click events to form only (no label — everything is paint-drawn)
@@ -467,7 +634,9 @@ function New-SparklinePanel {
     $panel.Location = New-Object System.Drawing.Point(20, $Y)
     $panel.Size = New-Object System.Drawing.Size(380, 40)
     $panel.BackColor = [System.Drawing.Color]::Transparent
-    $panel.Tag = @{ AccentColor = $AccentColor }
+    # Reveal: 0..1 fraction of the line drawn so far - animated below so the
+    # graph draws itself left-to-right when the popup opens
+    $panel.Tag = @{ AccentColor = $AccentColor; Reveal = 1.0 }
     $panel.Add_Paint({
             param($sender, $e)
             $sg = $e.Graphics
@@ -518,7 +687,11 @@ function New-SparklinePanel {
                 }
                 $chargeBrush.Dispose()
 
-                # Draw sparkline
+                # Draw sparkline - only the revealed prefix, so the line draws
+                # itself left-to-right when the popup opens
+                $reveal = [double]$sender.Tag.Reveal
+                $drawCount = [int][math]::Ceiling($count * $reveal)
+                $drawCount = [math]::Max(0, [math]::Min($count, $drawCount))
                 $linePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(200, $acColor.R, $acColor.G, $acColor.B), 1.5)
                 $points = New-Object System.Drawing.PointF[] $count
                 for ($i = 0; $i -lt $count; $i++) {
@@ -526,13 +699,13 @@ function New-SparklinePanel {
                     $py = $sh - (($history[$i].Percent / 100.0) * ($sh - 4)) - 2
                     $points[$i] = New-Object System.Drawing.PointF($px, $py)
                 }
-                if ($count -ge 2) {
-                    $sg.DrawLines($linePen, $points)
+                if ($drawCount -ge 2) {
+                    $sg.DrawLines($linePen, $points[0..($drawCount - 1)])
                 }
                 $linePen.Dispose()
 
-                # Current value dot at the end of the sparkline
-                if ($count -ge 2) {
+                # Current value dot at the end of the sparkline (once fully drawn)
+                if ($count -ge 2 -and $reveal -ge 1.0) {
                     $lastPt = $points[$count - 1]
                     $dotBrush = New-Object System.Drawing.SolidBrush(
                         [System.Drawing.Color]::FromArgb(255, $acColor.R, $acColor.G, $acColor.B))
@@ -572,6 +745,29 @@ function New-SparklinePanel {
             $bdrPen.Dispose()
             $rPath.Dispose()
         })
+
+    # Draw-on animation: reveal the line over 450ms (eased). Closure over the
+    # panel + timer LOCALS is the correct pattern here (same as the
+    # notification cards) - no $script: state is touched at fire time.
+    if ($script:animOK -and $null -ne $script:batteryHistory -and $script:batteryHistory.Count -ge 2) {
+        $panel.Tag.Reveal = 0.0
+        $revStart = Get-Date
+        $revTimer = New-Object System.Windows.Forms.Timer
+        $revTimer.Interval = 16
+        $revTimer.Add_Tick({
+                if ($null -eq $panel -or $panel.IsDisposed) {
+                    $revTimer.Stop(); $revTimer.Dispose(); return
+                }
+                $t = [math]::Min(1.0, ((Get-Date) - $revStart).TotalMilliseconds / 450.0)
+                $panel.Tag.Reveal = 1.0 - [math]::Pow(1.0 - $t, 3)
+                $panel.Invalidate()
+                if ($t -ge 1.0) {
+                    $panel.Tag.Reveal = 1.0
+                    $revTimer.Stop(); $revTimer.Dispose()
+                }
+            }.GetNewClosure())
+        $revTimer.Start()
+    }
     return $panel
 }
 
@@ -585,6 +781,29 @@ function Format-Duration {
     $m = $Minutes % 60
     if ($h -gt 0) { return "{0}h {1}m" -f $h, $m }
     return "{0}m" -f $m
+}
+
+function Get-FunStatusLine {
+    [OutputType([string])]
+    param([hashtable]$BatteryInfo)
+    # One context-aware line of personality for the popup. Deterministic per
+    # state (no random churn between refreshes); togglable via config.FunLines.
+    if ($BatteryInfo.NoBattery) { return "Mains-powered and unbothered." }
+    if ($BatteryInfo.IsFullyCharged) { return "Topped off. Free to roam." }
+    if ($BatteryInfo.IsCharging) {
+        if ($BatteryInfo.Percent -ge 90) { return "Almost there." }
+        return "Refueling."
+    }
+    $mins = $BatteryInfo.TimeMinutes
+    if ($mins -gt 0) {
+        if ($mins -le 20) { return "Find an outlet. Now-ish." }
+        if ($mins -le 45) { return "Wrapping-up territory." }
+        if ($mins -ge 480) { return "All-day battery. Go do things." }
+        if ($mins -ge 300) { return "Hours of runway left." }
+    } elseif ($BatteryInfo.Percent -ge 0 -and $BatteryInfo.Percent -le 20) {
+        return "Running on fumes."
+    }
+    return ""
 }
 
 function New-BatteryPopupContent {
@@ -741,6 +960,22 @@ function New-BatteryPopupContent {
     if ($timeText -eq "Estimating...") { $script:estimatingLabel = $timeValLabel }
     $y += $heroRh
 
+    # A line of personality under the facts (optional - Settings toggle)
+    $funFont = $null
+    $funText = if ($script:config.FunLines) { Get-FunStatusLine -BatteryInfo $BatteryInfo } else { "" }
+    if ($funText) {
+        $funFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
+        $funLabel = New-Object System.Windows.Forms.Label
+        $funLabel.Text = $funText
+        $funLabel.Font = $funFont
+        $funLabel.ForeColor = $script:theme.TextDim
+        $funLabel.Location = New-Object System.Drawing.Point($lx, $y)
+        $funLabel.AutoSize = $true
+        $funLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+        $Form.Controls.Add($funLabel)
+        $y += [int](18 * $DpiScale)
+    }
+
     # Spacer before sparkline
     $y += [int](10 * $DpiScale)
 
@@ -768,6 +1003,7 @@ function New-BatteryPopupContent {
     }
 
     $fontsToDispose = @($labelFont, $heroValueFont, $heroPctFont, $titleLabel.Font)
+    if ($null -ne $funFont) { $fontsToDispose += $funFont }
     if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
         TotalHeight = $y + 8
@@ -965,8 +1201,20 @@ function Update-FloatingBar {
         }
     }
 
+    # Text crossfade: a changed value fades back in (skip while the intro
+    # sweep owns the pill, and skip entirely when animations are off)
+    if ($script:animOK -and $script:barDisplayText -ne $script:prevDisplayText -and $script:prevDisplayText -ne "") {
+        $script:textFadeAlpha = 80
+    }
+    $script:prevDisplayText = $script:barDisplayText
+
     # Update battery percent and charging state for the mini icon
     $script:barDisplayPercent = $BatteryInfo.Percent
+    if (-not $script:animOK -or $null -eq $script:lastBatteryInfo) {
+        # No animations, or the very first reading: the painted level tracks
+        # the raw value directly (never glide up from the placeholder 50)
+        $script:displayedFillPct = [double]$BatteryInfo.Percent
+    }
     $script:barIsCharging = $BatteryInfo.IsCharging
 
     # Smooth pulse transition: reset alpha when charging starts
@@ -988,9 +1236,37 @@ function Update-FloatingBar {
     # Plug/unplug flash — detect AC state change
     if ($null -ne $script:lastPluggedState -and $script:lastPluggedState -ne $BatteryInfo.IsPluggedIn) {
         $script:flashAlpha = 180  # Start flash
+        if ($BatteryInfo.IsPluggedIn -and -not $BatteryInfo.NoBattery) {
+            # Plug-in moment: bolt pops on the pill, and a card answers the
+            # question the user actually has - "when will it be full?"
+            if ($script:animOK) { $script:boltPopStart = Get-Date }
+            if (-not $BatteryInfo.IsFullyCharged) {
+                $plugSub = if ($BatteryInfo.TimeMinutes -gt 0 -and $BatteryInfo.ETA) {
+                    "Full by $($BatteryInfo.ETA)"
+                } else {
+                    "Battery charging"
+                }
+                Show-BatteryNotification -Message "Plugged in" -SubMessage $plugSub `
+                    -Accent ([System.Drawing.Color]::FromArgb(255, 200, 0))
+            }
+        }
         Update-PulseTimerState
     }
     $script:lastPluggedState = $BatteryInfo.IsPluggedIn
+
+    # Full-charge moment: one shimmer sweep + a card, once per plug session.
+    # Requires a PREVIOUS reading (no celebration when the app merely launches
+    # on an already-full battery).
+    if ($BatteryInfo.IsFullyCharged -and $BatteryInfo.IsPluggedIn -and
+        -not $script:wasFullyCharged -and $null -ne $script:lastBatteryInfo -and
+        -not $script:fullChargeShown) {
+        $script:fullChargeShown = $true
+        if ($script:animOK) { $script:shimmerStart = Get-Date; Update-PulseTimerState }
+        Show-BatteryNotification -Message "Fully charged" -SubMessage "Battery at 100% - free to unplug" `
+            -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
+    }
+    $script:wasFullyCharged = $BatteryInfo.IsFullyCharged
+    if (-not $BatteryInfo.IsPluggedIn) { $script:fullChargeShown = $false }
 
     # Low battery warning logic — show once per threshold per discharge cycle
     if ($BatteryInfo.IsPluggedIn -or $BatteryInfo.IsCharging) {

@@ -65,6 +65,7 @@ function Start-IntroAnimation {
                 $script:floatingBar.Opacity = $st.TargetOpacity
                 $script:floatingBar.Top = $st.TargetTop
                 $script:barDisplayPercent = $st.TargetPct
+                $script:displayedFillPct = [double]$st.TargetPct
                 $script:floatingBar.Invalidate()
                 $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
                 Show-FirstRunTooltip
@@ -81,6 +82,7 @@ function Start-IntroAnimation {
                     $script:floatingBar.Top = $st.TargetTop
                     if ($st.TargetPct -gt 0) {
                         $script:barDisplayPercent = 0
+                        $script:displayedFillPct = 0.0
                         $st.Phase = "sweep"; $st.Start = Get-Date
                     } else {
                         $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
@@ -91,9 +93,11 @@ function Start-IntroAnimation {
                 $t = [math]::Min(1.0, $ms / 500.0)
                 $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
                 $script:barDisplayPercent = [int]($st.TargetPct * $eased)
+                $script:displayedFillPct = [double]$script:barDisplayPercent
                 $script:floatingBar.Invalidate()
                 if ($t -ge 1.0) {
                     $script:barDisplayPercent = $st.TargetPct
+                    $script:displayedFillPct = [double]$st.TargetPct
                     $script:floatingBar.Invalidate()
                     $script:introTimer.Stop(); $script:introTimer.Dispose(); $script:introTimer = $null
                     Show-FirstRunTooltip
@@ -346,6 +350,23 @@ function Show-SettingsPanel {
         })
     $settings.Controls.Add($autoHideCheck)
     $settingsTooltip.SetToolTip($autoHideCheck, "Hide pill when fullscreen apps are active (games, videos)")
+    $y += [int](30 * $ds)
+
+    # Fun status lines checkbox
+    $funLinesCheck = New-Object DarkCheckBox
+    $funLinesCheck.Text = "Fun status lines"
+    $funLinesCheck.Font = $labelFont
+    $funLinesCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $funLinesCheck.Location = New-Object System.Drawing.Point($m, $y)
+    $funLinesCheck.AutoSize = $false
+    $funLinesCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
+    $funLinesCheck.Checked = $script:config.FunLines
+    $funLinesCheck.Add_CheckedChanged({
+            $script:config.FunLines = $funLinesCheck.Checked
+            Save-Config
+        })
+    $settings.Controls.Add($funLinesCheck)
+    $settingsTooltip.SetToolTip($funLinesCheck, "A line of personality in the battery popup")
     $y += [int](36 * $ds)
 
     # --- Appearance section header ---
@@ -520,6 +541,15 @@ function Show-SettingsPanel {
                 $script:config.AccentColorIndex = $sender.Tag.Index
                 $script:cachedIconPercent = -999   # force tray icon rebuild with the new accent
                 Save-Config
+                # Glide the pill to the new accent in ~0.3s (pulse timer) instead
+                # of stepping there over several slow refresh-tick lerps
+                if ($null -ne $script:lastBatteryInfo) {
+                    Update-FloatingBar -BatteryInfo $script:lastBatteryInfo
+                    if ($script:animOK) {
+                        $script:colorFadeActive = $true
+                        Update-PulseTimerState
+                    }
+                }
                 # Repaint all color circles to update selection ring
                 foreach ($ctrl in $settings.Controls) {
                     if ($ctrl -is [System.Windows.Forms.Panel] -and $null -ne $ctrl.Tag -and $ctrl.Tag -is [hashtable] -and $null -ne $ctrl.Tag.Index) {
@@ -756,6 +786,25 @@ function Show-SettingsPanel {
     $settings.Dispose()
 }
 
+function Get-BatterySessionSummary {
+    [OutputType([string])]
+    param()
+    # "On battery 2h 13m - used 34%" for the current discharge run, computed
+    # from the sparkline history. Empty when charging, or when the run is too
+    # short to say anything meaningful.
+    if ($null -eq $script:batteryHistory -or $script:batteryHistory.Count -lt 2) { return "" }
+    $last = $script:batteryHistory[$script:batteryHistory.Count - 1]
+    if ($last.IsCharging) { return "" }
+    # Walk back to the start of the continuous discharge run
+    $startIdx = $script:batteryHistory.Count - 1
+    while ($startIdx -gt 0 -and -not $script:batteryHistory[$startIdx - 1].IsCharging) { $startIdx-- }
+    $first = $script:batteryHistory[$startIdx]
+    $spanMin = [int](($last.Time - $first.Time).TotalMinutes)
+    $used = $first.Percent - $last.Percent
+    if ($spanMin -lt 10 -or $used -lt 1) { return "" }
+    return "On battery $(Format-Duration -Minutes $spanMin) - used $used%"
+}
+
 function Show-BatteryHealthCard {
     [OutputType([void])]
     param()
@@ -786,8 +835,12 @@ function Show-BatteryHealthCard {
     $script:hcHasData = $hasData
     $script:hcDs = $ds
 
+    $sessionText = Get-BatterySessionSummary
     $fw = [int](300 * $ds)
-    $fh = if ($hasData) { [int](332 * $ds) } else { [int](232 * $ds) }
+    $fh = if ($hasData) {
+        # Extra row when there's a current-session line to show
+        if ($sessionText) { [int](356 * $ds) } else { [int](332 * $ds) }
+    } else { [int](232 * $ds) }
 
     $card = New-Object System.Windows.Forms.Form
     $card.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
@@ -875,6 +928,9 @@ function Show-BatteryHealthCard {
         $fontsToDispose += (Add-CenterLabel -Text $fullTxt -YPos 250 -FontSize 8.5 -Bold $false -Color $script:theme.TextLight).Font
         $wearTxt = "{0:N1}% wear" -f $info.BatteryWearPercent
         $fontsToDispose += (Add-CenterLabel -Text $wearTxt -YPos 274 -FontSize 8.5 -Bold $false -Color $script:theme.TextDim).Font
+        if ($sessionText) {
+            $fontsToDispose += (Add-CenterLabel -Text $sessionText -YPos 300 -FontSize 8.5 -Bold $false -Color $script:theme.TextLight).Font
+        }
     } else {
         $glyph = Add-CenterLabel -Text ([string][char]0x26A1) -YPos 60 -FontSize 26 -Bold $false -Color ([System.Drawing.Color]::FromArgb(45, 212, 100))
         $glyph.Font = New-Object System.Drawing.Font("Segoe UI Symbol", (26 * $ds), [System.Drawing.FontStyle]::Regular)
