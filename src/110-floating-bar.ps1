@@ -784,6 +784,47 @@ function Format-Duration {
     return "{0}m" -f $m
 }
 
+function Get-BatteryStateTitle {
+    [OutputType([string])]
+    param([hashtable]$BatteryInfo)
+    # The one wording of the popup's state title (builder + live refresh)
+    if ($BatteryInfo.IsFullyCharged) { return "Fully Charged" }
+    if ($BatteryInfo.IsCharging) { return "Charging" }
+    if ($BatteryInfo.NoBattery) { return "No Battery" }
+    return "Discharging"
+}
+
+function Get-TimeSentence {
+    [OutputType([string])]
+    param([hashtable]$BatteryInfo)
+    # The one wording of the popup's time line (builder + live refresh):
+    # "3h 8m left - 6:42 PM" / "1h 3m to full - 5:10 PM" / "Fully charged"
+    if ($BatteryInfo.IsFullyCharged) { return "Fully charged" }
+    if ($BatteryInfo.TimeMinutes -gt 0) {
+        $dur = Format-Duration -Minutes $BatteryInfo.TimeMinutes
+        $suffix = if ($BatteryInfo.IsCharging) { "to full" } else { "left" }
+        if ($BatteryInfo.ETA) {
+            return "$dur $suffix $([char]0x2014) $($BatteryInfo.ETA)"
+        }
+        return "$dur $suffix"
+    }
+    return "Estimating..."
+}
+
+function Get-HeroPercentColor {
+    [OutputType([System.Drawing.Color])]
+    param([string]$Status)
+    # Status color, darkened for readability on the light popup surface
+    $statusColor = Get-StatusColor -Status $Status
+    if ($script:theme.PopupBg.GetBrightness() -gt 0.5) {
+        return [System.Drawing.Color]::FromArgb(
+            [int]($statusColor.R * 0.62),
+            [int]($statusColor.G * 0.62),
+            [int]($statusColor.B * 0.62))
+    }
+    return $statusColor
+}
+
 function Get-FunStatusLine {
     [OutputType([string])]
     param([hashtable]$BatteryInfo)
@@ -822,23 +863,13 @@ function New-BatteryPopupContent {
     # Shared popup content builder — used by both hover and tray popups
     # Returns @{ TotalHeight; Fonts (array for disposal) }
 
-    $statusColor = Get-StatusColor -Status $BatteryInfo.StatusText
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Regular)
     # Hero fonts for top section (Time — the data users care about most)
     $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
 
     # --- Title: status only (the hero percent below carries the number) ---
-    if ($BatteryInfo.IsFullyCharged) {
-        $titleText = "Fully Charged"
-    } elseif ($BatteryInfo.IsCharging) {
-        $titleText = "Charging"
-    } elseif ($BatteryInfo.NoBattery) {
-        $titleText = "No Battery"
-    } else {
-        $titleText = "Discharging"
-    }
     $titleLabel = New-Object System.Windows.Forms.Label
-    $titleLabel.Text = $titleText
+    $titleLabel.Text = Get-BatteryStateTitle -BatteryInfo $BatteryInfo
     $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Bold)
     $titleLabel.ForeColor = $script:theme.TextPrimary
     $titleLabel.Location = New-Object System.Drawing.Point(20, 10)
@@ -903,6 +934,13 @@ function New-BatteryPopupContent {
         $Form.Controls.Add($subLbl)
         $ny += [int](26 * $DpiScale)
 
+        # No live rows on this layout - drop any references left over from a
+        # previous popup so the refresher has nothing stale to write into
+        $script:popupTitleLabel = $null
+        $script:popupPctLabel = $null
+        $script:popupTimeLabel = $null
+        $script:popupFunLabel = $null
+        $script:popupSparkPanel = $null
         return @{
             TotalHeight = $ny + [int](8 * $DpiScale)
             Fonts       = @($labelFont, $heroValueFont, $titleLabel.Font) + $emptyFonts
@@ -915,21 +953,14 @@ function New-BatteryPopupContent {
     $y = [int](40 * $DpiScale)
 
     # --- Hero percent: the number users came for, big and status-colored ---
-    # Light theme: Get-StatusColor's palette is tuned for the dark popup; darken it
-    # so 18pt text stays readable on the light background (248,248,252).
-    $heroPctColor = $statusColor
-    if ($script:theme.PopupBg.GetBrightness() -gt 0.5) {
-        $heroPctColor = [System.Drawing.Color]::FromArgb(
-            [int]($statusColor.R * 0.62),
-            [int]($statusColor.G * 0.62),
-            [int]($statusColor.B * 0.62))
-    }
+    # (Get-HeroPercentColor darkens the palette on the light popup surface)
     $heroPctFont = New-Object System.Drawing.Font("Segoe UI Semibold", 18, [System.Drawing.FontStyle]::Bold)
+    $heroPctLabel = $null
     if ($BatteryInfo.PercentExact -ge 0) {
         $heroPctLabel = New-Object System.Windows.Forms.Label
         $heroPctLabel.Text = "$([int][math]::Round($BatteryInfo.PercentExact))%"
         $heroPctLabel.Font = $heroPctFont
-        $heroPctLabel.ForeColor = $heroPctColor
+        $heroPctLabel.ForeColor = Get-HeroPercentColor -Status $BatteryInfo.StatusText
         $heroPctLabel.Location = New-Object System.Drawing.Point($lx, $y)
         $heroPctLabel.AutoSize = $true
         $heroPctLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
@@ -939,19 +970,7 @@ function New-BatteryPopupContent {
 
     # Time - a sentence under the hero, not a labeled form row.
     # "3h 8m left — 6:42 PM" / "1h 3m to full — 5:10 PM" / "Fully charged"
-    if ($BatteryInfo.IsFullyCharged) {
-        $timeText = "Fully charged"
-    } elseif ($BatteryInfo.TimeMinutes -gt 0) {
-        $dur = Format-Duration -Minutes $BatteryInfo.TimeMinutes
-        $suffix = if ($BatteryInfo.IsCharging) { "to full" } else { "left" }
-        if ($BatteryInfo.ETA) {
-            $timeText = "$dur $suffix $([char]0x2014) $($BatteryInfo.ETA)"
-        } else {
-            $timeText = "$dur $suffix"
-        }
-    } else {
-        $timeText = "Estimating..."
-    }
+    $timeText = Get-TimeSentence -BatteryInfo $BatteryInfo
     $y += [int](4 * $DpiScale)
     $timeValLabel = New-Object System.Windows.Forms.Label
     $timeValLabel.Text = $timeText
@@ -1005,6 +1024,14 @@ function New-BatteryPopupContent {
         $Form.Controls.Add($hintLabel)
         $y += [int](14 * $DpiScale)   # account for the hint's height so it doesn't clip the bottom edge
     }
+
+    # Live-refresh references: Update-OpenPopupContent rewrites these on every
+    # battery tick while a popup is open, so the numbers never go stale
+    $script:popupTitleLabel = $titleLabel
+    $script:popupPctLabel = $heroPctLabel
+    $script:popupTimeLabel = $timeValLabel
+    $script:popupFunLabel = if ($funText) { $funLabel } else { $null }
+    $script:popupSparkPanel = $sparkPanel
 
     $fontsToDispose = @($labelFont, $heroValueFont, $heroPctFont, $titleLabel.Font)
     if ($null -ne $funFont) { $fontsToDispose += $funFont }
@@ -1125,8 +1152,9 @@ function Show-BatteryNotification {
     # invisible). The per-card hashtable also lets two live cards animate
     # independently instead of fighting over shared script-scope state.
     # Slide in over a short rise just below the resting slot (a stacked card
-    # rising from the true screen bottom would cross the cards under it)
-    $slideTarget = $screen.Bottom - $nH - 20 - $stackOffset
+    # rising from the true screen bottom would cross the cards under it).
+    # Clamped so a tall stack can never push a card off the top of the screen.
+    $slideTarget = [math]::Max($screen.Top + 8, $screen.Bottom - $nH - 20 - $stackOffset)
     $notif.Top = $slideTarget + 18
     $nState = @{
         Phase       = "in"      # "in", "hold", "out"

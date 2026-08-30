@@ -57,20 +57,10 @@ function Update-TrayIcon {
     # Update floating bar
     Update-FloatingBar -BatteryInfo $info
 
-    # A popup opened during "Estimating..." used to pulse that placeholder
-    # forever, even after a real estimate arrived. Swap in the real sentence
-    # in place; clearing the reference also stops the pulse.
-    if ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed -and $info.TimeMinutes -gt 0) {
-        $estDur = Format-Duration -Minutes $info.TimeMinutes
-        $estSuffix = if ($info.IsCharging) { "to full" } else { "left" }
-        $script:estimatingLabel.Text = if ($info.ETA) {
-            "$estDur $estSuffix $([char]0x2014) $($info.ETA)"
-        } else {
-            "$estDur $estSuffix"
-        }
-        $script:estimatingLabel.ForeColor = $script:theme.TextPrimary
-        $script:estimatingLabel = $null
-    }
+    # Keep any open popup's numbers honest: percent, title, time sentence,
+    # fun line and sparkline all refresh with this reading (a held-open popup
+    # used to freeze at whatever was true when it opened)
+    Update-OpenPopupContent -BatteryInfo $info
 
     # Record history for sparkline (cap at 2400 entries = ~2h at 3s intervals).
     # Skip when there's no battery so we don't fill the graph with junk -1 readings.
@@ -344,14 +334,26 @@ $script:timer.Add_Tick({
 # Pulse timer for charging animation (smooth pulsing glow effect)
 $script:pulseTimer = New-Object System.Windows.Forms.Timer
 $script:pulseTimer.Interval = 33  # 33ms for smooth animation (~30 FPS)
+$script:pulseTickCount = 0
 $script:pulseTimer.Add_Tick({
         try {
             $needsRepaint = $false
+            $script:pulseTickCount++
+            # True while something OTHER than the slow charging breath is
+            # animating - those need the full 30fps; the 5-second breath alone
+            # reads identically at 10fps, so idle charging repaints 3x less
+            $fastAnim = ($script:flashAlpha -gt 0) -or
+            ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or
+            ($null -ne $script:shimmerStart) -or ($null -ne $script:boltPopStart) -or
+            ($null -ne $script:themeFade) -or
+            ($null -ne $script:colorFadeActive -and $script:colorFadeActive) -or
+            ($script:textFadeAlpha -lt 255) -or
+            ([math]::Abs($script:displayedFillPct - $script:barDisplayPercent) -gt 0.4)
             if ($script:barIsCharging) {
                 # Sine-wave breathing pulse: 5-second cycle, alpha 90-120
                 $t = (Get-Date).Ticks / 10000000.0
                 $script:pulseAlpha = [int](105 + 15 * [Math]::Sin($t * 1.257))
-                $needsRepaint = $true
+                if ($fastAnim -or ($script:pulseTickCount % 3 -eq 0)) { $needsRepaint = $true }
             }
             # Plug/unplug flash decay (180→0 at 33ms tick, ~8/tick = ~750ms)
             if ($script:flashAlpha -gt 0) {

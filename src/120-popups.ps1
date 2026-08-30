@@ -10,6 +10,56 @@ function Get-EaseInOutCubic {
     return 1.0 - [Math]::Pow(-2.0 * $t + 2.0, 3) / 2.0
 }
 
+function Clear-PopupLiveRefs {
+    [OutputType([void])]
+    param()
+    # Forget the open popup's live rows (called on every popup teardown path)
+    $script:popupTitleLabel = $null
+    $script:popupPctLabel = $null
+    $script:popupTimeLabel = $null
+    $script:popupFunLabel = $null
+    $script:popupSparkPanel = $null
+}
+
+function Update-OpenPopupContent {
+    [OutputType([void])]
+    param([hashtable]$BatteryInfo)
+    # Rewrite the open popup's live rows with this tick's reading. Without
+    # this, a popup held open showed whatever was true at open time - the
+    # percent, time, fun line and graph all silently went stale.
+    if ($null -eq $script:popupTimeLabel -or $script:popupTimeLabel.IsDisposed) { return }
+    if ($null -ne $script:popupTitleLabel -and -not $script:popupTitleLabel.IsDisposed) {
+        $title = Get-BatteryStateTitle -BatteryInfo $BatteryInfo
+        if ($script:popupTitleLabel.Text -ne $title) { $script:popupTitleLabel.Text = $title }
+    }
+    if ($null -ne $script:popupPctLabel -and -not $script:popupPctLabel.IsDisposed -and $BatteryInfo.PercentExact -ge 0) {
+        $pctText = "$([int][math]::Round($BatteryInfo.PercentExact))%"
+        if ($script:popupPctLabel.Text -ne $pctText) { $script:popupPctLabel.Text = $pctText }
+        $script:popupPctLabel.ForeColor = Get-HeroPercentColor -Status $BatteryInfo.StatusText
+    }
+    $sentence = Get-TimeSentence -BatteryInfo $BatteryInfo
+    if ($script:popupTimeLabel.Text -ne $sentence) {
+        $script:popupTimeLabel.Text = $sentence
+        if ($sentence -eq "Estimating...") {
+            # Back to the placeholder (e.g. a plug event reset the EMA) - re-arm the pulse
+            $script:estimatingLabel = $script:popupTimeLabel
+            Update-PulseTimerState
+        } else {
+            # A real value replaced the pulsing placeholder - stop the pulse
+            $script:popupTimeLabel.ForeColor = $script:theme.TextPrimary
+            $script:estimatingLabel = $null
+        }
+    }
+    if ($null -ne $script:popupFunLabel -and -not $script:popupFunLabel.IsDisposed -and $script:config.FunLines) {
+        $fun = Get-FunStatusLine -BatteryInfo $BatteryInfo
+        if ($fun -and $script:popupFunLabel.Text -ne $fun) { $script:popupFunLabel.Text = $fun }
+    }
+    if ($null -ne $script:popupSparkPanel -and -not $script:popupSparkPanel.IsDisposed) {
+        # New history points landed this tick - repaint the graph
+        $script:popupSparkPanel.Invalidate()
+    }
+}
+
 function Close-HoverPopup {
     [OutputType([void])]
     param()
@@ -31,6 +81,7 @@ function Close-HoverPopup {
                             $script:hoverPopup.Close()
                             $script:hoverPopup.Dispose()
                             $script:hoverPopup = $null
+                            Clear-PopupLiveRefs
                             # Dispose popup fonts to prevent GDI+ handle leak
                             if ($null -ne $script:hoverPopupFonts) {
                                 foreach ($f in $script:hoverPopupFonts) { if ($null -ne $f) { $f.Dispose() } }
@@ -64,6 +115,7 @@ function Show-HoverPopup {
         $script:hoverPopup.Close()
         $script:hoverPopup.Dispose()
         $script:hoverPopup = $null
+        Clear-PopupLiveRefs
         if ($null -ne $script:hoverPopupFonts) {
             foreach ($f in $script:hoverPopupFonts) { if ($null -ne $f) { $f.Dispose() } }
             $script:hoverPopupFonts = $null
@@ -246,6 +298,7 @@ function Show-BatteryPopup {
 
     $popup.ShowDialog() | Out-Null
     $script:estimatingLabel = $null
+    Clear-PopupLiveRefs
     # Dispose popup fonts to prevent GDI+ handle leak
     foreach ($f in $content.Fonts) { if ($null -ne $f) { $f.Dispose() } }
     $popup.Dispose()
