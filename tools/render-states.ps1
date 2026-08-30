@@ -73,6 +73,20 @@ $HZDTB = ('__DTB__' -eq '1')
 $GEOM = Join-Path $OUT 'geometry.txt'
 # Quiesce the live update timer so real WMI data cannot repaint mid-capture
 if ($null -ne $script:timer) { $script:timer.Stop() }
+# Stealth: in DrawToBitmap mode nothing needs to be visible on screen -
+# park the pill offscreen and stop the intro so a render run never flashes
+# windows over whatever the user is doing (e.g. a fullscreen game)
+if ($HZDTB) {
+    if ($null -ne $script:introTimer) { $script:introTimer.Stop() }
+    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+        $script:floatingBar.TopMost = $false
+        $script:floatingBar.Location = New-Object System.Drawing.Point(-4000, -4000)
+        $script:floatingBar.Opacity = $script:config.Opacity
+    }
+    if ($null -ne $script:firstRunTip -and -not $script:firstRunTip.IsDisposed) {
+        $script:firstRunTip.Location = New-Object System.Drawing.Point(-4000, -4000)
+    }
+}
 
 function Add-GeomLine {
     param([string]$line)
@@ -135,8 +149,14 @@ function Render-PopupState {
     $f.ClientSize = New-Object System.Drawing.Size(300, [int]$res.TotalHeight)
     $f.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $f.ShowInTaskbar = $false
-    $f.TopMost = $true
-    $f.Location = New-Object System.Drawing.Point(60, 60)
+    if ($HZDTB) {
+        # DrawToBitmap renders fine offscreen - never flash over the user's work
+        $f.TopMost = $false
+        $f.Location = New-Object System.Drawing.Point(-4000, -4000)
+    } else {
+        $f.TopMost = $true
+        $f.Location = New-Object System.Drawing.Point(60, 60)
+    }
     $script:hzForm = $f
     $script:hzPath = Join-Path $OUT ($name + '.png')
     $script:hzDtb = $HZDTB
@@ -188,11 +208,21 @@ function Render-SettingsState {
     $script:hzDtb = $HZDTB
     $script:hzTries = 0
     $script:hzTimer = New-Object System.Windows.Forms.Timer
-    $script:hzTimer.Interval = 500
+    # DTB mode polls fast so the CenterScreen settings dialog can be yanked
+    # offscreen within ~50ms of appearing
+    $script:hzTimer.Interval = if ($HZDTB) { 50 } else { 500 }
+    $script:hzSettled = $false
     $script:hzTimer.Add_Tick({
         $sf = $null
         foreach ($of in [System.Windows.Forms.Application]::OpenForms) {
             if ($of.Text -like '*Settings*') { $sf = $of; break }
+        }
+        if ($null -ne $sf -and $HZDTB -and -not $script:hzSettled) {
+            # Move it offscreen first, capture on the next tick once layout settles
+            $sf.TopMost = $false
+            $sf.Location = New-Object System.Drawing.Point(-4000, -4000)
+            $script:hzSettled = $true
+            return
         }
         if ($null -ne $sf) {
             $script:hzTimer.Stop()
