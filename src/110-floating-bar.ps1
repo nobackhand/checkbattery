@@ -284,24 +284,28 @@ function New-FloatingBar {
                 $g.Clip = $oldClip
             }
 
-            # --- Glass effect: convex top highlight band ---
+            # --- Glass effect: full-height convex sheen (top ~45% of the pill) ---
+            # The old 6px sliver read as a scratch; a tall soft falloff is what
+            # makes the surface read as curved glass
             $oldClip2 = $g.Clip
             $g.SetClip($path)
-            $topBandRect = New-Object System.Drawing.Rectangle(0, 0, $w, 6)
+            $sheenH = [math]::Max(6, [int]($h * 0.45))
+            $topBandRect = New-Object System.Drawing.Rectangle(0, 0, $w, $sheenH)
             $topBandBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
                 $topBandRect,
-                [System.Drawing.Color]::FromArgb(35, 255, 255, 255),
+                [System.Drawing.Color]::FromArgb(32, 255, 255, 255),
                 [System.Drawing.Color]::FromArgb(0, 255, 255, 255),
                 [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
             $g.FillRectangle($topBandBrush, $topBandRect)
             $topBandBrush.Dispose()
 
-            # --- Glass effect: bottom shadow band ---
-            $botBandRect = New-Object System.Drawing.Rectangle(0, ($h - 4), $w, 4)
+            # --- Glass effect: bottom shade (lower ~30%) grounds the shape ---
+            $shadeH = [math]::Max(4, [int]($h * 0.30))
+            $botBandRect = New-Object System.Drawing.Rectangle(0, ($h - $shadeH), $w, $shadeH)
             $botBandBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
                 $botBandRect,
                 [System.Drawing.Color]::FromArgb(0, 0, 0, 0),
-                [System.Drawing.Color]::FromArgb(20, 0, 0, 0),
+                [System.Drawing.Color]::FromArgb(34, 0, 0, 0),
                 [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
             $g.FillRectangle($botBandBrush, $botBandRect)
             $botBandBrush.Dispose()
@@ -319,6 +323,14 @@ function New-FloatingBar {
                 $g.FillRectangle($glowBrush, $glowRect)
                 $glowBrush.Dispose()
             }
+
+            # --- Inner rim: a 1px dark line just inside the border adds depth.
+            # Pen width 2 stroked on the path while clipped INSIDE it leaves
+            # exactly the inner half - no second inset path needed.
+            $rimAlpha = if ($script:theme.PillBg.R -gt 128) { 22 } else { 55 }
+            $rimPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb($rimAlpha, 0, 0, 0), 2)
+            $g.DrawPath($rimPen, $path)
+            $rimPen.Dispose()
             $g.Clip = $oldClip2
 
             # --- Text rendering (supports single-line and dual-line modes) ---
@@ -327,11 +339,22 @@ function New-FloatingBar {
             # Text crossfade: when the value changes, the new text fades in
             # (pulse timer ramps textFadeAlpha back to 255)
             $txA = [int][math]::Max(0, [math]::Min(255, $script:textFadeAlpha))
+            # Soft text shadow on the dark pill: separates light text from a
+            # bright accent fill behind it (skipped on light theme - dark text
+            # needs no lift)
+            $txtShadowBrush = $null
+            if ($script:theme.PillBg.R -le 128) {
+                $txtShadowBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb([int](0.42 * $txA), 0, 0, 0))
+            }
             if ($script:barDisplayText2 -and $script:barDisplayText2.Length -gt 0 -and $null -ne $script:pillFont2) {
                 # Dual-line mode: top = accent-colored primary, bottom = dim secondary
                 $ac3 = $script:barAccentColor
                 $topBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($txA, $ac3.R, $ac3.G, $ac3.B))
                 $topRect = New-Object System.Drawing.RectangleF(0, (2 + $pressY), $w, ($h / 2))
+                if ($null -ne $txtShadowBrush) {
+                    $topShadowRect = New-Object System.Drawing.RectangleF(0, (3 + $pressY), $w, ($h / 2))
+                    $g.DrawString($script:barDisplayText, $script:pillFont, $txtShadowBrush, $topShadowRect, $script:pillStringFormat)
+                }
                 $g.DrawString($script:barDisplayText, $script:pillFont, $topBrush, $topRect, $script:pillStringFormat)
                 $topBrush.Dispose()
                 $td = $script:theme.TextDim
@@ -340,19 +363,29 @@ function New-FloatingBar {
                 # comma binds tighter than minus, so "($h / 2) - 2, $w" parses as array subtraction
                 # and throws op_Subtraction every paint, silently killing this second line.
                 $botRect = New-Object System.Drawing.RectangleF(0, ((($h / 2) - 2) + $pressY), $w, ($h / 2))
+                if ($null -ne $txtShadowBrush) {
+                    $botShadowRect = New-Object System.Drawing.RectangleF(0, ((($h / 2) - 1) + $pressY), $w, ($h / 2))
+                    $g.DrawString($script:barDisplayText2, $script:pillFont2, $txtShadowBrush, $botShadowRect, $script:pillStringFormat)
+                }
                 $g.DrawString($script:barDisplayText2, $script:pillFont2, $botBrush, $botRect, $script:pillStringFormat)
                 $botBrush.Dispose()
-            } elseif ($txA -lt 255) {
-                $tp = $script:theme.TextPrimary
-                $fadeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($txA, $tp.R, $tp.G, $tp.B))
-                $textRect = New-Object System.Drawing.RectangleF(0, $pressY, $w, $h)
-                $g.DrawString($script:barDisplayText, $script:pillFont, $fadeBrush, $textRect, $script:pillStringFormat)
-                $fadeBrush.Dispose()
             } else {
-                # Single-line mode (centered — cached brush)
                 $textRect = New-Object System.Drawing.RectangleF(0, $pressY, $w, $h)
-                $g.DrawString($script:barDisplayText, $script:pillFont, $script:pillTextBrush, $textRect, $script:pillStringFormat)
+                if ($null -ne $txtShadowBrush) {
+                    $shadowRect = New-Object System.Drawing.RectangleF(0, (1 + $pressY), $w, $h)
+                    $g.DrawString($script:barDisplayText, $script:pillFont, $txtShadowBrush, $shadowRect, $script:pillStringFormat)
+                }
+                if ($txA -lt 255) {
+                    $tp = $script:theme.TextPrimary
+                    $fadeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($txA, $tp.R, $tp.G, $tp.B))
+                    $g.DrawString($script:barDisplayText, $script:pillFont, $fadeBrush, $textRect, $script:pillStringFormat)
+                    $fadeBrush.Dispose()
+                } else {
+                    # Single-line mode (centered — cached brush)
+                    $g.DrawString($script:barDisplayText, $script:pillFont, $script:pillTextBrush, $textRect, $script:pillStringFormat)
+                }
             }
+            if ($null -ne $txtShadowBrush) { $txtShadowBrush.Dispose() }
 
             # --- Press feedback: gentle darkening while held ---
             if ($pressY -gt 0) {
@@ -438,6 +471,16 @@ function New-FloatingBar {
             } elseif ($script:pillHovered -and $null -ne $script:pillBorderHoverPen) {
                 # --- Hover affordance: stronger border while the cursor is on the pill (cached pen) ---
                 $g.DrawPath($script:pillBorderHoverPen, $path)
+            } elseif ($null -ne $script:barAccentColor) {
+                # --- Border with a whisper of the accent (35% blend) so the
+                # state color reads at the rim, not just in the fill ---
+                $bc = $script:theme.Border; $acB = $script:barAccentColor
+                $tintPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,
+                        [int]($bc.R + ($acB.R - $bc.R) * 0.35),
+                        [int]($bc.G + ($acB.G - $bc.G) * 0.35),
+                        [int]($bc.B + ($acB.B - $bc.B) * 0.35)), 1)
+                $g.DrawPath($tintPen, $path)
+                $tintPen.Dispose()
             } else {
                 # --- Border (cached pen) ---
                 $g.DrawPath($script:pillBorderPen, $path)
@@ -701,6 +744,21 @@ function New-SparklinePanel {
                     $points[$i] = New-Object System.Drawing.PointF($px, $py)
                 }
                 if ($drawCount -ge 2) {
+                    # Gradient area fill under the line (accent fading to
+                    # transparent toward the baseline) - the detail that turns
+                    # a bare polyline into a real chart
+                    $areaPts = New-Object System.Drawing.PointF[] ($drawCount + 2)
+                    for ($ai = 0; $ai -lt $drawCount; $ai++) { $areaPts[$ai] = $points[$ai] }
+                    $areaPts[$drawCount] = New-Object System.Drawing.PointF($points[$drawCount - 1].X, $sh)
+                    $areaPts[$drawCount + 1] = New-Object System.Drawing.PointF($points[0].X, $sh)
+                    $areaRect = New-Object System.Drawing.Rectangle(0, 0, $sw, $sh)
+                    $areaBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+                        $areaRect,
+                        [System.Drawing.Color]::FromArgb(52, $acColor.R, $acColor.G, $acColor.B),
+                        [System.Drawing.Color]::FromArgb(0, $acColor.R, $acColor.G, $acColor.B),
+                        [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+                    $sg.FillPolygon($areaBrush, $areaPts)
+                    $areaBrush.Dispose()
                     $sg.DrawLines($linePen, $points[0..($drawCount - 1)])
                 }
                 $linePen.Dispose()
@@ -877,12 +935,27 @@ function New-BatteryPopupContent {
     $titleLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
     $Form.Controls.Add($titleLabel)
 
-    # Separator line under title
-    $sepLabel = New-Object System.Windows.Forms.Label
-    $sepLabel.Location = New-Object System.Drawing.Point(20, 32)
-    $sepLabel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 1)
-    $sepLabel.BackColor = $script:theme.Border
-    $Form.Controls.Add($sepLabel)
+    # Separator under the title: an accent gradient that fades out to the
+    # right - reads as designed, not as a default hairline
+    $sepAccent = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
+    $sepPanel = New-Object System.Windows.Forms.Panel
+    $sepPanel.Location = New-Object System.Drawing.Point(20, 32)
+    $sepPanel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 2)
+    $sepPanel.BackColor = [System.Drawing.Color]::Transparent
+    $sepPanel.Tag = @{ Accent = $sepAccent }
+    $sepPanel.Add_Paint({
+            param($sender, $e)
+            $sac = $sender.Tag.Accent
+            $sepRect = New-Object System.Drawing.Rectangle(0, 0, $sender.Width, $sender.Height)
+            $sepBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+                $sepRect,
+                [System.Drawing.Color]::FromArgb(170, $sac.R, $sac.G, $sac.B),
+                [System.Drawing.Color]::FromArgb(0, $sac.R, $sac.G, $sac.B),
+                [System.Drawing.Drawing2D.LinearGradientMode]::Horizontal)
+            $e.Graphics.FillRectangle($sepBrush, $sepRect)
+            $sepBrush.Dispose()
+        })
+    $Form.Controls.Add($sepPanel)
 
     # --- No-battery: a friendly empty state instead of a wall of N/A rows ---
     if ($BatteryInfo.NoBattery) {
