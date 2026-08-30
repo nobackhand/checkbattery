@@ -5,18 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BatteryPill</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect rx='4' width='14' height='8' y='4' x='1' fill='none' stroke='%23888' stroke-width='1.5'/><rect rx='2' x='3' y='6' width='8' height='4' fill='%23888'/></svg>">
-<meta name="description" content="A floating battery widget for Windows that shows time remaining.">
+<meta name="description" content="A floating battery widget for Windows that shows time remaining. Free, open source, one exe.">
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   :root {
-    --bg: #111;
+    --bg: #101012;
     --bg-card: #191919;
-    --text: #e0e0e0;
-    --text-2: #999;
-    --text-3: #666;
-    --border: #282828;
+    --text: #e4e4e7;
+    --text-2: #9a9aa2;
+    --text-3: #64646c;
+    --border: #27272c;
     --accent: #4ade80;
+    --accent-dim: rgba(74,222,128,0.35);
     --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     --mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
   }
@@ -24,7 +25,9 @@
   html { scroll-behavior: smooth; }
 
   body {
-    background: var(--bg);
+    background:
+      radial-gradient(1100px 500px at 50% -10%, rgba(74,222,128,0.055), transparent 65%),
+      var(--bg);
     color: var(--text);
     font-family: var(--font);
     font-size: 15px;
@@ -42,8 +45,8 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background: rgba(17,17,17,0.9);
-    backdrop-filter: blur(8px);
+    background: rgba(16,16,18,0.85);
+    backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
     padding: 0 24px;
     height: 48px;
@@ -53,7 +56,12 @@
     font-size: 13px;
   }
 
-  .nav-left { font-weight: 600; color: var(--text); }
+  .nav-left { font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .nav-pill {
+    width: 26px; height: 12px; border-radius: 6px;
+    border: 1px solid #3a3a42;
+    background: linear-gradient(to right, var(--accent-dim) 0 68%, transparent 68%);
+  }
   .nav-right { display: flex; gap: 20px; }
   .nav-right a { color: var(--text-3); }
   .nav-right a:hover { color: var(--text); }
@@ -62,13 +70,74 @@
 
   /* Hero */
   .hero {
-    padding: 120px 24px 80px;
+    padding: 96px 24px 64px;
     text-align: center;
   }
 
+  /* The living pill - a faithful 2x recreation of the widget */
+  .pill-stage { display: flex; justify-content: center; margin-bottom: 44px; }
+  .pill {
+    position: relative;
+    width: 216px; height: 68px;
+    border-radius: 34px;
+    background: #18181c;
+    border: 1px solid #3d5947;
+    box-shadow:
+      0 18px 50px rgba(0,0,0,0.55),
+      0 4px 14px rgba(0,0,0,0.4),
+      inset 0 0 0 1px rgba(0,0,0,0.35);
+    overflow: hidden;
+    animation: float 5s ease-in-out infinite;
+  }
+  .pill-fill {
+    position: absolute; inset: 0;
+    width: 68%;
+    background: linear-gradient(to right, rgba(74,222,128,0.48), rgba(74,222,128,0.22));
+    animation: breathe 5s ease-in-out infinite;
+  }
+  .pill-glow {
+    position: absolute; top: 0; bottom: 0; left: calc(68% - 4px); width: 12px;
+    background: linear-gradient(to right, rgba(74,222,128,0.5), transparent);
+  }
+  .pill-sheen {
+    position: absolute; inset: 0 0 55% 0;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.14), transparent);
+  }
+  .pill-shade {
+    position: absolute; inset: 70% 0 0 0;
+    background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.28));
+  }
+  .pill-shimmer {
+    position: absolute; top: 0; bottom: 0; width: 45%;
+    background: linear-gradient(to right, transparent, rgba(255,255,255,0.28), transparent);
+    animation: shimmer 6s ease-in-out infinite;
+  }
+  .pill-text {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Segoe UI Semibold', 'Segoe UI', var(--font);
+    font-size: 22px; font-weight: 700; color: #f5f5fa;
+    text-shadow: 0 2px 3px rgba(0,0,0,0.5);
+    letter-spacing: 0.01em;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-7px); }
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: 0.85; }
+    50% { opacity: 1; }
+  }
+  @keyframes shimmer {
+    0%, 72% { left: -50%; }
+    88% { left: 105%; }
+    100% { left: 105%; }
+  }
+
   .hero h1 {
-    font-size: 32px;
-    font-weight: 600;
+    font-size: 34px;
+    font-weight: 650;
     letter-spacing: -0.03em;
     line-height: 1.2;
     margin-bottom: 12px;
@@ -77,7 +146,7 @@
   .hero p {
     color: var(--text-2);
     font-size: 16px;
-    max-width: 400px;
+    max-width: 420px;
     margin: 0 auto 32px;
   }
 
@@ -87,13 +156,14 @@
     gap: 8px;
     background: var(--text);
     color: var(--bg);
-    padding: 10px 24px;
-    border-radius: 6px;
+    padding: 11px 26px;
+    border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
-    transition: opacity 0.15s;
+    transition: transform 0.15s ease, opacity 0.15s ease;
   }
-  .hero-dl:hover { color: var(--bg); opacity: 0.85; }
+  .hero-dl:hover { color: var(--bg); opacity: 0.9; transform: translateY(-1px); }
+  .hero-dl:active { transform: translateY(0) scale(0.98); }
 
   .hero-meta {
     margin-top: 16px;
@@ -108,33 +178,37 @@
     color: var(--text-3);
   }
 
-  /* Popup mockup */
+  /* Popup mockup - matches the real app: accent separator, fun line,
+     area-filled sparkline */
   .popup-preview {
-    padding: 0 24px 80px;
+    padding: 8px 24px 80px;
     display: flex;
     justify-content: center;
   }
 
   .popup-mock {
-    background: #1e1e1e;
+    background: #1a1a1e;
     border: 1px solid #333;
-    border-radius: 6px;
+    border-radius: 10px;
     padding: 16px 20px;
-    width: 280px;
+    width: 290px;
     font-family: 'Segoe UI', var(--font);
     font-size: 13px;
     color: #ccc;
     text-align: left;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.55);
   }
 
   .popup-title {
     font-size: 14px;
     font-weight: 600;
     color: #e0e0e0;
+    margin-bottom: 8px;
+  }
+  .popup-sep {
+    height: 2px;
+    background: linear-gradient(to right, rgba(74,222,128,0.65), transparent);
     margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #333;
   }
 
   .popup-hero {
@@ -143,7 +217,7 @@
     font-weight: 600;
     line-height: 1.1;
     color: #00b4ff;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
 
   .popup-time {
@@ -152,19 +226,24 @@
     padding: 2px 0;
   }
 
+  .popup-fun {
+    font-style: italic;
+    font-size: 12px;
+    color: #91919b;
+    margin-top: 2px;
+  }
+
   .popup-sparkline {
     margin-top: 12px;
-    height: 32px;
-    background: #161616;
-    border-radius: 3px;
+    height: 36px;
+    background: #151519;
+    border: 1px solid #2b2b30;
+    border-radius: 6px;
     position: relative;
     overflow: hidden;
   }
 
-  .popup-sparkline svg {
-    width: 100%;
-    height: 100%;
-  }
+  .popup-sparkline svg { width: 100%; height: 100%; display: block; }
 
   .popup-spark-label {
     display: flex;
@@ -190,12 +269,10 @@
     margin: 0 auto;
   }
 
-  /* Features */
-  .features {
-    padding: 64px 24px;
-  }
+  /* Sections */
+  .features, .install { padding: 64px 24px; }
 
-  .features h2 {
+  .features h2, .install h2 {
     font-size: 13px;
     font-weight: 500;
     color: var(--text-3);
@@ -225,23 +302,7 @@
   }
 
   /* Install */
-  .install {
-    padding: 64px 24px;
-  }
-
-  .install h2 {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-3);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 20px;
-  }
-
-  .install ol {
-    list-style: none;
-    counter-reset: steps;
-  }
+  .install ol { list-style: none; counter-reset: steps; }
 
   .install li {
     counter-increment: steps;
@@ -290,6 +351,18 @@
   .footer-links a { color: var(--text-3); }
   .footer-links a:hover { color: var(--text-2); }
 
+  /* Scroll reveal */
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* The app respects the Windows animation setting; the site respects yours */
+  @media (prefers-reduced-motion: reduce) {
+    .pill, .pill-fill { animation: none; }
+    .pill-shimmer { display: none; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    html { scroll-behavior: auto; }
+  }
+
   /* Responsive */
   @media (max-width: 520px) {
     .features ul { grid-template-columns: 1fr; }
@@ -301,7 +374,7 @@
 <body>
 
 <nav>
-  <span class="nav-left">BatteryPill</span>
+  <span class="nav-left"><span class="nav-pill"></span>BatteryPill</span>
   <div class="nav-right">
     <a href="#features">Features</a>
     <a href="#install">Install</a>
@@ -311,6 +384,16 @@
 </nav>
 
 <div class="hero">
+  <div class="pill-stage">
+    <div class="pill" aria-label="The BatteryPill widget showing 3 hours 8 minutes remaining">
+      <div class="pill-fill"></div>
+      <div class="pill-glow"></div>
+      <div class="pill-sheen"></div>
+      <div class="pill-shade"></div>
+      <div class="pill-shimmer"></div>
+      <div class="pill-text">3h 8m</div>
+    </div>
+  </div>
   <h1>Battery time remaining,<br>always visible</h1>
   <p>A floating pill widget for Windows that shows hours and minutes left. Not a percentage.</p>
   <a href="https://github.com/nobackhand/checkbattery/releases/latest/download/BatteryPill.exe" class="hero-dl">Download for Windows</a>
@@ -318,23 +401,32 @@
   <div class="hero-note">SmartScreen may warn on first run &mdash; click "More info" &rarr; "Run anyway"</div>
 </div>
 
-<div class="popup-preview">
+<div class="popup-preview reveal">
   <div>
     <div class="popup-mock">
       <div class="popup-title">Discharging</div>
+      <div class="popup-sep"></div>
       <div class="popup-hero">72%</div>
       <div class="popup-time">3h 8m left &mdash; 6:42 PM</div>
+      <div class="popup-fun">Plenty in the tank.</div>
       <div class="popup-sparkline">
-        <svg viewBox="0 0 240 32" preserveAspectRatio="none">
-          <rect x="0" y="0" width="60" height="32" fill="rgba(74,222,128,0.08)"/>
-          <line x1="0" y1="16" x2="240" y2="16" stroke="#333" stroke-width="0.5" stroke-dasharray="2,2"/>
-          <polyline fill="none" stroke="#4ade80" stroke-width="1.5" points="0,28 15,26 30,22 45,14 60,8 75,6 90,8 105,10 120,11 135,13 150,15 165,17 180,18 195,20 210,21 225,22 240,23"/>
-          <circle cx="237" cy="22.8" r="2.5" fill="#4ade80"/>
+        <svg viewBox="0 0 240 36" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#4ade80" stop-opacity="0.22"/>
+              <stop offset="1" stop-color="#4ade80" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="60" height="36" fill="rgba(74,222,128,0.07)"/>
+          <line x1="0" y1="18" x2="240" y2="18" stroke="#333" stroke-width="0.5" stroke-dasharray="2,2"/>
+          <polygon fill="url(#area)" points="0,30 15,28 30,24 45,16 60,9 75,7 90,9 105,11 120,12 135,14 150,16 165,19 180,20 195,22 210,23 225,24 240,25 240,36 0,36"/>
+          <polyline fill="none" stroke="#4ade80" stroke-width="1.5" points="0,30 15,28 30,24 45,16 60,9 75,7 90,9 105,11 120,12 135,14 150,16 165,19 180,20 195,22 210,23 225,24 240,25"/>
+          <circle cx="237" cy="24.8" r="2.5" fill="#4ade80"/>
         </svg>
       </div>
       <div class="popup-spark-label"><span>50%</span><span>2h ago</span><span>now</span></div>
     </div>
-    <p class="popup-caption">Hover the pill for a closer look.</p>
+    <p class="popup-caption">Hover the pill for a closer look &mdash; every number stays live while it's open.</p>
   </div>
 </div>
 
@@ -344,33 +436,37 @@
   <section class="features" id="features">
     <h2>Features</h2>
     <ul>
-      <li>
-        <strong>Always on top</strong>
-        Floats above all windows. Auto-hides in fullscreen apps.
-      </li>
-      <li>
+      <li class="reveal">
         <strong>Time, not percent</strong>
         Shows hours and minutes remaining so you know when to plug in.
       </li>
-      <li>
-        <strong>Hover popup</strong>
-        A glance, not a readout: big percentage, time remaining with ETA, and a 2-hour sparkline.
+      <li class="reveal">
+        <strong>Feels alive</strong>
+        Fill levels glide, text crossfades, the pill glides with momentum when you fling it, and charging breathes.
       </li>
-      <li>
-        <strong>DPI aware</strong>
-        Renders crisp on any display scaling. No blurry text.
+      <li class="reveal">
+        <strong>Little moments</strong>
+        Plug in and a bolt pops with your time-to-full. Hit 100% and the pill shimmers.
       </li>
-      <li>
-        <strong>Customizable</strong>
-        Dark/light/auto theme. 8 accent colors. 3 pill sizes.
+      <li class="reveal">
+        <strong>Native to Windows 11</strong>
+        Real DWM rounded corners and system shadows on every popup. Respects your Windows animation setting.
       </li>
-      <li>
+      <li class="reveal">
+        <strong>Live hover popup</strong>
+        Big percentage, time remaining with ETA, and a 2-hour sparkline &mdash; updating while you watch.
+      </li>
+      <li class="reveal">
         <strong>Battery health</strong>
-        A health-ring card showing wear and capacity &mdash; how much of your battery is left after all those cycles.
+        A health-ring card showing wear, capacity, and how long this session has run on battery.
       </li>
-      <li>
-        <strong>Portable</strong>
-        Single .exe, no installer, no dependencies. Config saved locally.
+      <li class="reveal">
+        <strong>Customizable</strong>
+        Dark/light/auto theme. 8 accent colors. 3 pill sizes. Fun status lines you can turn off.
+      </li>
+      <li class="reveal">
+        <strong>Portable &amp; light</strong>
+        Single .exe, no installer, no dependencies. One battery query every 3 seconds; animations idle when nothing moves.
       </li>
     </ul>
   </section>
@@ -383,7 +479,7 @@
       <li>Download BatteryPill.exe from the button above</li>
       <li>Windows will likely show "Windows protected your PC" &mdash; that's SmartScreen reacting to an unsigned exe, not a virus verdict. BatteryPill is a free <a href="https://github.com/nobackhand/checkbattery" target="_blank" rel="noopener">open source</a> tool, and code-signing certificates cost hundreds of dollars a year. Click "More info", then "Run anyway".</li>
       <li>Double-click to run. The pill appears on your desktop.</li>
-      <li>Drag it anywhere. Click it to switch time / percent. Right-click for settings.</li>
+      <li>Drag it anywhere &mdash; fling it and it glides. Click it to switch time / percent. Right-click for settings.</li>
     </ol>
     <p class="install-note">Want it there after every reboot? Turn on "Start with Windows" in Settings.<br>
     Done with it? Exit from the tray icon, then delete the exe and the small .config.json next to it &mdash; that's the whole uninstall.</p>
@@ -400,6 +496,16 @@
     </div>
   </div>
 </footer>
+
+<script>
+  // Scroll reveal (no-op when reduced motion is preferred - CSS handles it)
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+</script>
 
 </body>
 </html>
