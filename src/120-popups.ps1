@@ -136,8 +136,6 @@ function Show-HoverPopup {
     $popup.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $popup.KeyPreview = $true
     Enable-DoubleBuffering -Form $popup
-    # Enable CS_DROPSHADOW for popup elevation
-    $popup.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($popup.Handle) })
 
     # Rounded border
     $popup.Add_Paint({
@@ -166,11 +164,8 @@ function Show-HoverPopup {
     # Resize form to fit content
     $popup.ClientSize = New-Object System.Drawing.Size($popupW, $content.TotalHeight)
 
-    # Set rounded region to clip corners
-    $prd = 20; $pw = $popup.ClientSize.Width; $ph = $popup.ClientSize.Height
-    $popupRegionPath = New-RoundedRectPath -Right ($pw - $prd - 1) -Bottom ($ph - $prd - 1) -Diameter $prd
-    $popup.Region = New-Object System.Drawing.Region($popupRegionPath)
-    $popupRegionPath.Dispose()
+    # Native rounded corners + shadow (Region-clip fallback on Win10)
+    Set-NativeRoundedCorners -Form $popup -FallbackRadius 10
 
     # Position near the floating pill (deferred — uses actual final size)
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
@@ -238,8 +233,6 @@ function Show-BatteryPopup {
     $popup.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $popup.KeyPreview = $true
     Enable-DoubleBuffering -Form $popup
-    # Enable CS_DROPSHADOW for popup elevation
-    $popup.Add_HandleCreated({ [Win32Icon]::EnableDropShadow($popup.Handle) })
 
     # Rounded border
     $popup.Add_Paint({
@@ -267,11 +260,8 @@ function Show-BatteryPopup {
     # Resize form to fit content
     $popup.ClientSize = New-Object System.Drawing.Size($popupW, $content.TotalHeight)
 
-    # Set rounded region to clip corners
-    $prd = 20; $pw = $popup.ClientSize.Width; $ph = $popup.ClientSize.Height
-    $popupRegionPath = New-RoundedRectPath -Right ($pw - $prd - 1) -Bottom ($ph - $prd - 1) -Diameter $prd
-    $popup.Region = New-Object System.Drawing.Region($popupRegionPath)
-    $popupRegionPath.Dispose()
+    # Native rounded corners + shadow (Region-clip fallback on Win10)
+    Set-NativeRoundedCorners -Form $popup -FallbackRadius 10
 
     # Position near the floating pill (deferred — uses actual final size)
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {

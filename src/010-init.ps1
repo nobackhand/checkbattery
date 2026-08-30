@@ -40,10 +40,18 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 
-# P/Invoke for proper icon handle cleanup, DPI awareness, and fullscreen detection
-Add-Type @"
+# All native/C# helper types in ONE Add-Type call. This used to be four
+# separate Add-Type invocations - four compiler runs at every launch; merging
+# them into a single compilation measurably cuts startup time.
+Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing @"
 using System;
 using System.Runtime.InteropServices;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+// P/Invoke for icon handle cleanup, DPI awareness, fullscreen detection,
+// and the DWM window affordances (dark title bar, native rounded corners)
 public class Win32Icon {
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public extern static bool DestroyIcon(IntPtr handle);
@@ -108,14 +116,19 @@ public class Win32Icon {
             DwmSetWindowAttribute(hWnd, 19, ref useDark, 4);
         }
     }
-}
-"@
 
-# Dark palette for the right-click menus - without this they render as the
-# stock light-gray Windows menu, which clashes hard with the otherwise-dark app.
-Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing @"
-using System.Drawing;
-using System.Windows.Forms;
+    // Win11 native rounded corners (DWMWA_WINDOW_CORNER_PREFERENCE=33,
+    // DWMWCP_ROUND=2): antialiased corners plus the system window shadow -
+    // what native flyouts look like. Returns false on Win10, where callers
+    // fall back to Region clipping.
+    public static bool TryRoundCorners(IntPtr hWnd) {
+        int pref = 2;
+        return DwmSetWindowAttribute(hWnd, 33, ref pref, 4) == 0;
+    }
+}
+
+// Dark palette for the right-click menus - without this they render as the
+// stock light-gray Windows menu, which clashes hard with the otherwise-dark app.
 public class DarkMenuColorTable : ProfessionalColorTable {
     static readonly Color Bg  = Color.FromArgb(32, 32, 36);
     static readonly Color Sel = Color.FromArgb(52, 52, 60);
@@ -135,17 +148,11 @@ public class DarkMenuColorTable : ProfessionalColorTable {
     public override Color SeparatorDark                 { get { return Sep; } }
     public override Color SeparatorLight                { get { return Sep; } }
 }
-"@
 
-# Custom dark checkbox — the stock WinForms CheckBox draws an OS-default light
-# square with a system-blue check, the one control that still looked bolted-on
-# against the themed Settings panel (same problem the opacity slider had). This
-# owner-paints a rounded box with an accent fill + white check when on.
-Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing @"
-using System;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Windows.Forms;
+// Custom dark checkbox - the stock WinForms CheckBox draws an OS-default light
+// square with a system-blue check, the one control that still looked bolted-on
+// against the themed Settings panel (same problem the opacity slider had). This
+// owner-paints a rounded box with an accent fill + white check when on.
 public class DarkCheckBox : CheckBox {
     public Color AccentColor = Color.FromArgb(45, 212, 100);
     private Timer _anim;
@@ -235,15 +242,10 @@ public class DarkCheckBox : CheckBox {
         return p;
     }
 }
-"@
 
-# Modern menu renderer - the stock ProfessionalRenderer highlight is a flat
-# square block; this one draws a rounded, accent-tinted selection pill so the
-# right-click menus feel like part of the app instead of Windows 95 chrome.
-Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing @"
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Windows.Forms;
+// Modern menu renderer - the stock ProfessionalRenderer highlight is a flat
+// square block; this one draws a rounded, accent-tinted selection pill so the
+// right-click menus feel like part of the app instead of Windows 95 chrome.
 public class PillMenuRenderer : ToolStripProfessionalRenderer {
     private readonly Color _accent;
     public PillMenuRenderer(ProfessionalColorTable table, Color accent) : base(table) {
@@ -394,7 +396,7 @@ $script:theme = @{
     SparkGuide  = [System.Drawing.Color]::FromArgb(255, 255, 255)
 }
 
-$script:appVersion = "1.2.3"
+$script:appVersion = "1.2.4"
 
 function Get-SystemTheme {
     [OutputType([bool])]
