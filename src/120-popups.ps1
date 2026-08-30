@@ -191,11 +191,18 @@ function Show-HoverPopup {
     $popup.Add_MouseEnter({ $script:dismissTimer.Stop() })
     $popup.Add_KeyDown({ if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { Close-HoverPopup } })
 
-    # Store reference and show with eased fade-in (150ms duration)
+    # Store reference and show with eased fade + 10px upward slide (liquid
+    # emergence, not a lightswitch)
     $script:hoverPopup = $popup
     $script:hoverPopupVisible = $true
     if ($null -ne $script:fadeOutTimer) { $script:fadeOutTimer.Stop() }
     $popup.Opacity = 0
+    if ($script:animOK) {
+        $script:fadeInTopTarget = $popup.Top
+        $popup.Top = $popup.Top + 10
+    } else {
+        $script:fadeInTopTarget = $null
+    }
     $popup.Show()
     $script:fadeInStart = (Get-Date).Ticks
     if ($null -eq $script:fadeInTimer) {
@@ -206,8 +213,16 @@ function Show-HoverPopup {
                     $elapsed = ((Get-Date).Ticks - $script:fadeInStart) / 10000.0  # ms
                     $t = [Math]::Min(1.0, $elapsed / 150.0)
                     $eased = Get-EaseInOutCubic -t $t
-                    if ($t -ge 1.0) { $script:hoverPopup.Opacity = 1.0; $script:fadeInTimer.Stop() }
-                    else { $script:hoverPopup.Opacity = $eased }
+                    if ($t -ge 1.0) {
+                        $script:hoverPopup.Opacity = 1.0
+                        if ($null -ne $script:fadeInTopTarget) { $script:hoverPopup.Top = $script:fadeInTopTarget }
+                        $script:fadeInTimer.Stop()
+                    } else {
+                        $script:hoverPopup.Opacity = $eased
+                        if ($null -ne $script:fadeInTopTarget) {
+                            $script:hoverPopup.Top = [int]($script:fadeInTopTarget + 10 * (1.0 - $eased))
+                        }
+                    }
                 } else { $script:fadeInTimer.Stop() }
             })
     }
@@ -286,7 +301,30 @@ function Show-BatteryPopup {
     $popup.Add_Deactivate({ $popup.Close() })
     $popup.Add_KeyDown({ if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $popup.Close() } })
 
+    # Same liquid entrance as the hover popup: fade + 10px upward slide.
+    # Local timer + GetNewClosure (captured locals only - the notification
+    # pattern); ShowDialog pumps messages so the timer runs while modal.
+    $entryTimer = $null
+    if ($script:animOK) {
+        $popup.Opacity = 0
+        $entrySlideTo = $popup.Top
+        $popup.Top = $entrySlideTo + 10
+        $entryStart = (Get-Date).Ticks
+        $entryTimer = New-Object System.Windows.Forms.Timer
+        $entryTimer.Interval = 16
+        $entryTimer.Add_Tick({
+                if ($null -eq $popup -or $popup.IsDisposed) { $entryTimer.Stop(); return }
+                $t = [Math]::Min(1.0, (((Get-Date).Ticks - $entryStart) / 10000.0) / 180.0)
+                $eased = 1.0 - [Math]::Pow(1.0 - $t, 3)
+                $popup.Opacity = $eased
+                $popup.Top = [int]($entrySlideTo + 10 * (1.0 - $eased))
+                if ($t -ge 1.0) { $popup.Opacity = 1.0; $popup.Top = $entrySlideTo; $entryTimer.Stop() }
+            }.GetNewClosure())
+        $entryTimer.Start()
+    }
+
     $popup.ShowDialog() | Out-Null
+    if ($null -ne $entryTimer) { $entryTimer.Stop(); $entryTimer.Dispose() }
     $script:estimatingLabel = $null
     Clear-PopupLiveRefs
     # Dispose popup fonts to prevent GDI+ handle leak

@@ -45,7 +45,7 @@
 - Font: Segoe UI Semibold 10.2pt Bold.
 
 ### Detail Popup
-- Hover over the pill (500ms delay) to show: percent, capacity, charge/discharge rate, time remaining with ETA, elapsed time, full runtime estimate, battery wear.
+- Hover over the pill (350ms delay) to show: percent, capacity, charge/discharge rate, time remaining with ETA, elapsed time, full runtime estimate, battery wear.
 - Non-modal popup stays open while mouse is over pill or popup, dismisses when mouse leaves both.
 - 360px wide (DPI-scaled), positioned near the pill, auto-sized height. Positioning is deferred until after content layout for accurate screen-edge clamping.
 - Tray icon left-click still uses modal popup (closes on deactivate or Escape).

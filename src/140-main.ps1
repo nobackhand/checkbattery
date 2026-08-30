@@ -521,6 +521,11 @@ $script:mainForm.Add_FormClosing({
             $script:settleTimer.Dispose()
             $script:settleTimer = $null
         }
+        if ($null -ne $script:glideTimer) {
+            $script:glideTimer.Stop()
+            $script:glideTimer.Dispose()
+            $script:glideTimer = $null
+        }
         # Close hover popup and fade timers
         if ($null -ne $script:fadeInTimer) { $script:fadeInTimer.Stop(); $script:fadeInTimer.Dispose() }
         if ($null -ne $script:fadeOutTimer) { $script:fadeOutTimer.Stop(); $script:fadeOutTimer.Dispose() }

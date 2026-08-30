@@ -92,6 +92,87 @@ function Test-PositionOnScreen {
     return $false
 }
 
+function Get-SnappedLocation {
+    [OutputType([hashtable])]
+    param([int]$X, [int]$Y, [int]$Width, [int]$Height, [int]$Threshold)
+    # Edge magnetism: a position within $Threshold of a screen edge snaps to
+    # 8px off that edge. Returns the (possibly unchanged) resting point.
+    $margin = 8
+    $wa = [System.Windows.Forms.Screen]::FromPoint((New-Object System.Drawing.Point(($X + [int]($Width / 2)), ($Y + [int]($Height / 2))))).WorkingArea
+    if ([math]::Abs($X - $wa.Left) -lt $Threshold) { $X = $wa.Left + $margin }
+    if ([math]::Abs(($X + $Width) - $wa.Right) -lt $Threshold) { $X = $wa.Right - $Width - $margin }
+    if ([math]::Abs($Y - $wa.Top) -lt $Threshold) { $Y = $wa.Top + $margin }
+    if ([math]::Abs(($Y + $Height) - $wa.Bottom) -lt $Threshold) { $Y = $wa.Bottom - $Height - $margin }
+    return @{ X = $X; Y = $Y }
+}
+
+function Complete-PillRest {
+    [OutputType([void])]
+    param()
+    # Shared landing logic for glide/drag endings: snap to a near edge (eased),
+    # persist the final resting spot.
+    if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) { return }
+    $snap = Get-SnappedLocation -X $script:floatingBar.Left -Y $script:floatingBar.Top `
+        -Width $script:floatingBar.Width -Height $script:floatingBar.Height -Threshold 28
+    $script:config.X = $snap.X
+    $script:config.Y = $snap.Y
+    Save-Config
+    if ($snap.X -ne $script:floatingBar.Left -or $snap.Y -ne $script:floatingBar.Top) {
+        Start-PillSettle -TargetX $snap.X -TargetY $snap.Y
+    }
+}
+
+function Start-PillGlide {
+    [OutputType([void])]
+    param([double]$Vx, [double]$Vy)
+    # Momentum: released with speed, the pill keeps moving and decelerates
+    # with friction (x0.90 per 16ms), stopping dead at screen edges. Velocity
+    # is px/ms, capped so a wild fling can't rocket across the desktop.
+    if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) { return }
+    $maxV = 3.0
+    $speed = [math]::Sqrt($Vx * $Vx + $Vy * $Vy)
+    if ($speed -gt $maxV) { $Vx = $Vx * $maxV / $speed; $Vy = $Vy * $maxV / $speed }
+    if ($null -ne $script:glideTimer) { $script:glideTimer.Stop(); $script:glideTimer.Dispose(); $script:glideTimer = $null }
+    $script:glideState = @{
+        Vx    = $Vx
+        Vy    = $Vy
+        Px    = [double]$script:floatingBar.Left
+        Py    = [double]$script:floatingBar.Top
+        LastT = (Get-Date).Ticks
+    }
+    $script:glideTimer = New-Object System.Windows.Forms.Timer
+    $script:glideTimer.Interval = 16
+    $script:glideTimer.Add_Tick({
+            # Plain scriptblock + $script: state (see GetNewClosure gotcha)
+            if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed -or $script:isDragging) {
+                $script:glideTimer.Stop(); $script:glideTimer.Dispose(); $script:glideTimer = $null
+                return
+            }
+            $gs = $script:glideState
+            $now = (Get-Date).Ticks
+            $dt = [math]::Min(40.0, ($now - $gs.LastT) / 10000.0)   # ms, capped across hitches
+            $gs.LastT = $now
+            $gs.Px += $gs.Vx * $dt
+            $gs.Py += $gs.Vy * $dt
+            # Friction scaled to real elapsed time
+            $decay = [math]::Pow(0.90, $dt / 16.0)
+            $gs.Vx *= $decay; $gs.Vy *= $decay
+            # Hard stop at the working-area edges of whatever screen we're on
+            $bw = $script:floatingBar.Width; $bh = $script:floatingBar.Height
+            $wa = [System.Windows.Forms.Screen]::FromPoint((New-Object System.Drawing.Point(([int]$gs.Px + [int]($bw / 2)), ([int]$gs.Py + [int]($bh / 2))))).WorkingArea
+            if ($gs.Px -lt $wa.Left) { $gs.Px = $wa.Left; $gs.Vx = 0 }
+            if ($gs.Px -gt ($wa.Right - $bw)) { $gs.Px = $wa.Right - $bw; $gs.Vx = 0 }
+            if ($gs.Py -lt $wa.Top) { $gs.Py = $wa.Top; $gs.Vy = 0 }
+            if ($gs.Py -gt ($wa.Bottom - $bh)) { $gs.Py = $wa.Bottom - $bh; $gs.Vy = 0 }
+            $script:floatingBar.Location = New-Object System.Drawing.Point([int]$gs.Px, [int]$gs.Py)
+            if (([math]::Sqrt($gs.Vx * $gs.Vx + $gs.Vy * $gs.Vy)) -lt 0.05) {
+                $script:glideTimer.Stop(); $script:glideTimer.Dispose(); $script:glideTimer = $null
+                Complete-PillRest
+            }
+        })
+    $script:glideTimer.Start()
+}
+
 function Start-PillSettle {
     [OutputType([void])]
     param([int]$TargetX, [int]$TargetY)
@@ -121,8 +202,11 @@ function Start-PillSettle {
                 return
             }
             $st = $script:settleState
-            $t = [math]::Min(1.0, ((Get-Date) - $st.Start).TotalMilliseconds / 160.0)
-            $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
+            $t = [math]::Min(1.0, ((Get-Date) - $st.Start).TotalMilliseconds / 180.0)
+            # Ease-out-back: a whisper of overshoot past the target and a
+            # spring back - the liquid landing, not a mechanical stop
+            $c1 = 1.2; $c3 = $c1 + 1.0
+            $eased = 1.0 + $c3 * [math]::Pow($t - 1.0, 3) + $c1 * [math]::Pow($t - 1.0, 2)
             $nx = [int]($st.FromX + ($st.ToX - $st.FromX) * $eased)
             $ny = [int]($st.FromY + ($st.ToY - $st.FromY) * $eased)
             $script:floatingBar.Location = New-Object System.Drawing.Point($nx, $ny)
@@ -168,8 +252,10 @@ function New-FloatingBar {
     $script:themeFade = $null
     $script:colorFadeActive = $false
 
-    # Eased edge-settle after a drag release
+    # Eased edge-settle + momentum glide after a drag release
     $script:settleState = $null
+    $script:glideState = $null
+    $script:dragSamples = New-Object System.Collections.ArrayList
 
     # Smooth color transition state
     $script:currentDisplayColor = [System.Drawing.Color]::FromArgb(45, 212, 100)
@@ -489,9 +575,9 @@ function New-FloatingBar {
             $path.Dispose()
         })
 
-    # Hover timer for delayed popup (500ms)
+    # Hover timer for delayed popup (350ms - snappy but not twitchy)
     $script:hoverTimer = New-Object System.Windows.Forms.Timer
-    $script:hoverTimer.Interval = 500
+    $script:hoverTimer.Interval = 350
     $script:hoverTimer.Add_Tick({
             $script:hoverTimer.Stop()
             if (-not $script:hoverPopupVisible -and -not $script:floatingBar.ContextMenuStrip.Visible -and
@@ -604,6 +690,14 @@ function New-FloatingBar {
                 if ([math]::Abs(($newY + $barH) - $screen.Bottom) -lt $snapThreshold) { $newY = $screen.Bottom - $barH - $snapMargin }
 
                 $script:floatingBar.Location = New-Object System.Drawing.Point($newX, $newY)
+
+                # Velocity samples for the release glide (keep the last ~6)
+                $script:dragSamples.Add(@{
+                        T = (Get-Date).Ticks
+                        X = $script:floatingBar.Left
+                        Y = $script:floatingBar.Top
+                    }) | Out-Null
+                if ($script:dragSamples.Count -gt 6) { $script:dragSamples.RemoveAt(0) }
             }
         }
     }
@@ -613,25 +707,31 @@ function New-FloatingBar {
             $script:isDragging = $false
             $script:floatingBar.Cursor = [System.Windows.Forms.Cursors]::Default
             if ($script:didDrag) {
-                # Released within reach of a screen edge (a wider band than the
-                # hard mid-drag snap): glide the last stretch instead of leaving
-                # the pill hanging just off the margin. Config records the FINAL
-                # resting spot either way.
-                $relScreen = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position).WorkingArea
-                $settleT = 28; $settleM = 8
-                $sx = $script:floatingBar.Left; $sy = $script:floatingBar.Top
-                $sw2 = $script:floatingBar.Width; $sh2 = $script:floatingBar.Height
-                if ([math]::Abs($sx - $relScreen.Left) -lt $settleT) { $sx = $relScreen.Left + $settleM }
-                if ([math]::Abs(($sx + $sw2) - $relScreen.Right) -lt $settleT) { $sx = $relScreen.Right - $sw2 - $settleM }
-                if ([math]::Abs($sy - $relScreen.Top) -lt $settleT) { $sy = $relScreen.Top + $settleM }
-                if ([math]::Abs(($sy + $sh2) - $relScreen.Bottom) -lt $settleT) { $sy = $relScreen.Bottom - $sh2 - $settleM }
-                $script:config.X = $sx
-                $script:config.Y = $sy
-                Save-Config
-                if ($sx -ne $script:floatingBar.Left -or $sy -ne $script:floatingBar.Top) {
-                    Start-PillSettle -TargetX $sx -TargetY $sy
+                # Momentum: released while still moving, the pill keeps its
+                # velocity and glides to rest (friction + edge stops), then
+                # snaps/saves. A stationary release goes straight to the
+                # snap-and-save. Config records the FINAL resting spot.
+                $glided = $false
+                if ($script:animOK -and $script:dragSamples.Count -ge 2) {
+                    $lastS = $script:dragSamples[$script:dragSamples.Count - 1]
+                    # Oldest sample within the last 100ms = the velocity window
+                    $baseS = $null
+                    foreach ($smp in $script:dragSamples) {
+                        if (($lastS.T - $smp.T) -le 1000000) { $baseS = $smp; break }
+                    }
+                    if ($null -ne $baseS -and $lastS.T -gt $baseS.T) {
+                        $dtMs = ($lastS.T - $baseS.T) / 10000.0
+                        $vx = ($lastS.X - $baseS.X) / $dtMs
+                        $vy = ($lastS.Y - $baseS.Y) / $dtMs
+                        if (([math]::Sqrt($vx * $vx + $vy * $vy)) -gt 0.35) {
+                            Start-PillGlide -Vx $vx -Vy $vy
+                            $glided = $true
+                        }
+                    }
                 }
+                if (-not $glided) { Complete-PillRest }
             }
+            $script:dragSamples.Clear()
         }
         # Left-click without drag cycles the display mode (works even when position is locked)
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left -and $script:leftPressed -and -not $script:didDrag) {
