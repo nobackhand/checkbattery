@@ -24,7 +24,10 @@ function Set-RoundedMenuCorners {
             param($sender, $e)
             $r = 8; $d = $r * 2
             $p = New-RoundedRectPath -Right ($sender.Width - $d - 1) -Bottom ($sender.Height - $d - 1) -Diameter $d
+            # Region is IDisposable and this runs on every open - free the old one
+            $oldRegion = $sender.Region
             $sender.Region = New-Object System.Drawing.Region($p)
+            if ($null -ne $oldRegion) { $oldRegion.Dispose() }
             $p.Dispose()
         })
 }

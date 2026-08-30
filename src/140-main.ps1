@@ -57,6 +57,21 @@ function Update-TrayIcon {
     # Update floating bar
     Update-FloatingBar -BatteryInfo $info
 
+    # A popup opened during "Estimating..." used to pulse that placeholder
+    # forever, even after a real estimate arrived. Swap in the real sentence
+    # in place; clearing the reference also stops the pulse.
+    if ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed -and $info.TimeMinutes -gt 0) {
+        $estDur = Format-Duration -Minutes $info.TimeMinutes
+        $estSuffix = if ($info.IsCharging) { "to full" } else { "left" }
+        $script:estimatingLabel.Text = if ($info.ETA) {
+            "$estDur $estSuffix $([char]0x2014) $($info.ETA)"
+        } else {
+            "$estDur $estSuffix"
+        }
+        $script:estimatingLabel.ForeColor = $script:theme.TextPrimary
+        $script:estimatingLabel = $null
+    }
+
     # Record history for sparkline (cap at 2400 entries = ~2h at 3s intervals).
     # Skip when there's no battery so we don't fill the graph with junk -1 readings.
     if (-not $info.NoBattery) {
@@ -202,7 +217,7 @@ $pillHideItem.Add_Click({
         # Update tray menu item too
         $toggleBarItem.Text = "Show Bar"
         # Breadcrumb so a first-timer isn't left wondering where it went
-        Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
+        Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100)) -HoldSeconds 6
     })
 
 $pillHealthItem = New-Object System.Windows.Forms.ToolStripMenuItem("Battery Health")
@@ -258,7 +273,7 @@ $toggleBarItem.Add_Click({
             $script:floatingBar.Hide()
             $toggleBarItem.Text = "Show Bar"
             # Breadcrumb so a first-timer isn't left wondering where it went
-            Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
+            Show-BatteryNotification -Message "Pill hidden" -SubMessage "Right-click the tray battery icon to show it again" -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100)) -HoldSeconds 6
         } else {
             $script:floatingBar.Show()
             $toggleBarItem.Text = "Hide Bar"

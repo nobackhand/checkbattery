@@ -162,6 +162,7 @@ function New-FloatingBar {
     $script:boltPopStart = $null
     $script:wasFullyCharged = $false
     $script:fullChargeShown = $false
+    $script:plugCardPending = $null
 
     # Theme crossfade + fast accent fade (driven by the pulse timer)
     $script:themeFade = $null
@@ -792,6 +793,7 @@ function Get-FunStatusLine {
     if ($BatteryInfo.IsFullyCharged) { return "Topped off. Free to roam." }
     if ($BatteryInfo.IsCharging) {
         if ($BatteryInfo.Percent -ge 90) { return "Almost there." }
+        if ($BatteryInfo.Percent -ge 0 -and $BatteryInfo.Percent -lt 30) { return "Inhaling electrons." }
         return "Refueling."
     }
     $mins = $BatteryInfo.TimeMinutes
@@ -800,6 +802,8 @@ function Get-FunStatusLine {
         if ($mins -le 45) { return "Wrapping-up territory." }
         if ($mins -ge 480) { return "All-day battery. Go do things." }
         if ($mins -ge 300) { return "Hours of runway left." }
+        if ($mins -ge 120) { return "Plenty in the tank." }
+        return "Cruising. Keep an eye out."
     } elseif ($BatteryInfo.Percent -ge 0 -and $BatteryInfo.Percent -le 20) {
         return "Running on fumes."
     }
@@ -1011,6 +1015,10 @@ function New-BatteryPopupContent {
     }
 }
 
+# Live notification cards, tracked so simultaneous cards stack upward instead
+# of rendering on top of each other. Pruned of closed cards at each Show.
+$script:openNotifCards = New-Object System.Collections.ArrayList
+
 function Show-BatteryNotification {
     [OutputType([void])]
     param(
@@ -1018,7 +1026,10 @@ function Show-BatteryNotification {
         [string]$SubMessage,
         # Accent tints the left bar, border, and title. Default red suits the
         # battery warnings; pass a calmer color for informational cards.
-        [System.Drawing.Color]$Accent = [System.Drawing.Color]::FromArgb(255, 70, 70)
+        [System.Drawing.Color]$Accent = [System.Drawing.Color]::FromArgb(255, 70, 70),
+        # Warnings deserve the long default; informational cards should pass
+        # something shorter and get out of the way.
+        [int]$HoldSeconds = 10
     )
     # Custom dark-themed notification card — slides in from bottom-right, auto-dismiss 10s
     $gDs = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
@@ -1045,6 +1056,14 @@ function Show-BatteryNotification {
     } else {
         $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
     }
+    # Stack above any cards already on screen (prune the closed ones first)
+    for ($ni = $script:openNotifCards.Count - 1; $ni -ge 0; $ni--) {
+        $oc = $script:openNotifCards[$ni]
+        if ($null -eq $oc -or $oc.IsDisposed -or -not $oc.Visible) { $script:openNotifCards.RemoveAt($ni) }
+    }
+    $stackOffset = $script:openNotifCards.Count * ($nH + 8)
+    $script:openNotifCards.Add($notif) | Out-Null
+
     $notif.Location = New-Object System.Drawing.Point(($screen.Right - $nW - 10), ($screen.Bottom - 10))
 
     # Rounded region (DPI-scaled)
@@ -1105,12 +1124,17 @@ function Show-BatteryNotification {
     # 16ms, and the card stayed at Opacity 0 forever (notifications were
     # invisible). The per-card hashtable also lets two live cards animate
     # independently instead of fighting over shared script-scope state.
+    # Slide in over a short rise just below the resting slot (a stacked card
+    # rising from the true screen bottom would cross the cards under it)
+    $slideTarget = $screen.Bottom - $nH - 20 - $stackOffset
+    $notif.Top = $slideTarget + 18
     $nState = @{
         Phase       = "in"      # "in", "hold", "out"
         AnimStart   = Get-Date
         HoldStart   = $null
+        Hold        = [math]::Max(2, $HoldSeconds)
         SlideStart  = $notif.Top
-        SlideTarget = $screen.Bottom - $nH - 20
+        SlideTarget = $slideTarget
         Fonts       = @($nTitle.Font, $nSub.Font)
     }
 
@@ -1142,7 +1166,7 @@ function Show-BatteryNotification {
                     $nState.HoldStart = Get-Date
                 }
             } elseif ($nState.Phase -eq "hold") {
-                if (((Get-Date) - $nState.HoldStart).TotalSeconds -ge 10) {
+                if (((Get-Date) - $nState.HoldStart).TotalSeconds -ge $nState.Hold) {
                     $nState.Phase = "out"
                 }
             } elseif ($nState.Phase -eq "out") {
@@ -1237,22 +1261,31 @@ function Update-FloatingBar {
     if ($null -ne $script:lastPluggedState -and $script:lastPluggedState -ne $BatteryInfo.IsPluggedIn) {
         $script:flashAlpha = 180  # Start flash
         if ($BatteryInfo.IsPluggedIn -and -not $BatteryInfo.NoBattery) {
-            # Plug-in moment: bolt pops on the pill, and a card answers the
-            # question the user actually has - "when will it be full?"
+            # Plug-in moment: the bolt pop + flash carry the "yes, it's
+            # charging" feedback. The card is deferred (below) until the first
+            # real time-to-full estimate exists - at the plug moment the EMA
+            # hysteresis means there is nothing useful to say yet, and a card
+            # reading just "Battery charging" is noise.
             if ($script:animOK) { $script:boltPopStart = Get-Date }
-            if (-not $BatteryInfo.IsFullyCharged) {
-                $plugSub = if ($BatteryInfo.TimeMinutes -gt 0 -and $BatteryInfo.ETA) {
-                    "Full by $($BatteryInfo.ETA)"
-                } else {
-                    "Battery charging"
-                }
-                Show-BatteryNotification -Message "Plugged in" -SubMessage $plugSub `
-                    -Accent ([System.Drawing.Color]::FromArgb(255, 200, 0))
-            }
+            if (-not $BatteryInfo.IsFullyCharged) { $script:plugCardPending = Get-Date }
         }
         Update-PulseTimerState
     }
     $script:lastPluggedState = $BatteryInfo.IsPluggedIn
+
+    # Deferred plug-in card: fires once, with a real answer ("Full by 3:45 PM"),
+    # or not at all if no estimate lands within 45s
+    if ($null -ne $script:plugCardPending) {
+        if (-not $BatteryInfo.IsPluggedIn -or $BatteryInfo.IsFullyCharged) {
+            $script:plugCardPending = $null
+        } elseif ($BatteryInfo.IsCharging -and $BatteryInfo.TimeMinutes -gt 0 -and $BatteryInfo.ETA) {
+            $script:plugCardPending = $null
+            Show-BatteryNotification -Message "Charging" -SubMessage "Full by $($BatteryInfo.ETA)" `
+                -Accent ([System.Drawing.Color]::FromArgb(255, 200, 0)) -HoldSeconds 5
+        } elseif (((Get-Date) - $script:plugCardPending).TotalSeconds -gt 45) {
+            $script:plugCardPending = $null
+        }
+    }
 
     # Full-charge moment: one shimmer sweep + a card, once per plug session.
     # Requires a PREVIOUS reading (no celebration when the app merely launches
@@ -1263,7 +1296,7 @@ function Update-FloatingBar {
         $script:fullChargeShown = $true
         if ($script:animOK) { $script:shimmerStart = Get-Date; Update-PulseTimerState }
         Show-BatteryNotification -Message "Fully charged" -SubMessage "Battery at 100% - free to unplug" `
-            -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100))
+            -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100)) -HoldSeconds 6
     }
     $script:wasFullyCharged = $BatteryInfo.IsFullyCharged
     if (-not $BatteryInfo.IsPluggedIn) { $script:fullChargeShown = $false }
