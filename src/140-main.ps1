@@ -137,6 +137,9 @@ $script:notifyIcon.Visible = $true
 # (after the first real battery read) raises it into place, sweeps the fill,
 # then shows the first-run tips in sequence instead of racing them.
 $script:floatingBar = New-FloatingBar
+# A position saved by an earlier build describes an earlier pill SIZE (the
+# pill is DPI-scaled now), so pull it back on screen before showing it.
+Set-PillWithinScreen
 if ($script:config.Animations) {
     $script:floatingBar.Opacity = 0
 }
