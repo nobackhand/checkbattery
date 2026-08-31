@@ -14,6 +14,7 @@
 - **Build.ps1** — Assembles `src\` to a temp staging file and compiles it to `BatteryPill-<version>.exe` using `Invoke-PS2EXE`.
 - **release.ps1** — One-command GitHub release: refuses a dirty tree or already-released version, runs `scripts/verify.sh`, builds, tags `v<version>`, and uploads two assets (versioned exe + stable-named `BatteryPill.exe` that the website's download button always points at).
 - **.github/workflows/verify.yml** — CI: runs `scripts/verify.sh` on windows-latest for every push and PR.
+- **tests/** — `scripts/run-tests.ps1` runs every `tests\*.Tests.ps1`. The suite loads functions out of the assembled source via `tests\_harness.ps1`'s `Import-WidgetFunction` (AST lift — no message loop, no forms), so **anything you want tested has to be a named function**; that constraint is why presentation and lifecycle logic keeps getting extracted out of the big handlers (`Get-PillText`, `Get-TimeSentence`, `Get-PillDimensions`, `Get-DisplayChangeAction`, `Clear-ExpiredMoments`, `Add-BatteryHistorySample`, `Restore-EstimatorState`, `New-SingleInstanceMutex`, `Test-RectCoversScreen`). Extract, don't test-through-the-form.
 - **CheckBattery.ps1** — Standalone CLI script for quick battery status checks.
 - **CheckBattery.bat** — Batch launcher for `CheckBattery.ps1`.
 - **DISTRIBUTION.md** — What users hit installing an unsigned PS2EXE exe (SmartScreen, AV flags) and the signing/rewrite decision record.
@@ -73,6 +74,9 @@
 - **Event-timer handlers must not close over function locals** — the notification animation timer referenced locals that are `$null` by the time it fires, so every card sat at `Opacity 0` forever (including the 10%/5% battery warnings). Carry per-card state explicitly; don't assume it's still in scope.
 - **Comma binds tighter than minus in an argument list** — `RectangleF(..., $x - $y, ...)` parsed as an ARRAY, and array subtraction threw on every paint frame (the "both" display mode's second line never rendered). Parenthesise arithmetic inside constructor/method argument lists.
 - **Editing this repo's text files from PowerShell 5.1** — `Get-Content`/`Set-Content` default to the ANSI codepage, so round-tripping a BOM-less UTF-8 file (this one, and `docs/index.html`) turns every em-dash into `â€"`. Use the Edit tool, or `[System.IO.File]::ReadAllText/WriteAllText` with an explicit `UTF8Encoding $false`.
+- **Scripted edits must not mix line endings** — the repo is CRLF, and a `.Replace()` whose replacement string came from a PowerShell here-string inserts LF-only lines. `Invoke-Formatter` then refuses the file outright ("Cannot determine line endings…") and `format-source.ps1 -Check` fails the build. After any scripted multi-line edit, normalize: `$t = $t -replace "\`r\`n","\`n" -replace "\`n","\`r\`n"`.
+- **Point sizes are already DPI-scaled; pixel geometry is not.** GDI+ converts a font's POINT size against the system DPI (the process is `SetProcessDPIAware`), so multiplying a point size by the DPI scale renders it twice-scaled — that bug clipped every label on the Battery Health card at 125%+. Box/offset PIXELS *do* need the `* $ds`. Rule: `New-Object Font(..., 11, ...)` raw; `Size(..., [int](40 * $DpiScale))` scaled.
+- **The render harness rewrites the widget's single-instance mutex name** so a running BatteryPill can't block a render on the modal "Already running" dialog. If that name ever changes, `tools\render-states.ps1` must change with it — it now asserts the token is present and fails loudly rather than hanging until the timeout.
 
 ## Dev Tools (tools\)
 
