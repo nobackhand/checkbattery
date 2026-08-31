@@ -2,8 +2,10 @@
 # SETTINGS PANEL
 # ============================================================
 
-function Set-DarkComboBox {
-    # Apply owner-draw dark theme to a ComboBox
+function Set-ThemedComboBox {
+    # Apply owner-draw theming to a ComboBox. Colors are read from
+    # $script:theme at PAINT time, so the dropdown always matches the theme
+    # the panel was opened under.
     [OutputType([void])]
     param([System.Windows.Forms.ComboBox]$Combo)
     $Combo.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
@@ -13,9 +15,8 @@ function Set-DarkComboBox {
             if ($e.Index -lt 0) { return }
             $e.DrawBackground()
             $isSelected = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
-            # Settings panel is always dark, so use fixed light-on-dark colors (theme text would be invisible in Light theme)
-            $bgColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(64, 64, 72) } else { [System.Drawing.Color]::FromArgb(50, 50, 56) }
-            $fgColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(245, 245, 250) } else { [System.Drawing.Color]::FromArgb(230, 230, 235) }
+            $bgColor = if ($isSelected) { $script:theme.PanelHover } else { $script:theme.PanelCtrl }
+            $fgColor = if ($isSelected) { $script:theme.TextPrimary } else { $script:theme.PanelText }
             $bgBrush = New-Object System.Drawing.SolidBrush($bgColor)
             $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
             $bgBrush.Dispose()
@@ -125,7 +126,7 @@ function Show-FirstRunTooltip {
     $script:firstRunTip.Size = New-Object System.Drawing.Size($ttW, $ttH)
     $script:firstRunTip.TopMost = $true
     $script:firstRunTip.ShowInTaskbar = $false
-    $script:firstRunTip.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 34)
+    $script:firstRunTip.BackColor = $script:theme.PopupBg
     $script:firstRunTip.Opacity = 0
     Enable-DoubleBuffering -Form $script:firstRunTip
 
@@ -161,7 +162,7 @@ function Show-FirstRunTooltip {
         $lbl.Text = "  $text"
         $lbl.UseMnemonic = $false  # render literal '&' (e.g. "settings & options") instead of eating it as an accelerator
         $lbl.Font = $script:firstRunFont
-        $lbl.ForeColor = [System.Drawing.Color]::FromArgb(220, 220, 225)  # fixed: tip card is always dark; theme.TextLight vanishes here in Light theme
+        $lbl.ForeColor = $script:theme.TextLight  # tip card follows the theme since the parity pass
         $lbl.Location = New-Object System.Drawing.Point($pad, $ty)
         $lbl.AutoSize = $true
         $lbl.MaximumSize = New-Object System.Drawing.Size(($ttW - $pad * 2), 0)
@@ -233,14 +234,14 @@ function Show-SettingsPanel {
     $settings.MaximizeBox = $false
     $settings.MinimizeBox = $false
     $settings.TopMost = $true
-    $settings.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 36)
-    $settings.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
-    $settings.Add_HandleCreated({ [Win32Icon]::UseDarkTitleBar($settings.Handle) })
+    $settings.BackColor = $script:theme.PanelBg
+    $settings.ForeColor = $script:theme.PanelText
+    $settings.Add_HandleCreated({ [Win32Icon]::SetTitleBarTheme($settings.Handle, $script:theme.IsDark) })
 
     $labelFont = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
     $sectionFont = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
     # Muted neutral: section headers are wayfinding, not accents
-    $sectionColor = [System.Drawing.Color]::FromArgb(150, 150, 160)
+    $sectionColor = $script:theme.PanelHead
     $m = [int](20 * $ds)
     $cw = [int](280 * $ds)
     $bh = [int](34 * $ds)
@@ -261,7 +262,7 @@ function Show-SettingsPanel {
     $bhvSep = New-Object System.Windows.Forms.Label
     $bhvSep.Location = New-Object System.Drawing.Point($m, $y)
     $bhvSep.Size = New-Object System.Drawing.Size($cw, 1)
-    $bhvSep.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)  # settings panel is always dark
+    $bhvSep.BackColor = $script:theme.PanelCtrl
     $settings.Controls.Add($bhvSep)
     $y += [int](8 * $ds)
     $bhvHeader = New-Object System.Windows.Forms.Label
@@ -277,7 +278,7 @@ function Show-SettingsPanel {
     $autoStartCheck = New-Object DarkCheckBox
     $autoStartCheck.Text = "Start with Windows"
     $autoStartCheck.Font = $labelFont
-    $autoStartCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $autoStartCheck.ForeColor = $script:theme.PanelText
     $autoStartCheck.Location = New-Object System.Drawing.Point($m, $y)
     $autoStartCheck.AutoSize = $false
     $autoStartCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
@@ -296,7 +297,7 @@ function Show-SettingsPanel {
     $showBarCheck = New-Object DarkCheckBox
     $showBarCheck.Text = "Show floating pill"
     $showBarCheck.Font = $labelFont
-    $showBarCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $showBarCheck.ForeColor = $script:theme.PanelText
     $showBarCheck.Location = New-Object System.Drawing.Point($m, $y)
     $showBarCheck.AutoSize = $false
     $showBarCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
@@ -318,7 +319,7 @@ function Show-SettingsPanel {
     $lockPosCheck = New-Object DarkCheckBox
     $lockPosCheck.Text = "Lock pill position"
     $lockPosCheck.Font = $labelFont
-    $lockPosCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $lockPosCheck.ForeColor = $script:theme.PanelText
     $lockPosCheck.Location = New-Object System.Drawing.Point($m, $y)
     $lockPosCheck.AutoSize = $false
     $lockPosCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
@@ -336,7 +337,7 @@ function Show-SettingsPanel {
     $autoHideCheck = New-Object DarkCheckBox
     $autoHideCheck.Text = "Auto-hide in fullscreen"
     $autoHideCheck.Font = $labelFont
-    $autoHideCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $autoHideCheck.ForeColor = $script:theme.PanelText
     $autoHideCheck.Location = New-Object System.Drawing.Point($m, $y)
     $autoHideCheck.AutoSize = $false
     $autoHideCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
@@ -353,7 +354,7 @@ function Show-SettingsPanel {
     $funLinesCheck = New-Object DarkCheckBox
     $funLinesCheck.Text = "Fun status lines"
     $funLinesCheck.Font = $labelFont
-    $funLinesCheck.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $funLinesCheck.ForeColor = $script:theme.PanelText
     $funLinesCheck.Location = New-Object System.Drawing.Point($m, $y)
     $funLinesCheck.AutoSize = $false
     $funLinesCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
@@ -366,11 +367,20 @@ function Show-SettingsPanel {
     $settingsTooltip.SetToolTip($funLinesCheck, "A line of personality in the battery popup")
     $y += [int](36 * $ds)
 
+    # Light theme: brighten the checkbox boxes (the C# defaults are the dark palette)
+    if (-not $script:theme.IsDark) {
+        foreach ($tcb in @($autoStartCheck, $showBarCheck, $lockPosCheck, $autoHideCheck, $funLinesCheck)) {
+            $tcb.BoxFill = [System.Drawing.Color]::FromArgb(255, 255, 255)
+            $tcb.BoxBorder = [System.Drawing.Color]::FromArgb(168, 168, 178)
+            $tcb.BoxBorderHot = [System.Drawing.Color]::FromArgb(120, 120, 132)
+        }
+    }
+
     # --- Appearance section header ---
     $appSep = New-Object System.Windows.Forms.Label
     $appSep.Location = New-Object System.Drawing.Point($m, $y)
     $appSep.Size = New-Object System.Drawing.Size($cw, 1)
-    $appSep.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)  # settings panel is always dark
+    $appSep.BackColor = $script:theme.PanelCtrl
     $settings.Controls.Add($appSep)
     $y += [int](8 * $ds)
     $appHeader = New-Object System.Windows.Forms.Label
@@ -386,7 +396,7 @@ function Show-SettingsPanel {
     $displayLabel = New-Object System.Windows.Forms.Label
     $displayLabel.Text = "Display mode:"
     $displayLabel.Font = $labelFont
-    $displayLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $displayLabel.ForeColor = $script:theme.PanelText
     $displayLabel.Location = New-Object System.Drawing.Point($m, $y)
     $displayLabel.AutoSize = $true
     $settings.Controls.Add($displayLabel)
@@ -395,8 +405,8 @@ function Show-SettingsPanel {
     $displayCombo = New-Object System.Windows.Forms.ComboBox
     $displayCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
     $displayCombo.Font = $labelFont
-    $displayCombo.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
-    $displayCombo.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $displayCombo.BackColor = $script:theme.PanelCtrl
+    $displayCombo.ForeColor = $script:theme.PanelText
     $displayCombo.Location = New-Object System.Drawing.Point($m, $y)
     $displayCombo.Size = New-Object System.Drawing.Size($cw, [int](28 * $ds))
     $displayCombo.Items.AddRange(@("Time remaining", "Percentage", "Both (% + time)"))
@@ -422,7 +432,7 @@ function Show-SettingsPanel {
             }
             Save-Config
         })
-    Set-DarkComboBox -Combo $displayCombo
+    Set-ThemedComboBox -Combo $displayCombo
     $settings.Controls.Add($displayCombo)
     $settingsTooltip.SetToolTip($displayCombo, "Choose what information appears on the pill")
     $script:settingsDisplayCombo = $displayCombo   # let click-cycle keep this in sync while the panel is open
@@ -432,7 +442,7 @@ function Show-SettingsPanel {
     $sizeLabel = New-Object System.Windows.Forms.Label
     $sizeLabel.Text = "Pill size:"
     $sizeLabel.Font = $labelFont
-    $sizeLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $sizeLabel.ForeColor = $script:theme.PanelText
     $sizeLabel.Location = New-Object System.Drawing.Point($m, $y)
     $sizeLabel.AutoSize = $true
     $settings.Controls.Add($sizeLabel)
@@ -441,8 +451,8 @@ function Show-SettingsPanel {
     $sizeCombo = New-Object System.Windows.Forms.ComboBox
     $sizeCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
     $sizeCombo.Font = $labelFont
-    $sizeCombo.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
-    $sizeCombo.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $sizeCombo.BackColor = $script:theme.PanelCtrl
+    $sizeCombo.ForeColor = $script:theme.PanelText
     $sizeCombo.Location = New-Object System.Drawing.Point($m, $y)
     $sizeCombo.Size = New-Object System.Drawing.Size($cw, [int](28 * $ds))
     $sizeCombo.Items.AddRange(@("Compact (80x28)", "Normal (108x34)", "Expanded (140x42)"))
@@ -465,7 +475,7 @@ function Show-SettingsPanel {
             }
             Save-Config
         })
-    Set-DarkComboBox -Combo $sizeCombo
+    Set-ThemedComboBox -Combo $sizeCombo
     $settings.Controls.Add($sizeCombo)
     $settingsTooltip.SetToolTip($sizeCombo, "Adjust the size of the floating pill")
     $y += [int](36 * $ds)
@@ -474,7 +484,7 @@ function Show-SettingsPanel {
     $accentLabel = New-Object System.Windows.Forms.Label
     $accentLabel.Text = "Accent color:"
     $accentLabel.Font = $labelFont
-    $accentLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $accentLabel.ForeColor = $script:theme.PanelText
     $accentLabel.Location = New-Object System.Drawing.Point($m, $y)
     $accentLabel.AutoSize = $true
     $settings.Controls.Add($accentLabel)
@@ -514,7 +524,7 @@ function Show-SettingsPanel {
                 # is unmistakable. (An accent-hued ring on an accent dot was invisible.)
                 if ($idx -eq $script:config.AccentColorIndex) {
                     # Gap: punch the panel-bg between dot and ring so they read separately
-                    $gapPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(32, 32, 36), 2)
+                    $gapPen = New-Object System.Drawing.Pen($script:theme.PanelBg, 2)
                     $cg.DrawEllipse($gapPen, 1, 1, $sender.Width - 3, $sender.Height - 3)
                     $gapPen.Dispose()
                     # Ring: light on dark swatches, dark on light ones (e.g. the white preset)
@@ -563,7 +573,7 @@ function Show-SettingsPanel {
     $themeLabel = New-Object System.Windows.Forms.Label
     $themeLabel.Text = "Theme:"
     $themeLabel.Font = $labelFont
-    $themeLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $themeLabel.ForeColor = $script:theme.PanelText
     $themeLabel.Location = New-Object System.Drawing.Point($m, $y)
     $themeLabel.AutoSize = $true
     $settings.Controls.Add($themeLabel)
@@ -572,8 +582,8 @@ function Show-SettingsPanel {
     $themeCombo = New-Object System.Windows.Forms.ComboBox
     $themeCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
     $themeCombo.Font = $labelFont
-    $themeCombo.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
-    $themeCombo.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $themeCombo.BackColor = $script:theme.PanelCtrl
+    $themeCombo.ForeColor = $script:theme.PanelText
     $themeCombo.Location = New-Object System.Drawing.Point($m, $y)
     $themeCombo.Size = New-Object System.Drawing.Size($cw, [int](28 * $ds))
     $themeCombo.Items.AddRange(@("Dark", "Light", "Auto (follow Windows)"))
@@ -590,7 +600,7 @@ function Show-SettingsPanel {
             Set-Theme
             Save-Config
         })
-    Set-DarkComboBox -Combo $themeCombo
+    Set-ThemedComboBox -Combo $themeCombo
     $settings.Controls.Add($themeCombo)
     $settingsTooltip.SetToolTip($themeCombo, "Color scheme (Auto follows Windows theme)")
     $y += [int](40 * $ds)
@@ -599,7 +609,7 @@ function Show-SettingsPanel {
     $advSep = New-Object System.Windows.Forms.Label
     $advSep.Location = New-Object System.Drawing.Point($m, $y)
     $advSep.Size = New-Object System.Drawing.Size($cw, 1)
-    $advSep.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)  # settings panel is always dark
+    $advSep.BackColor = $script:theme.PanelCtrl
     $settings.Controls.Add($advSep)
     $y += [int](8 * $ds)
     $advHeader = New-Object System.Windows.Forms.Label
@@ -615,7 +625,7 @@ function Show-SettingsPanel {
     $opacityLabel = New-Object System.Windows.Forms.Label
     $opacityLabel.Text = "Opacity:"
     $opacityLabel.Font = $labelFont
-    $opacityLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $opacityLabel.ForeColor = $script:theme.PanelText
     $opacityLabel.Location = New-Object System.Drawing.Point($m, $y)
     $opacityLabel.AutoSize = $true
     $settings.Controls.Add($opacityLabel)
@@ -624,7 +634,7 @@ function Show-SettingsPanel {
     $opacityValueLabel = New-Object System.Windows.Forms.Label
     $opacityValueLabel.Text = "{0}%" -f [int]($script:config.Opacity * 100)
     $opacityValueLabel.Font = $labelFont
-    $opacityValueLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $opacityValueLabel.ForeColor = $script:theme.PanelText
     $opacityValueLabel.Location = New-Object System.Drawing.Point([int](260 * $ds), $y)
     $opacityValueLabel.AutoSize = $true
     $settings.Controls.Add($opacityValueLabel)
@@ -639,7 +649,7 @@ function Show-SettingsPanel {
     $opacitySlider = New-Object System.Windows.Forms.Panel
     $opacitySlider.Location = New-Object System.Drawing.Point($m, $y)
     $opacitySlider.Size = New-Object System.Drawing.Size($cw, $sliderH)
-    $opacitySlider.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 36)
+    $opacitySlider.BackColor = $script:theme.PanelBg
     $opacitySlider.Cursor = [System.Windows.Forms.Cursors]::Hand
     $sTx0 = [int](9 * $ds); $sThumbR = [int](7 * $ds)
     $opacitySlider.Add_Paint({
@@ -651,7 +661,7 @@ function Show-SettingsPanel {
             $frac = ($script:opacityVal - 30) / 70.0
             $thumbX = [int]($tx0 + $frac * $tw)
             # track
-            $trkPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(64, 64, 72), 3)
+            $trkPen = New-Object System.Drawing.Pen($script:theme.PanelTrack, 3)
             $sg.DrawLine($trkPen, $tx0, $cy, $tx1, $cy); $trkPen.Dispose()
             # filled portion (accent)
             $accent = $script:accentPresets[[math]::Max(0, [math]::Min(7, [int]$script:config.AccentColorIndex))]
@@ -660,7 +670,7 @@ function Show-SettingsPanel {
             # thumb
             $thBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(238, 238, 244))
             $sg.FillEllipse($thBrush, ($thumbX - $sThumbR), ($cy - $sThumbR), ($sThumbR * 2), ($sThumbR * 2)); $thBrush.Dispose()
-            $thPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(32, 32, 36), 1)
+            $thPen = New-Object System.Drawing.Pen($script:theme.PanelHead, 1)
             $sg.DrawEllipse($thPen, ($thumbX - $sThumbR), ($cy - $sThumbR), ($sThumbR * 2), ($sThumbR * 2)); $thPen.Dispose()
         })
     $setOpacityFromX = {
@@ -686,7 +696,7 @@ function Show-SettingsPanel {
     $refreshLabel = New-Object System.Windows.Forms.Label
     $refreshLabel.Text = "Refresh rate:"
     $refreshLabel.Font = $labelFont
-    $refreshLabel.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $refreshLabel.ForeColor = $script:theme.PanelText
     $refreshLabel.Location = New-Object System.Drawing.Point($m, $y)
     $refreshLabel.AutoSize = $true
     $settings.Controls.Add($refreshLabel)
@@ -695,8 +705,8 @@ function Show-SettingsPanel {
     $refreshCombo = New-Object System.Windows.Forms.ComboBox
     $refreshCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
     $refreshCombo.Font = $labelFont
-    $refreshCombo.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
-    $refreshCombo.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    $refreshCombo.BackColor = $script:theme.PanelCtrl
+    $refreshCombo.ForeColor = $script:theme.PanelText
     $refreshCombo.Location = New-Object System.Drawing.Point($m, $y)
     $refreshCombo.Size = New-Object System.Drawing.Size($cw, [int](28 * $ds))
     $refreshCombo.Items.AddRange(@("1 second", "3 seconds", "5 seconds", "10 seconds"))
@@ -715,7 +725,7 @@ function Show-SettingsPanel {
             $script:config.RefreshInterval = $newInterval
             Save-Config
         })
-    Set-DarkComboBox -Combo $refreshCombo
+    Set-ThemedComboBox -Combo $refreshCombo
     $settings.Controls.Add($refreshCombo)
     $settingsTooltip.SetToolTip($refreshCombo, "How often battery data refreshes (lower = more CPU)")
     $y += [int](40 * $ds)
@@ -730,10 +740,10 @@ function Show-SettingsPanel {
     $resetBtn.Location = New-Object System.Drawing.Point($m, $y)
     $resetBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $resetBtn.FlatAppearance.BorderSize = 0
-    $resetBtn.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
-    $resetBtn.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
-    $resetBtn.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(62, 62, 70)
-    $resetBtn.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(42, 42, 50)
+    $resetBtn.BackColor = $script:theme.PanelCtrl
+    $resetBtn.ForeColor = $script:theme.PanelText
+    $resetBtn.FlatAppearance.MouseOverBackColor = $script:theme.PanelHover
+    $resetBtn.FlatAppearance.MouseDownBackColor = $script:theme.PanelDown
     $resetBtn.Add_Click({
             if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
                 $screen = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
@@ -760,10 +770,10 @@ function Show-SettingsPanel {
     $closeBtn.Location = New-Object System.Drawing.Point($m, $y)
     $closeBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $closeBtn.FlatAppearance.BorderSize = 0
-    $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 56)
-    $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 235)
-    $closeBtn.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(62, 62, 70)
-    $closeBtn.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(42, 42, 50)
+    $closeBtn.BackColor = $script:theme.PanelCtrl
+    $closeBtn.ForeColor = $script:theme.PanelText
+    $closeBtn.FlatAppearance.MouseOverBackColor = $script:theme.PanelHover
+    $closeBtn.FlatAppearance.MouseDownBackColor = $script:theme.PanelDown
     $closeBtn.Add_Click({ $settings.Close() })
     $settings.Controls.Add($closeBtn)
 

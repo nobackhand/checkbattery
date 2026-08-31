@@ -250,7 +250,7 @@ $pillContextMenu.Items.Add($pillRefreshItem) | Out-Null
 $pillContextMenu.Items.Add($pillAboutItem) | Out-Null
 $pillContextMenu.Items.Add($pillSeparator2) | Out-Null
 $pillContextMenu.Items.Add($pillExitItem) | Out-Null
-Set-DarkMenu -Menu $pillContextMenu
+Set-MenuTheme -Menu $pillContextMenu
 
 $script:floatingBar.ContextMenuStrip = $pillContextMenu
 
@@ -311,7 +311,10 @@ $contextMenu.Items.Add($refreshItem) | Out-Null
 $contextMenu.Items.Add($aboutItem) | Out-Null
 $contextMenu.Items.Add($separatorItem) | Out-Null
 $contextMenu.Items.Add($exitItem) | Out-Null
-Set-DarkMenu -Menu $contextMenu
+Set-MenuTheme -Menu $contextMenu
+
+# Registered so Set-Theme can re-theme both menus on a live theme switch
+$script:appMenus = @($pillContextMenu, $contextMenu)
 
 $script:notifyIcon.ContextMenuStrip = $contextMenu
 
