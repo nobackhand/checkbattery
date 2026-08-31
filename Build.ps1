@@ -38,10 +38,25 @@ if (-not (Get-Module -ListAvailable -Name ps2exe)) {
     Install-Module -Name ps2exe -Scope CurrentUser -Force
 }
 
-# Remove old exe(s) if present
-Get-ChildItem $scriptDir -Filter "BatteryPill-*.exe" | ForEach-Object {
-    Write-Host "Removing previous build: $($_.Name)..." -ForegroundColor Yellow
+# Remove old exe(s), KEEPING the single newest as a fallback. Deleting every
+# previous build once left the dev machine with zero runnable exes when Smart
+# App Control blocked the fresh (unsigned, zero-reputation) output - the
+# last-known-good build is the recovery path.
+$oldBuilds = Get-ChildItem $scriptDir -Filter "BatteryPill-*.exe" |
+    Where-Object { $_.Name -ne (Split-Path -Leaf $outputFile) } |
+    Sort-Object LastWriteTime -Descending
+if ($oldBuilds.Count -gt 0) {
+    Write-Host "Keeping previous build as fallback: $($oldBuilds[0].Name)" -ForegroundColor Yellow
+}
+$oldBuilds | Select-Object -Skip 1 | ForEach-Object {
+    Write-Host "Removing old build: $($_.Name)..." -ForegroundColor Yellow
     Remove-Item $_.FullName -Force
+}
+# A stale exe with the CURRENT version must still go - PS2EXE can't overwrite
+# a locked file, and a same-name leftover would mask a failed compile.
+if (Test-Path $outputFile) {
+    Write-Host "Removing stale same-version build: $(Split-Path -Leaf $outputFile)..." -ForegroundColor Yellow
+    Remove-Item $outputFile -Force
 }
 
 # Compile

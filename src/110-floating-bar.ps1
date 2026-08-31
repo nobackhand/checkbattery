@@ -367,8 +367,13 @@ function New-FloatingBar {
                 $fillLeft = [System.Drawing.Color]::FromArgb([math]::Min(255, $baseAlpha + 20), $ac.R, $ac.G, $ac.B)
                 $fillRight = [System.Drawing.Color]::FromArgb([math]::Max(60, $baseAlpha - 20), $ac.R, $ac.G, $ac.B)
                 $fillRect = New-Object System.Drawing.Rectangle(0, 0, [math]::Max(1, $fillWidth), $h)
+                # Brush rect gets 4px of headroom past the fill: a gradient
+                # brush TILES outside its rectangle, and the meniscus wave
+                # crests ~2px beyond fillWidth - without the headroom the crest
+                # painted in the wrapped (brightest) color as a glitchy sliver
+                $brushRect = New-Object System.Drawing.Rectangle(0, 0, ([math]::Max(1, $fillWidth) + 4), $h)
                 $fillBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-                    $fillRect, $fillLeft, $fillRight,
+                    $brushRect, $fillLeft, $fillRight,
                     [System.Drawing.Drawing2D.LinearGradientMode]::Horizontal)
                 if ($script:barIsCharging -and $script:animOK -and $fillWidth -gt 5 -and $fillWidth -lt ($w - 5)) {
                     # Liquid meniscus: while charging, the fill's edge is a
