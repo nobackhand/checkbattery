@@ -788,6 +788,15 @@ function New-FloatingBar {
             $script:floatingBar.Invalidate()
             # A press is manipulation, not a hover - never let the popup interrupt a drag
             $script:hoverTimer.Stop()
+            # ...and close one that is ALREADY open. The popup's position is
+            # computed once, when it opens, so dragging the pill away left it
+            # stranded at the pill's old coordinates as a detached TopMost
+            # panel. Nothing tore it down either: the dismiss timer is started
+            # by the pill's MouseLeave, which does not fire while the cursor
+            # stays on the pill through the drag and release. The context
+            # menu's Opening handler already does exactly this; the drag path
+            # was the missing case.
+            if ($script:hoverPopupVisible) { Close-HoverPopup }
             if (-not $script:positionLocked) {
                 $script:isDragging = $true
                 $script:floatingBar.Cursor = [System.Windows.Forms.Cursors]::SizeAll
@@ -1463,7 +1472,20 @@ function Show-BatteryNotification {
         $oc = $script:openNotifCards[$ni]
         if ($null -eq $oc -or $oc.IsDisposed -or -not $oc.Visible) { $script:openNotifCards.RemoveAt($ni) }
     }
-    $stackOffset = $script:openNotifCards.Count * ($nH + 8)
+    # Take the lowest FREE slot, not the count. Slots are fixed positions up
+    # the screen and a card holds its slot for life (its slide target is
+    # frozen at creation), so deriving the slot from the count collided
+    # whenever a LOWER card died before a higher one: the count collapsed and
+    # the next card was drawn straight on top of a live one. Dismissing a
+    # bottom card by clicking it did the same.
+    $usedSlots = @{}
+    foreach ($oc in $script:openNotifCards) {
+        if ($null -ne $oc -and $null -ne $oc.Tag) { $usedSlots[[int]$oc.Tag] = $true }
+    }
+    $slot = 0
+    while ($usedSlots.ContainsKey($slot)) { $slot++ }
+    $notif.Tag = $slot
+    $stackOffset = $slot * ($nH + 8)
     $script:openNotifCards.Add($notif) | Out-Null
 
     $notif.Location = New-Object System.Drawing.Point(($screen.Right - $nW - 10), ($screen.Bottom - 10))
