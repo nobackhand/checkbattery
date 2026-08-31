@@ -2,6 +2,38 @@
 # FLOATING BAR — FORM
 # ============================================================
 
+# Moment-animation durations in milliseconds. ONE home for these numbers: the
+# pill's Paint handler computes each effect's progress from them, and
+# Clear-ExpiredMoments retires a finished moment from them.
+$script:momentDurations = @{ Shimmer = 700; BoltPop = 1200; Ripple = 350 }
+
+function Clear-ExpiredMoments {
+    [OutputType([void])]
+    param([datetime]$Now = (Get-Date))
+    # Retire moment animations whose time is up.
+    #
+    # These flags used to be cleared ONLY by the Paint handler, which made
+    # them dependent on the pill being painted at all. A hidden pill never
+    # receives WM_PAINT - so plugging in or reaching 100% while the pill was
+    # hidden ("Hide Pill", "Hide Bar", or fullscreen auto-hide) raised a flag
+    # nothing could clear, and Update-PulseTimerState kept the 33ms timer
+    # running forever on an invisible window. In a widget whose whole purpose
+    # is saving battery, that is the worst kind of bug: invisible and endless.
+    $d = $script:momentDurations
+    if ($null -ne $script:shimmerStart -and
+        ($Now - $script:shimmerStart).TotalMilliseconds -ge $d.Shimmer) {
+        $script:shimmerStart = $null
+    }
+    if ($null -ne $script:boltPopStart -and
+        ($Now - $script:boltPopStart).TotalMilliseconds -ge $d.BoltPop) {
+        $script:boltPopStart = $null
+    }
+    if ($null -ne $script:rippleState -and
+        ($Now - $script:rippleState.Start).TotalMilliseconds -ge $d.Ripple) {
+        $script:rippleState = $null
+    }
+}
+
 function Get-PillDimensions {
     [OutputType([hashtable])]
     param()
@@ -514,7 +546,7 @@ function New-FloatingBar {
             # --- Click ripple: a soft ring expands from the click point ---
             if ($null -ne $script:rippleState) {
                 $rpMs = ((Get-Date) - $script:rippleState.Start).TotalMilliseconds
-                $rpT = $rpMs / 350.0
+                $rpT = $rpMs / $script:momentDurations.Ripple
                 if ($rpT -ge 1.0) {
                     $script:rippleState = $null
                 } else {
@@ -533,7 +565,7 @@ function New-FloatingBar {
             # --- Full-charge shimmer: one bright band sweeps left-to-right ---
             if ($null -ne $script:shimmerStart) {
                 $smMs = ((Get-Date) - $script:shimmerStart).TotalMilliseconds
-                $smT = $smMs / 700.0
+                $smT = $smMs / $script:momentDurations.Shimmer
                 if ($smT -ge 1.0) {
                     $script:shimmerStart = $null
                 } else {
@@ -558,7 +590,7 @@ function New-FloatingBar {
             # --- Plug-in moment: a bolt pops in with overshoot, then fades ---
             if ($null -ne $script:boltPopStart) {
                 $bpMs = ((Get-Date) - $script:boltPopStart).TotalMilliseconds
-                if ($bpMs -ge 1200) {
+                if ($bpMs -ge $script:momentDurations.BoltPop) {
                     $script:boltPopStart = $null
                 } else {
                     # Ease-out-back over the first 280ms (slight overshoot = "pop")
