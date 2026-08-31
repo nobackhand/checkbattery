@@ -453,6 +453,10 @@ $script:pulseTimer.Add_Tick({
 function Update-PulseTimerState {
     [OutputType([void])]
     param()
+    # Retire finished moments FIRST. They are the only animation states the
+    # Paint handler used to own exclusively, which meant a hidden (never
+    # painted) pill could hold the timer on forever - see Clear-ExpiredMoments.
+    Clear-ExpiredMoments
     # Start pulse timer only when animations need it, stop when idle
     $anyActive = $script:barIsCharging -or ($script:flashAlpha -gt 0) -or
     ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or
