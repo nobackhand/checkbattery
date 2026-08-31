@@ -83,11 +83,12 @@ Prices checked 2026-07 (list prices, rounded; see sources at bottom).
 - **Now: (d).** Free tool, small download volume; signing spend isn't justified yet,
   and signing wouldn't fix the PS2EXE AV heuristics anyway. Be honest on the website
   instead.
-- **Revisit signing** (Azure Artifact Signing first, at $9.99/mo, then OV) when
-  download volume makes the SmartScreen bounce rate hurt - **or sooner, because of
-  SAC**: SmartScreen users can click through; SAC users are simply locked out
-  (2026-08-30 finding above). If any real user reports the SAC block, that is the
-  trigger to start the Azure Trusted Signing signup.
+- **UPDATE 2026-08-30: option (b) is IN PROGRESS.** The SAC hard block (above) pulled
+  the trigger the same day it was discovered. The release pipeline is wired
+  (`release.ps1` -> `tools\sign-exe.ps1`, config in `signing.config.json`,
+  setup steps in SIGNING.md); releases sign automatically once the Azure
+  Trusted Signing account + identity validation are complete. Until then,
+  releases continue unsigned with a loud warning.
 - **The rewrite (e) is the eventual ceiling-breaker** for both AV reputation and
   per-monitor DPI. Signing an exe that AV engines still dislike is half a fix.
 
