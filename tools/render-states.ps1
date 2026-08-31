@@ -366,10 +366,22 @@ foreach ($s in $HZSTATES) {
     }
 }
 # Cleanup so nothing lingers after the process exits
+if ($null -ne $script:timer) { $script:timer.Stop() }
+if ($null -ne $script:pulseTimer) { $script:pulseTimer.Stop() }
+if ($null -ne $script:fullscreenTimer) { $script:fullscreenTimer.Stop() }
 if ($null -ne $script:notifyIcon) { $script:notifyIcon.Visible = $false; $script:notifyIcon.Dispose() }
 if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) { $script:floatingBar.Hide() }
-if ($hzFailed -eq 0) { Write-Host 'HARNESS-DONE'; exit 0 }
+# [Environment]::Exit, not `exit`: the staged widget registers SystemEvents
+# handlers and leaves live WinForms timers/forms behind, and graceful
+# interpreter shutdown intermittently hung on them AFTER every state had
+# rendered - the run reported a timeout with all its PNGs already on disk,
+# which would eventually train someone to ignore a real failure. Everything
+# worth flushing (PNGs, geometry.txt) is written synchronously above.
+[Console]::Out.Flush()
+if ($hzFailed -eq 0) { Write-Host 'HARNESS-DONE'; [Console]::Out.Flush(); [Environment]::Exit(0) }
 Write-Host ("HARNESS-FAILED ({0} state(s))" -f $hzFailed)
+[Console]::Out.Flush()
+[Environment]::Exit(1)
 exit 1
 '@
 

@@ -34,23 +34,51 @@ function Clear-ExpiredMoments {
     }
 }
 
+$script:cachedDpiScale = $null
+
+function Get-DpiScale {
+    [OutputType([double])]
+    param()
+    # System DPI scale (1.0 at 100%, 2.0 at 200%). The process is
+    # SetProcessDPIAware - system-DPI-aware - so this is fixed for its
+    # lifetime and safe to cache.
+    if ($null -eq $script:cachedDpiScale) {
+        $g = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+        $script:cachedDpiScale = $g.DpiX / 96.0
+        $g.Dispose()
+    }
+    return $script:cachedDpiScale
+}
+
 function Get-PillDimensions {
     [OutputType([hashtable])]
-    param()
-    # Returns @{ Width, Height, FontSize } based on PillSize and DisplayMode
+    param([double]$DpiScale = 0)
+    # Returns @{ Width, Height, FontSize } based on PillSize and DisplayMode.
+    #
+    # Width/Height are PIXELS and must scale with the display, but the fonts
+    # are POINTS and are scaled by GDI+ already. The box used to be fixed
+    # pixels while its text grew with the DPI, so the text outgrew the pill:
+    # at 200%, "12h 45m" needs 116px of a 108px pill and rendered as
+    # "12h 45" - the widget silently dropping a character off the one number
+    # it exists to show. (Measured with the app's own font and format.)
+    if ($DpiScale -le 0) { $DpiScale = Get-DpiScale }
     $mode = $script:config.DisplayMode
     $size = $script:config.PillSize
-    switch ($size) {
-        "compact" { return @{ Width = 80; Height = 28; FontSize = 9.0; FontSize2 = 0 } }
-        "expanded" { return @{ Width = 140; Height = 42; FontSize = 10.2; FontSize2 = 7.5 } }
+    $dims = switch ($size) {
+        "compact" { @{ Width = 80; Height = 28; FontSize = 9.0; FontSize2 = 0 } }
+        "expanded" { @{ Width = 140; Height = 42; FontSize = 10.2; FontSize2 = 7.5 } }
         default {
             # normal — grows if DisplayMode is "both"
             if ($mode -eq "both") {
-                return @{ Width = 108; Height = 42; FontSize = 10.0; FontSize2 = 7.5 }
+                @{ Width = 108; Height = 42; FontSize = 10.0; FontSize2 = 7.5 }
+            } else {
+                @{ Width = 108; Height = 34; FontSize = 10.2; FontSize2 = 0 }
             }
-            return @{ Width = 108; Height = 34; FontSize = 10.2; FontSize2 = 0 }
         }
     }
+    $dims.Width = [int][math]::Round($dims.Width * $DpiScale)
+    $dims.Height = [int][math]::Round($dims.Height * $DpiScale)
+    return $dims
 }
 
 function Update-PillSize {
