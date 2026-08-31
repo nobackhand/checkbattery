@@ -1025,22 +1025,26 @@ function New-BatteryPopupContent {
     # Hero fonts for top section (Time — the data users care about most)
     $heroValueFont = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Regular)
 
+    # DPI-scaled left margin - hardcoded 20/32px constants overlapped the
+    # title and separator on scaled displays (found at 200%)
+    $lx = [int](20 * $DpiScale)
+
     # --- Title: status only (the hero percent below carries the number) ---
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Text = Get-BatteryStateTitle -BatteryInfo $BatteryInfo
     $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Bold)
     $titleLabel.ForeColor = $script:theme.TextPrimary
-    $titleLabel.Location = New-Object System.Drawing.Point(20, 10)
+    $titleLabel.Location = New-Object System.Drawing.Point($lx, [int](10 * $DpiScale))
     $titleLabel.AutoSize = $true
-    $titleLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+    $titleLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), 0)
     $Form.Controls.Add($titleLabel)
 
     # Separator under the title: an accent gradient that fades out to the
     # right - reads as designed, not as a default hairline
     $sepAccent = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
     $sepPanel = New-Object System.Windows.Forms.Panel
-    $sepPanel.Location = New-Object System.Drawing.Point(20, 32)
-    $sepPanel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 2)
+    $sepPanel.Location = New-Object System.Drawing.Point($lx, [int](32 * $DpiScale))
+    $sepPanel.Size = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), 2)
     $sepPanel.BackColor = [System.Drawing.Color]::Transparent
     $sepPanel.Tag = @{ Accent = $sepAccent }
     $sepPanel.Add_Paint({
@@ -1122,7 +1126,6 @@ function New-BatteryPopupContent {
 
     # --- Layout (DPI-aware) ---
     $heroRh = [int](24 * $DpiScale)
-    $lx = 20
     $y = [int](40 * $DpiScale)
 
     # --- Hero percent: the number users came for, big and status-colored ---
@@ -1136,7 +1139,7 @@ function New-BatteryPopupContent {
         $heroPctLabel.ForeColor = Get-HeroPercentColor -Status $BatteryInfo.StatusText
         $heroPctLabel.Location = New-Object System.Drawing.Point($lx, $y)
         $heroPctLabel.AutoSize = $true
-        $heroPctLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+        $heroPctLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), 0)
         $Form.Controls.Add($heroPctLabel)
         $y += [int](40 * $DpiScale)
     }
@@ -1151,7 +1154,7 @@ function New-BatteryPopupContent {
     $timeValLabel.ForeColor = $script:theme.TextPrimary
     $timeValLabel.Location = New-Object System.Drawing.Point($lx, $y)
     $timeValLabel.AutoSize = $true
-    $timeValLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+    $timeValLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), 0)
     $Form.Controls.Add($timeValLabel)
     if ($timeText -eq "Estimating...") { $script:estimatingLabel = $timeValLabel }
     $y += $heroRh
@@ -1167,7 +1170,7 @@ function New-BatteryPopupContent {
         $funLabel.ForeColor = $script:theme.TextDim
         $funLabel.Location = New-Object System.Drawing.Point($lx, $y)
         $funLabel.AutoSize = $true
-        $funLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+        $funLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), 0)
         $Form.Controls.Add($funLabel)
         $y += [int](18 * $DpiScale)
     }
@@ -1178,7 +1181,8 @@ function New-BatteryPopupContent {
     # Battery history sparkline (40px tall)
     $sparkAccent = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
     $sparkPanel = New-SparklinePanel -Y $y -AccentColor $sparkAccent
-    $sparkPanel.Size = New-Object System.Drawing.Size(($PopupWidth - 40), 40)
+    $sparkPanel.Location = New-Object System.Drawing.Point($lx, $y)
+    $sparkPanel.Size = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), 40)
     $Form.Controls.Add($sparkPanel)
     $y += 40
 
@@ -1191,9 +1195,9 @@ function New-BatteryPopupContent {
         $hintLabel.Text = $CloseHintText
         $hintLabel.Font = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
         $hintLabel.ForeColor = $script:theme.TextMuted
-        $hintLabel.Location = New-Object System.Drawing.Point(20, $y)
+        $hintLabel.Location = New-Object System.Drawing.Point($lx, $y)
         $hintLabel.AutoSize = $true
-        $hintLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - 40), 0)
+        $hintLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), 0)
         $Form.Controls.Add($hintLabel)
         $y += [int](14 * $DpiScale)   # account for the hint's height so it doesn't clip the bottom edge
     }
@@ -1243,7 +1247,7 @@ function Show-BatteryNotification {
     $notif.Size = New-Object System.Drawing.Size($nW, $nH)
     $notif.TopMost = $true
     $notif.ShowInTaskbar = $false
-    $notif.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 34)
+    $notif.BackColor = $script:theme.PopupBg
     $notif.Opacity = 0
     Enable-DoubleBuffering -Form $notif
 
@@ -1293,9 +1297,15 @@ function Show-BatteryNotification {
     $nTitle = New-Object System.Windows.Forms.Label
     $nTitle.Text = $Message
     $nTitle.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5, [System.Drawing.FontStyle]::Bold)
-    # Title tint: lighten the accent so it reads on the dark card
-    $nTitle.ForeColor = [System.Drawing.Color]::FromArgb(
-        [math]::Min(255, $Accent.R + 30), [math]::Min(255, $Accent.G + 30), [math]::Min(255, $Accent.B + 30))
+    # Title tint: lighten the accent on the dark card, darken it on the light
+    # one - either way it stays readable against the card surface
+    $nTitle.ForeColor = if ($script:theme.IsDark) {
+        [System.Drawing.Color]::FromArgb(
+            [math]::Min(255, $Accent.R + 30), [math]::Min(255, $Accent.G + 30), [math]::Min(255, $Accent.B + 30))
+    } else {
+        [System.Drawing.Color]::FromArgb(
+            [int]($Accent.R * 0.62), [int]($Accent.G * 0.62), [int]($Accent.B * 0.62))
+    }
     $nTitle.Location = New-Object System.Drawing.Point($nPad, $nPad)
     $nTitle.AutoSize = $true
     $nTitle.MaximumSize = New-Object System.Drawing.Size(($nW - $nPad * 2), 0)
@@ -1305,7 +1315,7 @@ function Show-BatteryNotification {
     $nSub = New-Object System.Windows.Forms.Label
     $nSub.Text = $SubMessage
     $nSub.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
-    $nSub.ForeColor = [System.Drawing.Color]::FromArgb(220, 220, 225)  # fixed: card is always dark; theme.TextLight goes dark in Light theme and vanished here
+    $nSub.ForeColor = $script:theme.TextLight  # card follows the theme since the parity pass
     $nSub.Location = New-Object System.Drawing.Point($nPad, [int](48 * $nDs))
     $nSub.AutoSize = $true
     $nSub.MaximumSize = New-Object System.Drawing.Size(($nW - $nPad * 2), 0)

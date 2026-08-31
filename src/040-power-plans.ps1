@@ -88,7 +88,7 @@ function Update-PowerPlanMenu {
         $noItem.Enabled = $false
         $MenuItem.DropDownItems.Add($noItem) | Out-Null
     }
-    # Re-apply dark theming to the freshly-rebuilt submenu items
-    if (Get-Command Set-DarkMenuItem -ErrorAction SilentlyContinue) { Set-DarkMenuItem -Item $MenuItem }
+    # Re-apply theming to the freshly-rebuilt submenu items
+    if (Get-Command Set-MenuItemTheme -ErrorAction SilentlyContinue) { Set-MenuItemTheme -Item $MenuItem }
 }
 

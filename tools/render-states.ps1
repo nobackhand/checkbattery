@@ -1,4 +1,4 @@
-# tools\render-states.ps1
+﻿# tools\render-states.ps1
 #
 # Headless state renderer for the widget source (Windows PowerShell 5.1).
 # Assembles the src\ modules (tools\_assemble.ps1), then
@@ -21,13 +21,13 @@
 
 param(
     [string]$OutDir = (Join-Path $env:TEMP 'batterypill-renders'),
-    [string[]]$States = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings'),
+    [string[]]$States = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings', 'popup-light', 'pill-light', 'settings-light'),
     [switch]$DrawToBitmap,
     [int]$TimeoutSec = 180
 )
 
 $ErrorActionPreference = 'Stop'
-$validStates = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings')
+$validStates = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings', 'popup-light', 'pill-light', 'settings-light')
 foreach ($s in $States) {
     if ($validStates -notcontains $s) {
         Write-Host "FAIL: unknown state '$s'. Valid: $($validStates -join ', ')"
@@ -113,7 +113,7 @@ function Write-GeometryDump {
     $df.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $df.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $df.ClientSize = New-Object System.Drawing.Size(300, 480)
-    $null = New-BatteryPopupContent -BatteryInfo $info -Form $df -PopupWidth 300 -DpiScale 1.0 -CloseHintText ""
+    $null = New-BatteryPopupContent -BatteryInfo $info -Form $df -PopupWidth 300 -DpiScale 1.0 -CloseHintText ""   # oracle stays at 1.0 scale (machine-independent)
     $df.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $df.Location = New-Object System.Drawing.Point(-4000, -4000)
     $df.Show()
@@ -134,8 +134,8 @@ function Write-GeometryDump {
 }
 
 function Render-PopupState {
-    param([string]$name, [hashtable]$info, [switch]$EmptyHistory)
-    $script:config.Theme = 'dark'
+    param([string]$name, [hashtable]$info, [switch]$EmptyHistory, [string]$ThemeName = 'dark')
+    $script:config.Theme = $ThemeName
     Set-Theme
     if ($EmptyHistory) { $script:batteryHistory = @() }
     else { $script:batteryHistory = Seed-History -charging:([bool]$info.IsCharging) }
@@ -144,9 +144,15 @@ function Render-PopupState {
     $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $f.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $f.BackColor = $script:theme.PopupBg
-    $f.ClientSize = New-Object System.Drawing.Size(300, 480)
-    $res = New-BatteryPopupContent -BatteryInfo $info -Form $f -PopupWidth 300 -DpiScale 1.0 -CloseHintText ""
-    $f.ClientSize = New-Object System.Drawing.Size(300, [int]$res.TotalHeight)
+    # Render at the REAL display DPI, like the app does - a hardcoded 1.0 scale
+    # clips every label as soon as the machine runs above 100% scaling
+    $hdsG = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $hds = $hdsG.DpiX / 96.0
+    $hdsG.Dispose()
+    $hpw = [int](300 * $hds)
+    $f.ClientSize = New-Object System.Drawing.Size($hpw, [int](480 * $hds))
+    $res = New-BatteryPopupContent -BatteryInfo $info -Form $f -PopupWidth $hpw -DpiScale $hds -CloseHintText ""
+    $f.ClientSize = New-Object System.Drawing.Size($hpw, [int]$res.TotalHeight)
     $f.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $f.ShowInTaskbar = $false
     if ($HZDTB) {
@@ -181,12 +187,12 @@ function Render-PopupState {
     $f.ShowDialog() | Out-Null
     $script:hzTimer.Dispose()
     $f.Dispose()
-    Write-Host ("saved {0}.png (300x{1})" -f $name, [int]$res.TotalHeight)
+    Write-Host ("saved {0}.png ({1}x{2})" -f $name, $hpw, [int]$res.TotalHeight)
 }
 
 function Render-PillState {
-    param([string]$name, [hashtable]$info, [string]$mode)
-    $script:config.Theme = 'dark'
+    param([string]$name, [hashtable]$info, [string]$mode, [string]$ThemeName = 'dark')
+    $script:config.Theme = $ThemeName
     Set-Theme
     $script:config.DisplayMode = $mode
     Update-PillSize
@@ -201,8 +207,8 @@ function Render-PillState {
 }
 
 function Render-SettingsState {
-    param([string]$name)
-    $script:config.Theme = 'dark'
+    param([string]$name, [string]$ThemeName = 'dark')
+    $script:config.Theme = $ThemeName
     Set-Theme
     $script:hzPath = Join-Path $OUT ($name + '.png')
     $script:hzDtb = $HZDTB
@@ -291,6 +297,9 @@ foreach ($s in $HZSTATES) {
             'pill-percent'     { Render-PillState -name $s -info $hzDischarge -mode 'percent' }
             'pill-both'        { Render-PillState -name $s -info $hzCharging -mode 'both' }
             'settings'         { Render-SettingsState -name $s }
+            'popup-light'      { Render-PopupState -name $s -info $hzDischarge -ThemeName 'light' }
+            'pill-light'       { Render-PillState -name $s -info $hzDischarge -mode 'time' -ThemeName 'light' }
+            'settings-light'   { Render-SettingsState -name $s -ThemeName 'light' }
             default            { Write-Host ("WARN: unknown state '{0}' skipped" -f $s) }
         }
     } catch {

@@ -125,15 +125,28 @@ public class Win32Icon {
         int pref = 2;
         return DwmSetWindowAttribute(hWnd, 33, ref pref, 4) == 0;
     }
+
+    // Explicit title-bar theme (UseDarkTitleBar always forces dark; this one
+    // follows the app theme so a Light-theme window gets a light title bar)
+    public static void SetTitleBarTheme(IntPtr hWnd, bool dark) {
+        int useDark = dark ? 1 : 0;
+        if (DwmSetWindowAttribute(hWnd, 20, ref useDark, 4) != 0) {
+            DwmSetWindowAttribute(hWnd, 19, ref useDark, 4);
+        }
+    }
 }
 
-// Dark palette for the right-click menus - without this they render as the
-// stock light-gray Windows menu, which clashes hard with the otherwise-dark app.
-public class DarkMenuColorTable : ProfessionalColorTable {
-    static readonly Color Bg  = Color.FromArgb(32, 32, 36);
-    static readonly Color Sel = Color.FromArgb(52, 52, 60);
-    static readonly Color Sep = Color.FromArgb(64, 64, 72);
-    public DarkMenuColorTable() { this.UseSystemColors = false; }
+// Themed palette for the right-click menus - the stock light-gray Windows
+// menu chrome clashes with the app, and the app has TWO themes, so the
+// palette is instance-configurable: one class serves both dark and light.
+public class AppMenuColorTable : ProfessionalColorTable {
+    private readonly Color Bg;
+    private readonly Color Sel;
+    private readonly Color Sep;
+    public AppMenuColorTable(Color bg, Color sel, Color sep) {
+        this.UseSystemColors = false;
+        Bg = bg; Sel = sel; Sep = sep;
+    }
     public override Color ToolStripDropDownBackground   { get { return Bg;  } }
     public override Color ImageMarginGradientBegin      { get { return Bg;  } }
     public override Color ImageMarginGradientMiddle     { get { return Bg;  } }
@@ -155,6 +168,10 @@ public class DarkMenuColorTable : ProfessionalColorTable {
 // owner-paints a rounded box with an accent fill + white check when on.
 public class DarkCheckBox : CheckBox {
     public Color AccentColor = Color.FromArgb(45, 212, 100);
+    // Themeable box colors (defaults = the dark panel palette)
+    public Color BoxFill = Color.FromArgb(44, 44, 50);
+    public Color BoxBorder = Color.FromArgb(92, 92, 102);
+    public Color BoxBorderHot = Color.FromArgb(130, 130, 142);
     private Timer _anim;
     private float _checkScale = 1f;   // 0..1, animates the check on toggle-on
     public DarkCheckBox() {
@@ -221,8 +238,8 @@ public class DarkCheckBox : CheckBox {
                     g.Restore(gs);
                 }
             } else {
-                using (SolidBrush b = new SolidBrush(Color.FromArgb(44, 44, 50))) g.FillPath(b, path);
-                Color bc = hot ? Color.FromArgb(130, 130, 142) : Color.FromArgb(92, 92, 102);
+                using (SolidBrush b = new SolidBrush(BoxFill)) g.FillPath(b, path);
+                Color bc = hot ? BoxBorderHot : BoxBorder;
                 using (Pen p = new Pen(bc, 1.3f)) g.DrawPath(p, path);
             }
         }
@@ -394,6 +411,20 @@ $script:theme = @{
     Border      = [System.Drawing.Color]::FromArgb(50, 50, 56)
     SparkBg     = [System.Drawing.Color]::FromArgb(20, 20, 24)
     SparkGuide  = [System.Drawing.Color]::FromArgb(255, 255, 255)
+    # Menu palette (context menus follow the theme since the parity pass)
+    MenuBg      = [System.Drawing.Color]::FromArgb(32, 32, 36)
+    MenuSel     = [System.Drawing.Color]::FromArgb(52, 52, 60)
+    MenuSep     = [System.Drawing.Color]::FromArgb(64, 64, 72)
+    MenuText    = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    # Settings-panel palette (the panel follows the theme too)
+    PanelBg     = [System.Drawing.Color]::FromArgb(32, 32, 36)
+    PanelText   = [System.Drawing.Color]::FromArgb(230, 230, 235)
+    PanelHead   = [System.Drawing.Color]::FromArgb(150, 150, 160)
+    PanelCtrl   = [System.Drawing.Color]::FromArgb(50, 50, 56)
+    PanelHover  = [System.Drawing.Color]::FromArgb(62, 62, 70)
+    PanelDown   = [System.Drawing.Color]::FromArgb(42, 42, 50)
+    PanelTrack  = [System.Drawing.Color]::FromArgb(64, 64, 72)
+    IsDark      = $true
 }
 
 $script:appVersion = "1.3.0"
@@ -437,6 +468,18 @@ function Set-Theme {
         $script:theme.Border = [System.Drawing.Color]::FromArgb(50, 50, 56)
         $script:theme.SparkBg = [System.Drawing.Color]::FromArgb(20, 20, 24)
         $script:theme.SparkGuide = [System.Drawing.Color]::FromArgb(255, 255, 255)
+        $script:theme.MenuBg = [System.Drawing.Color]::FromArgb(32, 32, 36)
+        $script:theme.MenuSel = [System.Drawing.Color]::FromArgb(52, 52, 60)
+        $script:theme.MenuSep = [System.Drawing.Color]::FromArgb(64, 64, 72)
+        $script:theme.MenuText = [System.Drawing.Color]::FromArgb(230, 230, 235)
+        $script:theme.PanelBg = [System.Drawing.Color]::FromArgb(32, 32, 36)
+        $script:theme.PanelText = [System.Drawing.Color]::FromArgb(230, 230, 235)
+        $script:theme.PanelHead = [System.Drawing.Color]::FromArgb(150, 150, 160)
+        $script:theme.PanelCtrl = [System.Drawing.Color]::FromArgb(50, 50, 56)
+        $script:theme.PanelHover = [System.Drawing.Color]::FromArgb(62, 62, 70)
+        $script:theme.PanelDown = [System.Drawing.Color]::FromArgb(42, 42, 50)
+        $script:theme.PanelTrack = [System.Drawing.Color]::FromArgb(64, 64, 72)
+        $script:theme.IsDark = $true
     } else {
         $script:theme.PillBg = [System.Drawing.Color]::FromArgb(242, 242, 247)
         $script:theme.PopupBg = [System.Drawing.Color]::FromArgb(248, 248, 252)
@@ -447,11 +490,29 @@ function Set-Theme {
         $script:theme.Border = [System.Drawing.Color]::FromArgb(200, 200, 210)
         $script:theme.SparkBg = [System.Drawing.Color]::FromArgb(232, 232, 238)
         $script:theme.SparkGuide = [System.Drawing.Color]::FromArgb(60, 60, 68)
+        $script:theme.MenuBg = [System.Drawing.Color]::FromArgb(248, 248, 252)
+        $script:theme.MenuSel = [System.Drawing.Color]::FromArgb(228, 228, 235)
+        $script:theme.MenuSep = [System.Drawing.Color]::FromArgb(210, 210, 218)
+        $script:theme.MenuText = [System.Drawing.Color]::FromArgb(28, 28, 30)
+        $script:theme.PanelBg = [System.Drawing.Color]::FromArgb(246, 246, 250)
+        $script:theme.PanelText = [System.Drawing.Color]::FromArgb(28, 28, 30)
+        $script:theme.PanelHead = [System.Drawing.Color]::FromArgb(110, 110, 120)
+        $script:theme.PanelCtrl = [System.Drawing.Color]::FromArgb(232, 232, 238)
+        $script:theme.PanelHover = [System.Drawing.Color]::FromArgb(220, 220, 228)
+        $script:theme.PanelDown = [System.Drawing.Color]::FromArgb(205, 205, 215)
+        $script:theme.PanelTrack = [System.Drawing.Color]::FromArgb(200, 200, 210)
+        $script:theme.IsDark = $false
     }
 
     # Refresh cached brushes for new theme
     Initialize-PillBrushes
     $script:cachedIconPercent = -999   # force tray icon rebuild in the new theme
+
+    # Re-theme the persistent context menus (built once at startup; everything
+    # else - popups, cards, panels - reads the theme at creation time)
+    if ($null -ne $script:appMenus -and (Get-Command Set-MenuTheme -ErrorAction SilentlyContinue)) {
+        foreach ($appMenu in $script:appMenus) { Set-MenuTheme -Menu $appMenu }
+    }
 
     # Apply to floating bar immediately
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
