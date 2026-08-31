@@ -260,6 +260,19 @@ public class DarkCheckBox : CheckBox {
     }
 }
 
+// A form that appears WITHOUT taking focus.
+//
+// Notification cards and the first-run tip are transient, unattended windows.
+// Shown as ordinary Forms they took activation, which deactivated whatever
+// the user was reading - and the tray detail popup, the Battery Health card
+// and the About dialog all close themselves on Deactivate. So a low-battery
+// or "Charging - full by ..." card fired by the 3-second tick slammed shut
+// the dialog the user had deliberately opened, mid-read (and cut the health
+// card's ring sweep off part-way).
+public class NoActivateForm : Form {
+    protected override bool ShowWithoutActivation { get { return true; } }
+}
+
 // Modern menu renderer - the stock ProfessionalRenderer highlight is a flat
 // square block; this one draws a rounded, accent-tinted selection pill so the
 // right-click menus feel like part of the app instead of Windows 95 chrome.
@@ -567,6 +580,17 @@ function Set-Theme {
 # --- Fullscreen detection state ---
 $script:isFullscreenHidden = $false
 
+function Test-RectCoversScreen {
+    [OutputType([bool])]
+    param(
+        [int]$RectLeft, [int]$RectTop, [int]$RectRight, [int]$RectBottom,
+        [int]$ScreenLeft, [int]$ScreenTop, [int]$ScreenRight, [int]$ScreenBottom
+    )
+    # Does a window rectangle cover a screen's bounds entirely?
+    return ($RectLeft -le $ScreenLeft -and $RectTop -le $ScreenTop -and
+        $RectRight -ge $ScreenRight -and $RectBottom -ge $ScreenBottom)
+}
+
 function Test-FullscreenApp {
     [OutputType([bool])]
     param()
@@ -575,15 +599,21 @@ function Test-FullscreenApp {
         if ($hwnd -eq [IntPtr]::Zero) { return $false }
         $rect = New-Object Win32Icon+RECT
         [Win32Icon]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
-        # Check if foreground window covers any screen entirely
-        foreach ($scr in [System.Windows.Forms.Screen]::AllScreens) {
-            $b = $scr.Bounds
-            if ($rect.Left -le $b.Left -and $rect.Top -le $b.Top -and
-                $rect.Right -ge $b.Right -and $rect.Bottom -ge $b.Bottom) {
-                return $true
-            }
+        # Only THIS pill's screen matters. The old loop returned true if the
+        # foreground window covered ANY screen, so a fullscreen game or video
+        # on monitor 2 hid the pill on monitor 1 - the exact setup where a
+        # second monitor exists so the widget can stay visible. Auto-hide is
+        # about the pill being in the way; it cannot be in the way of a
+        # window that is not on its screen.
+        if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+            $scr = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location)
+        } else {
+            $scr = [System.Windows.Forms.Screen]::PrimaryScreen
         }
-        return $false
+        $b = $scr.Bounds
+        return (Test-RectCoversScreen -RectLeft $rect.Left -RectTop $rect.Top `
+                -RectRight $rect.Right -RectBottom $rect.Bottom `
+                -ScreenLeft $b.Left -ScreenTop $b.Top -ScreenRight $b.Right -ScreenBottom $b.Bottom)
     } catch {
         return $false
     }

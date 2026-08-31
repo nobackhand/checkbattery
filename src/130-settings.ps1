@@ -120,7 +120,8 @@ function Show-FirstRunTooltip {
     $g.Dispose()
     $ttW = [int](260 * $ds); $ttH = [int](134 * $ds)   # fits 4 tips at 24px spacing
 
-    $script:firstRunTip = New-Object System.Windows.Forms.Form
+    # NoActivateForm: the tip appears unattended and must not steal focus
+    $script:firstRunTip = New-Object NoActivateForm
     $script:firstRunTip.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $script:firstRunTip.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $script:firstRunTip.Size = New-Object System.Drawing.Size($ttW, $ttH)
