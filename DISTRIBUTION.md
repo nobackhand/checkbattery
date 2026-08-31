@@ -83,12 +83,13 @@ Prices checked 2026-07 (list prices, rounded; see sources at bottom).
 - **Now: (d).** Free tool, small download volume; signing spend isn't justified yet,
   and signing wouldn't fix the PS2EXE AV heuristics anyway. Be honest on the website
   instead.
-- **UPDATE 2026-08-30: option (b) is IN PROGRESS.** The SAC hard block (above) pulled
-  the trigger the same day it was discovered. The release pipeline is wired
-  (`release.ps1` -> `tools\sign-exe.ps1`, config in `signing.config.json`,
-  setup steps in SIGNING.md); releases sign automatically once the Azure
-  Trusted Signing account + identity validation are complete. Until then,
-  releases continue unsigned with a loud warning.
+- **UPDATE 2026-08-30: signing considered and DECLINED (staying on (d)).** The SAC
+  hard-block finding prompted a full evaluation the same day; the owner decided
+  $9.99/mo isn't justified for a free widget yet. The pipeline was built anyway and
+  stays dormant at zero cost: `release.ps1` -> `tools\sign-exe.ps1` warns
+  "releasing UNSIGNED" and continues. If the decision ever flips, the setup is
+  SIGNING.md steps 1-5 - no code changes needed. Known consequence, accepted:
+  SAC-enabled machines cannot run BatteryPill (the website says so honestly).
 - **The rewrite (e) is the eventual ceiling-breaker** for both AV reputation and
   per-monitor DPI. Signing an exe that AV engines still dislike is half a fix.
 
