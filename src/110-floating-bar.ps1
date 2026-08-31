@@ -166,6 +166,34 @@ function Get-SnappedLocation {
     return @{ X = $X; Y = $Y }
 }
 
+function Get-DisplayChangeAction {
+    [OutputType([string])]
+    param(
+        [bool]$SavedPositionValid,
+        [bool]$CurrentPositionValid,
+        [bool]$AtSavedPosition
+    )
+    # What to do with the pill when the display layout changes. Returns
+    # 'restore' (move back to the user's saved spot), 'park' (move somewhere
+    # visible) or 'none'.
+    #
+    # The rule that matters is what this function does NOT say: park. The old
+    # handler relocated the pill to the primary screen's corner and WROTE THAT
+    # TO CONFIG immediately, so one transient layout blip - undocking, Win+P,
+    # a monitor sleeping, a game changing resolution, an RDP session
+    # attaching - permanently destroyed the position the user had chosen.
+    # Re-docking did not bring it back, because the saved spot was gone. The
+    # saved position is the user's INTENT; the runtime position may deviate
+    # from it while a monitor is missing, and must be restored when it
+    # returns.
+    if ($SavedPositionValid) {
+        if ($AtSavedPosition) { return 'none' }
+        return 'restore'
+    }
+    if ($CurrentPositionValid) { return 'none' }
+    return 'park'
+}
+
 function Complete-PillRest {
     [OutputType([void])]
     param()
@@ -845,6 +873,18 @@ function New-FloatingBar {
         }
         # Left-click without drag cycles the display mode (works even when position is locked)
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left -and $script:leftPressed -and -not $script:didDrag) {
+            # A click is also how you STOP a glide mid-flight - the natural
+            # gesture after a fling. That path leaves the pill somewhere new
+            # while config still holds the pre-fling spot, and nothing else
+            # would ever persist it: the glide tick aborts silently on
+            # $script:isDragging, and this branch is the not-a-drag branch.
+            # Persist the landing spot without snapping (a click should not
+            # move the pill).
+            if ($script:floatingBar.Left -ne $script:config.X -or $script:floatingBar.Top -ne $script:config.Y) {
+                $script:config.X = $script:floatingBar.Left
+                $script:config.Y = $script:floatingBar.Top
+                Save-Config
+            }
             if ($script:animOK) {
                 # Ripple out from the click point (pulse timer repaints it)
                 $script:rippleState = @{ X = $e.X; Y = $e.Y; Start = Get-Date }

@@ -164,16 +164,23 @@ $script:powerModeHandler = {
 
 # Re-validate pill position when displays change (monitor disconnect/resolution change)
 $script:displaySettingsHandler = {
-    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
-        if (-not (Test-PositionOnScreen -X $script:floatingBar.Left -Y $script:floatingBar.Top -Width $script:floatingBar.Width -Height $script:floatingBar.Height)) {
-            $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-            $newX = $screen.Right - $script:floatingBar.Width - 10
-            $newY = $screen.Bottom - $script:floatingBar.Height - 10
-            $script:floatingBar.Location = New-Object System.Drawing.Point($newX, $newY)
-            $script:config.X = $newX
-            $script:config.Y = $newY
-            Save-Config
-        }
+    if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) { return }
+    $bw = $script:floatingBar.Width
+    $bh = $script:floatingBar.Height
+    $action = Get-DisplayChangeAction `
+        -SavedPositionValid (Test-PositionOnScreen -X $script:config.X -Y $script:config.Y -Width $bw -Height $bh) `
+        -CurrentPositionValid (Test-PositionOnScreen -X $script:floatingBar.Left -Y $script:floatingBar.Top -Width $bw -Height $bh) `
+        -AtSavedPosition (($script:floatingBar.Left -eq $script:config.X) -and ($script:floatingBar.Top -eq $script:config.Y))
+    if ($action -eq 'restore') {
+        # The layout can host the user's chosen spot again (re-docked, monitor
+        # woke up) - put the pill back where they left it.
+        $script:floatingBar.Location = New-Object System.Drawing.Point($script:config.X, $script:config.Y)
+    } elseif ($action -eq 'park') {
+        # Nowhere valid: park it somewhere visible, but deliberately do NOT
+        # save - see Get-DisplayChangeAction.
+        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+        $script:floatingBar.Location = New-Object System.Drawing.Point(
+            ($screen.Right - $bw - 10), ($screen.Bottom - $bh - 10))
     }
 }
 [Microsoft.Win32.SystemEvents]::add_DisplaySettingsChanged($script:displaySettingsHandler)
@@ -519,6 +526,25 @@ $script:fullscreenTimer.Start()
 
 # Cleanup on form closing
 $script:mainForm.Add_FormClosing({
+        # Land an in-flight glide/settle BEFORE saving. Exiting mid-flight
+        # otherwise saved the pre-fling coordinates and the pill reappeared at
+        # its old spot next launch, silently undoing the move the user just
+        # made. (Config is set directly rather than via Complete-PillRest,
+        # which would start another animation timer during teardown.)
+        if ($null -ne $script:glideTimer -or $null -ne $script:settleTimer) {
+            if ($null -ne $script:glideTimer) {
+                $script:glideTimer.Stop(); $script:glideTimer.Dispose(); $script:glideTimer = $null
+            }
+            if ($null -ne $script:settleTimer) {
+                $script:settleTimer.Stop(); $script:settleTimer.Dispose(); $script:settleTimer = $null
+            }
+            if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
+                $landed = Get-SnappedLocation -X $script:floatingBar.Left -Y $script:floatingBar.Top `
+                    -Width $script:floatingBar.Width -Height $script:floatingBar.Height -Threshold 28
+                $script:config.X = $landed.X
+                $script:config.Y = $landed.Y
+            }
+        }
         # Save config (including battery history) on exit
         Save-Config
         $script:timer.Stop()
