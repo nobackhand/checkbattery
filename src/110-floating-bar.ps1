@@ -1305,10 +1305,15 @@ function New-BatteryPopupContent {
     # Battery history sparkline (40px tall)
     $sparkAccent = Get-AccentColor -Percent $BatteryInfo.Percent -IsCharging $BatteryInfo.IsCharging
     $sparkPanel = New-SparklinePanel -Y $y -AccentColor $sparkAccent
+    # The sparkline was the one element the DPI pass missed: a fixed 40px box
+    # whose guide labels are point-sized and therefore scale, so at 200% the
+    # "50%" guide, the span label and the graph line all crowded into the same
+    # band.
+    $sparkH = [int](40 * $DpiScale)
     $sparkPanel.Location = New-Object System.Drawing.Point($lx, $y)
-    $sparkPanel.Size = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), 40)
+    $sparkPanel.Size = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), $sparkH)
     $Form.Controls.Add($sparkPanel)
-    $y += 40
+    $y += $sparkH
 
     # Spacer after sparkline
     $y += [int](6 * $DpiScale)
