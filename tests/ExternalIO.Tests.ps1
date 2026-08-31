@@ -28,7 +28,7 @@
         'Write-IoFailure', 'Open-ExternalLink',
         'Get-ConfigPath', 'Read-ConfigField', 'Import-Config', 'Save-Config',
         'Read-TextFileShared', 'Write-TextFileAtomic',
-        'Get-StartupShortcutPath', 'Get-AutoStartEnabled', 'Set-AutoStart'))
+        'Get-StartupShortcutPath', 'Get-AutoStartEnabled', 'Get-AutoStartTarget', 'Set-AutoStart'))
 
 # Notifications stay off (no forms in a test host); failures are recorded only.
 $script:ioNotifyEnabled = $false
@@ -162,7 +162,16 @@ Test-Case 'writable config: saves and records nothing' {
 Test-Case 'auto-start off is honest when the shortcut cannot be deleted' {
     $ErrorActionPreference = 'Continue'
     $lnk = Join-Path $script:tmpDir 'BatteryPill.lnk'
-    Set-Content -LiteralPath $lnk -Value 'shortcut' -Encoding ASCII
+    # A REAL shortcut pointing at a real file. Get-AutoStartEnabled now reports
+    # whether BatteryPill would actually start (it reads the shortcut's target
+    # and checks it exists), so a placeholder text file named .lnk would
+    # correctly read as "off" and make the assertion below meaningless.
+    $fakeExe = Join-Path $script:tmpDir 'BatteryPill-9.9.9.exe'
+    Set-Content -LiteralPath $fakeExe -Value 'exe' -Encoding ASCII
+    $wsh = New-Object -ComObject WScript.Shell
+    $sc = $wsh.CreateShortcut($lnk)
+    $sc.TargetPath = $fakeExe
+    $sc.Save()
     # Hold the file open with no sharing - Windows refuses the delete.
     $held = [System.IO.File]::Open($lnk, [System.IO.FileMode]::Open,
         [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)

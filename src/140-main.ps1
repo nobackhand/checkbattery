@@ -621,6 +621,11 @@ $script:mainForm.Add_FormClosing({
         }
     })
 
+# Self-heal a startup shortcut orphaned by an update (the app ships as
+# BatteryPill-<version>.exe, so yesterday's target is gone after upgrading).
+# Silent by design: it restores what the user already asked for.
+try { $null = Repair-AutoStartShortcut } catch {}
+
 # The UI exists now, so I/O failures can show their own card from here on. Flush
 # anything recorded during startup (a config we could not read) - it happened
 # before there was a window to say it in.

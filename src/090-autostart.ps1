@@ -27,14 +27,79 @@ function Get-StartupShortcutPath {
     return (Join-Path ([Environment]::GetFolderPath('Startup')) "BatteryPill.lnk")
 }
 
+function Get-AutoStartTarget {
+    [OutputType([string])]
+    param(
+        # Shortcut to read. Defaults to the real Startup folder; tests override it.
+        [string]$ShortcutPath = ''
+    )
+    # The path a startup shortcut points at, or '' when there is no shortcut
+    # or it cannot be read.
+    if (-not $ShortcutPath) { $ShortcutPath = Get-StartupShortcutPath }
+    if (-not (Test-Path $ShortcutPath)) { return '' }
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $target = $shell.CreateShortcut($ShortcutPath).TargetPath
+        if ($null -eq $target) { return '' }
+        return [string]$target
+    } catch {
+        return ''
+    }
+}
+
 function Get-AutoStartEnabled {
     [OutputType([bool])]
     param(
         # Shortcut to look for. Defaults to the real Startup folder; tests override it.
         [string]$ShortcutPath = ''
     )
+    # "Enabled" means BatteryPill will actually START, not merely that a .lnk
+    # file exists. The old bare Test-Path reported the checkbox as ON while
+    # the shortcut pointed at a deleted exe: the app ships as
+    # BatteryPill-<version>.exe, so updating leaves the previous target
+    # missing, auto-start silently stops working, and Settings keeps
+    # insisting it is on. A checkbox that lies is worse than one that is off.
     if (-not $ShortcutPath) { $ShortcutPath = Get-StartupShortcutPath }
-    return (Test-Path $ShortcutPath)
+    if (-not (Test-Path $ShortcutPath)) { return $false }
+    $target = Get-AutoStartTarget -ShortcutPath $ShortcutPath
+    # An unreadable shortcut (locked by another process, or an unexpected
+    # format) is still a shortcut sitting in the Startup folder, and Windows
+    # will most likely act on it at logon. Only a target we can actually READ,
+    # and that is GONE, proves the feature is broken - so that is the only
+    # case that reports "off".
+    if (-not $target) { return $true }
+    return (Test-Path -LiteralPath $target)
+}
+
+function Repair-AutoStartShortcut {
+    [OutputType([bool])]
+    param(
+        # Shortcut to repair. Defaults to the real Startup folder; tests override it.
+        [string]$ShortcutPath = '',
+        # Exe to point at. Defaults to the running one; tests override it.
+        [string]$ExePath = ''
+    )
+    # Self-heal a shortcut whose target no longer exists - the update case.
+    # Deliberately narrow: only a MISSING target is repaired, never one that
+    # merely differs, so running an older build on purpose does not silently
+    # re-point the user's shortcut. Returns $true if a repair was made.
+    if (-not $ShortcutPath) { $ShortcutPath = Get-StartupShortcutPath }
+    $target = Get-AutoStartTarget -ShortcutPath $ShortcutPath
+    if (-not $target) { return $false }
+    if (Test-Path -LiteralPath $target) { return $false }
+    if (-not $ExePath) { $ExePath = Get-ExePath }
+    if ($null -eq $ExePath -or -not $ExePath) { return $false }
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($ShortcutPath)
+        $shortcut.TargetPath = $ExePath
+        $shortcut.WorkingDirectory = Split-Path $ExePath
+        $shortcut.Description = "BatteryPill - Battery Widget"
+        $shortcut.Save()
+        return $true
+    } catch {
+        return $false
+    }
 }
 
 function Set-AutoStart {
