@@ -123,7 +123,7 @@ $script:notifyIcon.Visible = $true
 # (after the first real battery read) raises it into place, sweeps the fill,
 # then shows the first-run tips in sequence instead of racing them.
 $script:floatingBar = New-FloatingBar
-if ([Win32Icon]::AnimationsEnabled()) {
+if ($script:config.Animations) {
     $script:floatingBar.Opacity = 0
 }
 $script:floatingBar.Show()
@@ -348,6 +348,7 @@ $script:pulseTimer.Add_Tick({
             $fastAnim = ($script:flashAlpha -gt 0) -or
             ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or
             ($null -ne $script:shimmerStart) -or ($null -ne $script:boltPopStart) -or
+            ($null -ne $script:rippleState) -or
             ($null -ne $script:themeFade) -or
             ($null -ne $script:colorFadeActive -and $script:colorFadeActive) -or
             ($script:textFadeAlpha -lt 255) -or
@@ -377,7 +378,7 @@ $script:pulseTimer.Add_Tick({
                 $needsRepaint = $true
             }
             # Moment overlays animate purely off elapsed time - just repaint
-            if ($null -ne $script:shimmerStart -or $null -ne $script:boltPopStart) {
+            if ($null -ne $script:shimmerStart -or $null -ne $script:boltPopStart -or $null -ne $script:rippleState) {
                 $needsRepaint = $true
             }
             # Theme switch: crossfade the pill background surface (~220ms)
@@ -457,6 +458,7 @@ function Update-PulseTimerState {
     ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or
     ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed) -or
     ($null -ne $script:shimmerStart) -or ($null -ne $script:boltPopStart) -or
+    ($null -ne $script:rippleState) -or
     ($null -ne $script:themeFade) -or
     ($null -ne $script:colorFadeActive -and $script:colorFadeActive) -or
     ($script:textFadeAlpha -lt 255) -or
