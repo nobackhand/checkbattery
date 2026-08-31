@@ -14,7 +14,7 @@
 
 . (Join-Path $PSScriptRoot '_harness.ps1')
 . (Import-WidgetFunction 'Get-BatteryStateTitle', 'Get-TimeSentence', 'Get-FunStatusLine',
-    'Get-BatterySessionSummary', 'Format-Duration')
+    'Get-BatterySessionSummary', 'Get-PillText', 'Format-Duration')
 
 Write-Host 'Presentation.Tests.ps1'
 
@@ -119,6 +119,65 @@ Test-Case 'fun line: no battery does not claim runtime' {
     $line = Get-FunStatusLine -BatteryInfo (New-Reading -NoBattery $true -TimeMinutes -1)
     if ([string]::IsNullOrWhiteSpace($line)) { throw 'no fun line on a desktop' }
     if ($line -match 'outlet|fumes') { throw "desktop got a battery-anxiety line: '$line'" }
+}
+
+# ---- Get-PillText ----
+# The pill itself: the one surface the user glances at without opening
+# anything, so a wrong string here is the most-seen error the app can make.
+
+Test-Case 'pill: time mode shows the duration, percent mode the percent' {
+    $info = New-Reading
+    Assert-Equal '3h 8m' (Get-PillText -BatteryInfo $info -DisplayMode 'time').Primary
+    Assert-Equal '72%' (Get-PillText -BatteryInfo $info -DisplayMode 'percent').Primary
+}
+
+Test-Case 'pill: both mode stacks percent over time' {
+    $both = Get-PillText -BatteryInfo (New-Reading) -DisplayMode 'both'
+    Assert-Equal '72%' $both.Primary
+    Assert-Equal '3h 8m' $both.Secondary
+}
+
+Test-Case 'pill: an unknown display mode falls back to time' {
+    Assert-Equal '3h 8m' (Get-PillText -BatteryInfo (New-Reading) -DisplayMode 'nonsense').Primary
+}
+
+Test-Case 'pill: a desktop with no battery reads AC, once' {
+    $info = New-Reading -NoBattery $true -TimeMinutes -1
+    Assert-Equal 'AC' (Get-PillText -BatteryInfo $info -DisplayMode 'time').Primary
+    $both = Get-PillText -BatteryInfo $info -DisplayMode 'both'
+    Assert-Equal 'AC' $both.Primary
+    Assert-Equal '' $both.Secondary
+}
+
+Test-Case 'pill: an unreadable percent shows dashes, never a made-up number' {
+    $info = New-Reading -Percent -1 -TimeMinutes -1
+    Assert-Equal '--' (Get-PillText -BatteryInfo $info -DisplayMode 'percent').Primary
+    Assert-Equal '--' (Get-PillText -BatteryInfo $info -DisplayMode 'time').Primary
+}
+
+Test-Case 'pill: a charge-capped laptop at "fully charged" shows its real percent' {
+    # Firmware charge caps (ThinkPad conservation mode, Dell Primary AC Use,
+    # ASUS 60% mode) make Windows report WMI BatteryStatus 3 "Fully Charged"
+    # while the battery sits at 60%. The pill used to hardcode "100%" here -
+    # disagreeing with the tray tooltip ("60% - Fully Charged") and the tray
+    # icon (a 60% fill) on the very same tick.
+    $info = New-Reading -Percent 60 -IsFullyCharged $true -TimeMinutes -1 -ETA ''
+    Assert-Equal '60%' (Get-PillText -BatteryInfo $info -DisplayMode 'percent').Primary
+    Assert-Equal 'Full' (Get-PillText -BatteryInfo $info -DisplayMode 'time').Primary
+    $both = Get-PillText -BatteryInfo $info -DisplayMode 'both'
+    Assert-Equal '60%' $both.Primary
+    Assert-Equal 'Full' $both.Secondary
+}
+
+Test-Case 'pill: fully charged with no percent reading shows dashes, not 100%' {
+    $info = New-Reading -Percent -1 -IsFullyCharged $true -TimeMinutes -1 -ETA ''
+    Assert-Equal '--' (Get-PillText -BatteryInfo $info -DisplayMode 'percent').Primary
+}
+
+Test-Case 'pill: a genuinely full battery still reads 100%' {
+    $info = New-Reading -Percent 100 -IsFullyCharged $true -TimeMinutes -1 -ETA ''
+    Assert-Equal '100%' (Get-PillText -BatteryInfo $info -DisplayMode 'percent').Primary
+    Assert-Equal 'Full' (Get-PillText -BatteryInfo $info -DisplayMode 'time').Primary
 }
 
 # ---- Get-BatterySessionSummary ----
