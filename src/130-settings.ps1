@@ -982,6 +982,10 @@ function Show-BatteryHealthCard {
         }
     } else {
         $glyph = Add-CenterLabel -Text ([string][char]0x26A1) -YPos 60 -FontSize 26 -Bold $false -Color ([System.Drawing.Color]::FromArgb(45, 212, 100))
+        # Add-CenterLabel already built a "Segoe UI" font for this label; the
+        # symbol face replaces it, so the original has to be disposed here or
+        # it leaks one font handle per Battery Health open on a desktop.
+        $fontsToDispose += $glyph.Font
         $glyph.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 26, [System.Drawing.FontStyle]::Regular)
         $fontsToDispose += $glyph.Font
         $fontsToDispose += (Add-CenterLabel -Text "No battery to report on" -YPos 120 -FontSize 11 -Bold $true -Color $script:theme.TextPrimary).Font
@@ -1026,6 +1030,10 @@ function Show-BatteryHealthCard {
         $script:hcAnimTimer.Stop(); $script:hcAnimTimer.Dispose(); $script:hcAnimTimer = $null
     }
     $script:hcCard = $null
+    # Two passes with deliberate overlap: $fontsToDispose catches fonts no
+    # control still references (the glyph label's replaced original), and the
+    # control sweep catches the rest. Font.Dispose() is idempotent, so a font
+    # in both lists is disposed safely twice.
     foreach ($f in $fontsToDispose) { if ($null -ne $f) { $f.Dispose() } }
     foreach ($ctrl in $card.Controls) { if ($null -ne $ctrl.Font) { $ctrl.Font.Dispose() } }
     $card.Dispose()
