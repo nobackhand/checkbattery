@@ -1062,6 +1062,10 @@ function Get-BatteryStateTitle {
     if ($BatteryInfo.IsFullyCharged) { return "Fully Charged" }
     if ($BatteryInfo.IsCharging) { return "Charging" }
     if ($BatteryInfo.NoBattery) { return "No Battery" }
+    # Plugged in but neither charging nor full (a firmware charge cap holding
+    # the pack): saying "Discharging" here contradicted the popup's own
+    # PowerSource line one row below.
+    if ($BatteryInfo.IsPluggedIn) { return "Plugged In" }
     return "Discharging"
 }
 
@@ -1108,6 +1112,15 @@ function Get-FunStatusLine {
         if ($BatteryInfo.Percent -ge 0 -and $BatteryInfo.Percent -lt 30) { return "Inhaling electrons." }
         return "Refueling."
     }
+    # Plugged in and holding - no runtime anxiety applies on mains power.
+    if ($BatteryInfo.IsPluggedIn) { return "Plugged in, holding steady." }
+    $pct = $BatteryInfo.Percent
+    # A low CHARGE outranks a long time estimate. An idle machine (lid shut,
+    # screen off) can read 6% with ten hours remaining, and the line used to
+    # say "All-day battery. Go do things." while the pill pulsed red and a
+    # "Critical Battery - 6%" card sat on screen. The alarm wins.
+    if ($pct -ge 0 -and $pct -le 10) { return "Critically low. Plug in." }
+    if ($pct -ge 0 -and $pct -le 20) { return "Running on fumes." }
     $mins = $BatteryInfo.TimeMinutes
     if ($mins -gt 0) {
         if ($mins -le 20) { return "Find an outlet. Now-ish." }
@@ -1116,8 +1129,6 @@ function Get-FunStatusLine {
         if ($mins -ge 300) { return "Hours of runway left." }
         if ($mins -ge 120) { return "Plenty in the tank." }
         return "Cruising. Keep an eye out."
-    } elseif ($BatteryInfo.Percent -ge 0 -and $BatteryInfo.Percent -le 20) {
-        return "Running on fumes."
     }
     return ""
 }

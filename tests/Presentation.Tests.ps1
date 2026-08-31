@@ -27,13 +27,16 @@ function New-Reading {
         [bool]$IsFullyCharged = $false,
         [bool]$NoBattery = $false,
         [int]$TimeMinutes = 188,
-        [string]$ETA = '6:42 PM'
+        [string]$ETA = '6:42 PM',
+        # Plugged in but NOT charging and NOT full - a firmware charge cap
+        # holding the pack (WMI BatteryStatus 11).
+        [bool]$PluggedHolding = $false
     )
     return @{
         Percent        = $Percent
         PercentExact   = [double]$Percent
         IsCharging     = $IsCharging
-        IsPluggedIn    = ($IsCharging -or $IsFullyCharged)
+        IsPluggedIn    = ($IsCharging -or $IsFullyCharged -or $PluggedHolding)
         IsFullyCharged = $IsFullyCharged
         NoBattery      = $NoBattery
         StatusText     = 'Discharging'
@@ -61,6 +64,13 @@ Test-Case 'title: fully charged outranks charging' {
 
 Test-Case 'title: no battery' {
     Assert-Equal 'No Battery' (Get-BatteryStateTitle -BatteryInfo (New-Reading -NoBattery $true))
+}
+
+Test-Case 'title: plugged in and holding is not called Discharging' {
+    # A charge-capped laptop parks here for hours. Titling it "Discharging"
+    # contradicted the popup's own "AC Power (plugged in)" line below it.
+    $info = New-Reading -Percent 60 -PluggedHolding $true -TimeMinutes -1 -ETA ''
+    Assert-Equal 'Plugged In' (Get-BatteryStateTitle -BatteryInfo $info)
 }
 
 # ---- Get-TimeSentence ----
@@ -113,6 +123,26 @@ Test-Case 'fun line: urgency is reserved for actually-low estimates' {
     $urgent = Get-FunStatusLine -BatteryInfo (New-Reading -Percent 8 -TimeMinutes 12)
     $calm = Get-FunStatusLine -BatteryInfo (New-Reading -Percent 95 -TimeMinutes 600)
     if ($urgent -eq $calm) { throw 'a 12-minute battery says the same thing as a 10-hour one' }
+}
+
+Test-Case 'fun line: a low charge outranks a long time estimate' {
+    # An idle machine (lid shut, screen off) can read 6% with ten hours
+    # remaining. The line used to key only off minutes and cheerfully said
+    # "All-day battery. Go do things." while the pill pulsed red and a
+    # "Critical Battery - 6%" card sat on the screen.
+    $line = Get-FunStatusLine -BatteryInfo (New-Reading -Percent 6 -TimeMinutes 600)
+    if ($line -match 'All-day|runway|Plenty') {
+        throw "a 6% battery got a relaxed line: '$line'"
+    }
+}
+
+Test-Case 'fun line: plugged in and holding has no runtime anxiety' {
+    $info = New-Reading -Percent 18 -PluggedHolding $true -TimeMinutes -1 -ETA ''
+    $line = Get-FunStatusLine -BatteryInfo $info
+    if ([string]::IsNullOrWhiteSpace($line)) { throw 'no fun line while plugged in and holding' }
+    if ($line -match 'outlet|fumes|Critically') {
+        throw "a plugged-in battery got a panic line: '$line'"
+    }
 }
 
 Test-Case 'fun line: no battery does not claim runtime' {

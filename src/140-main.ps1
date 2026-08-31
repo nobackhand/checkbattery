@@ -2,6 +2,36 @@
 # UPDATE FUNCTIONS
 # ============================================================
 
+function Add-BatteryHistorySample {
+    [OutputType([void])]
+    param(
+        [hashtable]$Info,
+        [datetime]$Now
+    )
+    # Record one sample for the sparkline (cap 2400 = ~2h at 3s intervals).
+    #
+    # The percent guard is the point. The old test was `-not $Info.NoBattery`,
+    # but NoBattery only means the battery is ABSENT. A battery that is
+    # present and merely unreadable this tick (CIM query throws, .NET reports
+    # the 255 unknown sentinel) yields Percent = -1 with NoBattery = $false,
+    # so -1 was recorded as if it were a real reading. It then plotted below
+    # the sparkline's baseline, printed "-1%" in the scrub readout, and - worst
+    # - was subtracted as a percentage by the session summary, which reported
+    # "used 51%" for a battery that had dropped 5 points.
+    # Import-Config already drops out-of-range entries on reload, so the live
+    # buffer and the persisted one disagreed about the same tick.
+    if ($Info.NoBattery) { return }
+    if ($Info.Percent -lt 0 -or $Info.Percent -gt 100) { return }
+    $null = $script:batteryHistory.Add(@{
+            Time       = $Now
+            Percent    = $Info.Percent
+            IsCharging = $Info.IsCharging
+        })
+    while ($script:batteryHistory.Count -gt 2400) {
+        $script:batteryHistory.RemoveAt(0)
+    }
+}
+
 function Update-TrayIcon {
     [OutputType([void])]
     param()
@@ -62,18 +92,7 @@ function Update-TrayIcon {
     # used to freeze at whatever was true when it opened)
     Update-OpenPopupContent -BatteryInfo $info
 
-    # Record history for sparkline (cap at 2400 entries = ~2h at 3s intervals).
-    # Skip when there's no battery so we don't fill the graph with junk -1 readings.
-    if (-not $info.NoBattery) {
-        $script:batteryHistory.Add(@{
-                Time       = $now
-                Percent    = $info.Percent
-                IsCharging = $info.IsCharging
-            }) | Out-Null
-        if ($script:batteryHistory.Count -gt 2400) {
-            $script:batteryHistory.RemoveAt(0)
-        }
-    }
+    Add-BatteryHistorySample -Info $info -Now $now
 
     $script:lastBatteryInfo = $info
 }
