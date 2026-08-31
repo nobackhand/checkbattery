@@ -43,7 +43,7 @@ function New-BatteryIcon {
     $pct = [math]::Max(0, [math]::Min(100, $Percent))
     $fillWidth = [math]::Max(0, [int](($pct / 100) * $pillW))
     if ($fillWidth -gt 0) {
-        $oldClip = $g.Clip
+        $iconState = $g.Save()
         $g.SetClip($path)
         $accent = Get-AccentColor -Percent $Percent -IsCharging $isCharging
         $fillBrush = New-Object System.Drawing.SolidBrush($accent)
@@ -57,7 +57,7 @@ function New-BatteryIcon {
             $g.FillRectangle($glossBrush, $glossX, $pillY, 3, $pillH)
             $glossBrush.Dispose()
         }
-        $g.Clip = $oldClip
+        $g.Restore($iconState)
     }
 
     # Charging bolt overlay so charging never looks like a plain full battery
