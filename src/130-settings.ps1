@@ -365,6 +365,16 @@ function Show-SettingsPanel {
             $script:config.Animations = $animCheck.Checked
             $script:animOK = $animCheck.Checked
             Save-Config
+            # Apply it NOW rather than at the next battery tick (up to 60s
+            # away on the slowest refresh setting). Turning it OFF mid-pulse
+            # would otherwise freeze the pill part-faded and its warning
+            # border mid-swing; turning it ON would appear to do nothing.
+            # Update-FloatingBar owns the static-warning compensation and
+            # Update-PulseTimerState owns starting/stopping the 33ms timer.
+            if ($null -ne $script:lastBatteryInfo) {
+                Update-FloatingBar -BatteryInfo $script:lastBatteryInfo
+            }
+            Update-PulseTimerState
         })
     $settings.Controls.Add($animCheck)
     $settingsTooltip.SetToolTip($animCheck, "Smooth transitions, glides and little moments (off = everything is instant)")

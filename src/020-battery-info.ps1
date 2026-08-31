@@ -249,14 +249,21 @@ function Get-BatteryInfo {
         $info.StatusText = "Fully Charged"
     } elseif ($info.IsCharging) {
         $info.StatusText = "Charging"
-    } elseif ($info.IsPluggedIn) {
-        # Plugged in, holding: neither charging nor full. WMI BatteryStatus 11
-        # ("Partially Charged") is where a firmware charge cap parks for hours
-        # - ThinkPad conservation mode, Dell Primary AC Use, ASUS 60% mode.
-        # Falling through to the percent bands labelled that battery "Low" or
-        # "Critical" and titled the popup "Discharging", directly above a
-        # PowerSource line reading "AC Power (plugged in)". It is not
-        # discharging and there is nothing to warn about - it is on mains.
+    } elseif ($info.IsPluggedIn -and $info.DischargeRate -le 0) {
+        # Plugged in and HOLDING: neither charging, nor full, nor actually
+        # draining. WMI BatteryStatus 11 ("Partially Charged") is where a
+        # firmware charge cap parks for hours - ThinkPad conservation mode,
+        # Dell Primary AC Use, ASUS 60% mode. Falling through to the percent
+        # bands labelled that battery "Low" or "Critical" and titled the popup
+        # "Discharging", directly above a PowerSource line reading "AC Power
+        # (plugged in)".
+        #
+        # The DischargeRate test is load-bearing, not belt-and-braces:
+        # IsPluggedIn comes from PowerLineStatus alone, so an underpowered
+        # charger or dock under load reads as "plugged in" while the battery
+        # genuinely drains. That battery IS discharging and must keep its
+        # ordinary Low/Critical treatment - calling it "Plugged In" would mute
+        # the warning on the one machine that needs it.
         $info.StatusText = "Plugged In"
     } elseif ($info.Percent -ge 0 -and $info.Percent -le 10) {
         $info.StatusText = "Critical"

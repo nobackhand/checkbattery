@@ -233,6 +233,32 @@ Test-Case 'a saved state with no rate restores nothing' {
     Assert-Equal (-1) $script:emaRate
 }
 
+Test-Case 'a valid saved state is actually restored, field by field' {
+    # Every other case here asserts a REFUSAL, which a function that did
+    # nothing at all would also satisfy. This one pins the success path:
+    # the smoothing feature the persistence exists for has to work.
+    Reset-EstimatorState
+    $saved = @{ EmaRate = 12345.0; LastValidRate = 12000; EmaWasPluggedIn = $true }
+    Assert-Equal $true (Restore-EstimatorState -Config $saved -Now $t0)
+    Assert-Equal 12345.0 $script:emaRate
+    Assert-Equal 12000 $script:lastValidRate
+    Assert-Equal $true $script:lastAcState
+    Assert-Equal $t0 $script:lastValidRateTime
+}
+
+Test-Case 'the restored rate produces a real estimate on the next tick' {
+    # End-to-end proof that restoring is worth doing at all: a relaunch that
+    # did not change power state keeps its smooth estimate instead of
+    # dropping back to "Estimating..." for no reason.
+    Reset-EstimatorState
+    $saved = @{ EmaRate = 15000.0; LastValidRate = 15000; EmaWasPluggedIn = $false }
+    Assert-Equal $true (Restore-EstimatorState -Config $saved -Now $t0)
+    $mins = Get-SmoothedTimeRemaining -RawRate 0 -FullChargeCapacity 50000 `
+        -PercentExact 50.0 -IsCharging $false -IsPluggedIn $false -Now $t0
+    # 25000 mWh remaining at 15000 mW = 100 minutes
+    Assert-Equal 100 $mins
+}
+
 Test-Case 'a restored rate is not reused across a power-state change' {
     # REGRESSION: config persists the EMA so estimates are smooth right after
     # a restart, and startup stamped it fresh. But the AC-transition reset

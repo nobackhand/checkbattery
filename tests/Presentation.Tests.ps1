@@ -39,7 +39,16 @@ function New-Reading {
         IsPluggedIn    = ($IsCharging -or $IsFullyCharged -or $PluggedHolding)
         IsFullyCharged = $IsFullyCharged
         NoBattery      = $NoBattery
-        StatusText     = 'Discharging'
+        # Mirrors Get-BatteryInfo's ladder for the states these tests use.
+        # "Plugged In" specifically means plugged in and NOT draining - a
+        # battery discharging on an underpowered charger keeps its ordinary
+        # status, which is why the presentation layer keys on this field
+        # rather than re-deriving it from IsPluggedIn.
+        StatusText     = if ($NoBattery) { 'No Battery' }
+        elseif ($IsFullyCharged) { 'Fully Charged' }
+        elseif ($IsCharging) { 'Charging' }
+        elseif ($PluggedHolding) { 'Plugged In' }
+        else { 'Discharging' }
         TimeMinutes    = $TimeMinutes
         ETA            = $ETA
     }
@@ -112,6 +121,33 @@ Test-Case 'fun line: every ordinary discharge band produces a line' {
     }
 }
 
+Test-Case 'fun line: the discharge bands say DIFFERENT things' {
+    # Non-emptiness alone is too weak: collapsing all six thresholds into one
+    # constant would satisfy it while making the feature pointless. Percent is
+    # held high so the low-charge override does not mask the bands.
+    $lines = @()
+    foreach ($mins in @(15, 30, 90, 200, 330, 600)) {
+        $lines += Get-FunStatusLine -BatteryInfo (New-Reading -Percent 60 -TimeMinutes $mins)
+    }
+    $distinct = @($lines | Select-Object -Unique)
+    if ($distinct.Count -ne 6) {
+        throw "expected 6 distinct band lines, got $($distinct.Count): $($distinct -join ' | ')"
+    }
+}
+
+Test-Case 'fun line: the critical band ends at 10 percent, exactly' {
+    # A silently narrowed alarm band is the dangerous direction, so the
+    # boundary is pinned rather than merely "different from the calm line".
+    $at10 = Get-FunStatusLine -BatteryInfo (New-Reading -Percent 10 -TimeMinutes 600)
+    $at11 = Get-FunStatusLine -BatteryInfo (New-Reading -Percent 11 -TimeMinutes 600)
+    $at20 = Get-FunStatusLine -BatteryInfo (New-Reading -Percent 20 -TimeMinutes 600)
+    $at21 = Get-FunStatusLine -BatteryInfo (New-Reading -Percent 21 -TimeMinutes 600)
+    Assert-Equal 'Critically low. Plug in.' $at10
+    Assert-Equal 'Running on fumes.' $at11
+    Assert-Equal 'Running on fumes.' $at20
+    if ($at21 -eq $at20) { throw '21% still reads as the low band' }
+}
+
 Test-Case 'fun line: charging and full states speak too' {
     $charging = Get-FunStatusLine -BatteryInfo (New-Reading -IsCharging $true -TimeMinutes 63)
     if ([string]::IsNullOrWhiteSpace($charging)) { throw 'no fun line while charging' }
@@ -134,6 +170,27 @@ Test-Case 'fun line: a low charge outranks a long time estimate' {
     if ($line -match 'All-day|runway|Plenty') {
         throw "a 6% battery got a relaxed line: '$line'"
     }
+}
+
+Test-Case 'fun line: a battery draining on a weak charger keeps its warning' {
+    # IsPluggedIn comes from PowerLineStatus alone, so an underpowered
+    # charger or dock under load reads as "plugged in" while the battery
+    # genuinely drains. That must NOT be muted into "holding steady".
+    $info = New-Reading -Percent 8 -TimeMinutes 25
+    $info.IsPluggedIn = $true       # AC online...
+    $info.StatusText = 'Critical'   # ...but Get-BatteryInfo saw a real discharge rate
+    $line = Get-FunStatusLine -BatteryInfo $info
+    if ($line -match 'holding steady') {
+        throw "a draining battery on AC was told it is holding steady: '$line'"
+    }
+    Assert-Equal 'Critically low. Plug in.' $line
+}
+
+Test-Case 'title: a battery draining on a weak charger is not called Plugged In' {
+    $info = New-Reading -Percent 30 -TimeMinutes 40
+    $info.IsPluggedIn = $true
+    $info.StatusText = 'Discharging'
+    Assert-Equal 'Discharging' (Get-BatteryStateTitle -BatteryInfo $info)
 }
 
 Test-Case 'fun line: plugged in and holding has no runtime anxiety' {
@@ -177,6 +234,16 @@ Test-Case 'pill: a desktop with no battery reads AC, once' {
     $both = Get-PillText -BatteryInfo $info -DisplayMode 'both'
     Assert-Equal 'AC' $both.Primary
     Assert-Equal '' $both.Secondary
+}
+
+Test-Case 'pill: a real 0% is a number, not dashes' {
+    # 0 is a genuine reading and the most urgent one there is; only -1 means
+    # "no reading". A >= that slipped to > would hide it behind "--" at the
+    # exact moment the user needs it.
+    $info = New-Reading -Percent 0 -TimeMinutes 3
+    Assert-Equal '0%' (Get-PillText -BatteryInfo $info -DisplayMode 'percent').Primary
+    $both = Get-PillText -BatteryInfo $info -DisplayMode 'both'
+    Assert-Equal '0%' $both.Primary
 }
 
 Test-Case 'pill: an unreadable percent shows dashes, never a made-up number' {
@@ -253,6 +320,17 @@ Test-Case 'session: a plain discharge run reports its span and drain' {
 Test-Case 'session: silent while charging' {
     Add-Run -StartMin 0 -Minutes 30 -FromPct 60 -ToPct 58
     Add-Run -StartMin 31 -Minutes 60 -FromPct 58 -ToPct 88 -Charging $true
+    Set-History
+    Assert-Equal '' (Get-BatterySessionSummary)
+}
+
+Test-Case 'session: silent the instant the charger goes in' {
+    # The case that actually needs the charging guard: a long discharge run
+    # with ONE charging sample on the end. Without the guard the walk-back
+    # still reports the whole discharge run as if it were live, so the health
+    # card would announce a battery session while the machine charges.
+    Add-Run -StartMin 0 -Minutes 120 -FromPct 95 -ToPct 60
+    Add-Run -StartMin 121 -Minutes 1 -FromPct 60 -ToPct 60 -Charging $true
     Set-History
     Assert-Equal '' (Get-BatterySessionSummary)
 }

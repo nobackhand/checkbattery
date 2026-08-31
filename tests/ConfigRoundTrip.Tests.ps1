@@ -35,6 +35,7 @@ function Set-WidgetState {
     $script:batteryHistory = New-Object System.Collections.ArrayList
     $script:emaRate = -1
     $script:lastValidRate = -1
+    $script:lastAcState = $null
 }
 
 function New-FullConfig {
@@ -140,6 +141,36 @@ Test-Case 'compat: a config from a NEWER build keeps its unknown fields out of t
     Assert-Equal 300 $loaded.X
     Assert-Equal $false $loaded.FunLines
     Assert-Equal $true $loaded.Animations
+}
+
+Test-Case 'round trip: the estimator state survives, including its power state' {
+    # Save-Config serializes the estimator from MODULE state, not from
+    # $script:config, so New-FullConfig cannot cover it. EmaWasPluggedIn is
+    # the persistence half of the fix that stops a discharge rate being
+    # reused as a charge rate after a restart - if it does not round-trip,
+    # Restore-EstimatorState refuses every restore and the smoothing feature
+    # silently stops working.
+    Set-WidgetState -Config (New-FullConfig)
+    $script:emaRate = 13500.0
+    $script:lastValidRate = 13000
+    $script:lastAcState = $true
+    Save-Config -Path $script:cfgPath
+    $loaded = Import-Config -Path $script:cfgPath
+    Assert-Equal 13500.0 $loaded.EmaRate
+    Assert-Equal 13000 $loaded.LastValidRate
+    Assert-Equal $true $loaded.EmaWasPluggedIn
+}
+
+Test-Case 'round trip: a FALSE power state survives (not lost as $null)' {
+    # $false is the discharging case and the one that matters most: read back
+    # as $null it would look like "unknown" and block the restore entirely.
+    Set-WidgetState -Config (New-FullConfig)
+    $script:emaRate = 9000.0
+    $script:lastValidRate = 9000
+    $script:lastAcState = $false
+    Save-Config -Path $script:cfgPath
+    $loaded = Import-Config -Path $script:cfgPath
+    Assert-Equal $false $loaded.EmaWasPluggedIn
 }
 
 Test-Case 'round trip: battery history survives, capped at the persisted 200' {
