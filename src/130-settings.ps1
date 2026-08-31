@@ -928,16 +928,23 @@ function Show-BatteryHealthCard {
             $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center   # y = vertical center of text
             $cx = [single]($ringX + $ringD / 2)
             $cy = $ringY + $ringD / 2
-            $pctFont = New-Object System.Drawing.Font("Segoe UI Semibold", (26 * $dds), [System.Drawing.FontStyle]::Bold)
+            $pctFont = New-Object System.Drawing.Font("Segoe UI Semibold", 26, [System.Drawing.FontStyle]::Bold)
             $pctBrush = New-Object System.Drawing.SolidBrush($script:theme.TextPrimary)
             $g.DrawString(("{0}%" -f [int][math]::Round($script:hcAnimPct)), $pctFont, $pctBrush, $cx, ([single]($cy - 9 * $dds)), $fmt)
             $pctFont.Dispose(); $pctBrush.Dispose()
-            $lblFont = New-Object System.Drawing.Font("Segoe UI", (8 * $dds))
+            $lblFont = New-Object System.Drawing.Font("Segoe UI", 8)
             $lblBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
             $g.DrawString("HEALTH", $lblFont, $lblBrush, $cx, ([single]($cy + 24 * $dds)), $fmt)
             $lblFont.Dispose(); $lblBrush.Dispose(); $fmt.Dispose()
         })
 
+    # NOTE ON DPI: font sizes here are POINTS and must be passed raw. GDI+
+    # already converts points to pixels against the system DPI (the process is
+    # SetProcessDPIAware), so multiplying the point size by $ds scaled them
+    # twice - at 150% every label rendered about 2.25x its intended size and
+    # was sliced in half by its own box; at 200% the health percentage
+    # overflowed the ring and the session line lost its trailing "%".
+    # Box geometry, by contrast, IS in pixels and DOES need the * $ds.
     $fontsToDispose = @()
     function Add-CenterLabel {
         [OutputType([System.Windows.Forms.Label])]
@@ -952,7 +959,7 @@ function Show-BatteryHealthCard {
         $lbl.Text = $Text
         $style = if ($Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
         $fn = if ($Bold) { "Segoe UI Semibold" } else { "Segoe UI" }
-        $lbl.Font = New-Object System.Drawing.Font($fn, ($FontSize * $ds), $style)
+        $lbl.Font = New-Object System.Drawing.Font($fn, $FontSize, $style)
         $lbl.ForeColor = $Color
         $lbl.AutoSize = $false
         $lbl.Size = New-Object System.Drawing.Size($fw, [int](($FontSize + 12) * $ds))
@@ -974,7 +981,7 @@ function Show-BatteryHealthCard {
         }
     } else {
         $glyph = Add-CenterLabel -Text ([string][char]0x26A1) -YPos 60 -FontSize 26 -Bold $false -Color ([System.Drawing.Color]::FromArgb(45, 212, 100))
-        $glyph.Font = New-Object System.Drawing.Font("Segoe UI Symbol", (26 * $ds), [System.Drawing.FontStyle]::Regular)
+        $glyph.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 26, [System.Drawing.FontStyle]::Regular)
         $fontsToDispose += $glyph.Font
         $fontsToDispose += (Add-CenterLabel -Text "No battery to report on" -YPos 120 -FontSize 11 -Bold $true -Color $script:theme.TextPrimary).Font
         $fontsToDispose += (Add-CenterLabel -Text "This PC is running on AC power." -YPos 150 -FontSize 8.5 -Bold $false -Color $script:theme.TextDim).Font

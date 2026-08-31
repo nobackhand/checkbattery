@@ -21,13 +21,13 @@
 
 param(
     [string]$OutDir = (Join-Path $env:TEMP 'batterypill-renders'),
-    [string[]]$States = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings', 'popup-light', 'pill-light', 'settings-light'),
+    [string[]]$States = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings', 'popup-light', 'pill-light', 'settings-light', 'health'),
     [switch]$DrawToBitmap,
     [int]$TimeoutSec = 180
 )
 
 $ErrorActionPreference = 'Stop'
-$validStates = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings', 'popup-light', 'pill-light', 'settings-light')
+$validStates = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings', 'popup-light', 'pill-light', 'settings-light', 'health')
 foreach ($s in $States) {
     if ($validStates -notcontains $s) {
         Write-Host "FAIL: unknown state '$s'. Valid: $($validStates -join ', ')"
@@ -206,6 +206,63 @@ function Render-PillState {
     Write-Host ("saved {0}.png ({1}x{2})" -f $name, $w, $h)
 }
 
+function Render-HealthCardState {
+    param([string]$name, [hashtable]$info, [string]$ThemeName = 'dark')
+    $script:config.Theme = $ThemeName
+    Set-Theme
+    $script:batteryHistory = Seed-History
+    # Show-BatteryHealthCard reads live WMI; override the reader so the card
+    # renders a known battery instead of this machine's (a desktop, no battery)
+    $script:hzInfo = $info
+    function Get-BatteryInfo { param([datetime]$Now = (Get-Date)) return $script:hzInfo }
+    $script:hzPath = Join-Path $OUT ($name + '.png')
+    $script:hzDtb = $HZDTB
+    $script:hzKnown = @{}
+    foreach ($of in [System.Windows.Forms.Application]::OpenForms) { $script:hzKnown[$of.GetHashCode()] = $true }
+    $script:hzTries = 0
+    $script:hzSettled = $false
+    $script:hzSettleTicks = 0
+    $script:hzTimer = New-Object System.Windows.Forms.Timer
+    $script:hzTimer.Interval = 50
+    $script:hzTimer.Add_Tick({
+        $cf = $null
+        foreach ($of in [System.Windows.Forms.Application]::OpenForms) {
+            if (-not $script:hzKnown.ContainsKey($of.GetHashCode())) { $cf = $of; break }
+        }
+        if ($null -ne $cf -and -not $script:hzSettled) {
+            $cf.TopMost = $false
+            $cf.Location = New-Object System.Drawing.Point(-4000, -4000)
+            $script:hzSettleTicks++
+            # Let the 650ms health-ring sweep finish first, or the capture
+            # shows a half-drawn ring and a mid-count number
+            if ($script:hzSettleTicks -ge 18) { $script:hzSettled = $true }
+            return
+        }
+        if ($null -ne $cf) {
+            $script:hzTimer.Stop()
+            $b = $cf.Bounds
+            $bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height)
+            $cf.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $b.Width, $b.Height)))
+            $bmp.Save($script:hzPath, [System.Drawing.Imaging.ImageFormat]::Png)
+            $bmp.Dispose()
+            Write-Host ("saved {0}.png ({1}x{2})" -f $script:hzName, $b.Width, $b.Height)
+            $cf.Close()
+        } else {
+            $script:hzTries++
+            if ($script:hzTries -ge 40) {
+                $script:hzTimer.Stop()
+                Write-Host 'WARN: health card form not found'
+                $af = [System.Windows.Forms.Form]::ActiveForm
+                if ($null -ne $af) { $af.Close() }
+            }
+        }
+    })
+    $script:hzName = $name
+    $script:hzTimer.Start()
+    Show-BatteryHealthCard
+    $script:hzTimer.Dispose()
+}
+
 function Render-SettingsState {
     param([string]$name, [string]$ThemeName = 'dark')
     $script:config.Theme = $ThemeName
@@ -300,6 +357,7 @@ foreach ($s in $HZSTATES) {
             'popup-light'      { Render-PopupState -name $s -info $hzDischarge -ThemeName 'light' }
             'pill-light'       { Render-PillState -name $s -info $hzDischarge -mode 'time' -ThemeName 'light' }
             'settings-light'   { Render-SettingsState -name $s -ThemeName 'light' }
+            'health'           { Render-HealthCardState -name $s -info $hzDischarge }
             default            { Write-Host ("WARN: unknown state '{0}' skipped" -f $s) }
         }
     } catch {
