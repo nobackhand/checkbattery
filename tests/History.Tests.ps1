@@ -48,6 +48,15 @@ Test-Case 'a desktop with no battery records nothing' {
     Assert-Equal 0 $script:batteryHistory.Count
 }
 
+Test-Case 'the NoBattery guard stands on its own, not on the percent guard' {
+    # In production NoBattery always arrives with Percent -1, so the case
+    # above passes on either guard alone and cannot tell them apart. A
+    # plausible percent with NoBattery set isolates this one.
+    Reset-History
+    Add-BatteryHistorySample -Info (New-Sample -Percent 55 -NoBattery $true) -Now $histT0
+    Assert-Equal 0 $script:batteryHistory.Count
+}
+
 Test-Case 'an unreadable percent on a battery that IS present is refused' {
     # The guard used to be `-not NoBattery`, but NoBattery only means the
     # battery is ABSENT. A present-but-unreadable tick (CIM query throws, or

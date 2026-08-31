@@ -248,6 +248,7 @@ function Complete-PillRest {
         -Width $script:floatingBar.Width -Height $script:floatingBar.Height -Threshold 28
     $script:config.X = $snap.X
     $script:config.Y = $snap.Y
+    $script:pendingLandingSave = $false   # landed and persisted
     Save-Config
     if ($snap.X -ne $script:floatingBar.Left -or $snap.Y -ne $script:floatingBar.Top) {
         Start-PillSettle -TargetX $snap.X -TargetY $snap.Y
@@ -265,6 +266,7 @@ function Start-PillGlide {
     $speed = [math]::Sqrt($Vx * $Vx + $Vy * $Vy)
     if ($speed -gt $maxV) { $Vx = $Vx * $maxV / $speed; $Vy = $Vy * $maxV / $speed }
     if ($null -ne $script:glideTimer) { $script:glideTimer.Stop(); $script:glideTimer.Dispose(); $script:glideTimer = $null }
+    $script:pendingLandingSave = $true
     $script:glideState = @{
         Vx    = $Vx
         Vy    = $Vy
@@ -317,6 +319,7 @@ function Start-PillSettle {
         return
     }
     if ($null -ne $script:settleTimer) { $script:settleTimer.Stop(); $script:settleTimer.Dispose(); $script:settleTimer = $null }
+    $script:pendingLandingSave = $true
     $script:settleState = @{
         Start = Get-Date
         FromX = $script:floatingBar.Left
@@ -393,6 +396,13 @@ function New-FloatingBar {
     # Eased edge-settle + momentum glide after a drag release
     $script:settleState = $null
     $script:glideState = $null
+    # True while a glide/settle is in flight: the pill is moving under its own
+    # momentum, so wherever it stops IS the user's new chosen position and has
+    # to be persisted even when a click cuts the motion short. This is what
+    # distinguishes that from the pill being PARKED by a display change, where
+    # config deliberately still holds the user's real position on the monitor
+    # that went away.
+    $script:pendingLandingSave = $false
     $script:dragSamples = New-Object System.Collections.ArrayList
 
     # Smooth color transition state
@@ -933,10 +943,21 @@ function New-FloatingBar {
             # $script:isDragging, and this branch is the not-a-drag branch.
             # Persist the landing spot without snapping (a click should not
             # move the pill).
-            if ($script:floatingBar.Left -ne $script:config.X -or $script:floatingBar.Top -ne $script:config.Y) {
-                $script:config.X = $script:floatingBar.Left
-                $script:config.Y = $script:floatingBar.Top
-                Save-Config
+            #
+            # GATED ON A PENDING LANDING, never on "position differs from
+            # config". The pill is also legitimately away from its saved spot
+            # while PARKED after a display change - and there, config holds
+            # the user's real position on the monitor that went away. An
+            # unconditional save meant one ordinary click while undocked
+            # overwrote it with the parked corner and lost it for good,
+            # undoing the whole point of Get-DisplayChangeAction.
+            if ($script:pendingLandingSave) {
+                $script:pendingLandingSave = $false
+                if ($script:floatingBar.Left -ne $script:config.X -or $script:floatingBar.Top -ne $script:config.Y) {
+                    $script:config.X = $script:floatingBar.Left
+                    $script:config.Y = $script:floatingBar.Top
+                    Save-Config
+                }
             }
             if ($script:animOK) {
                 # Ripple out from the click point (pulse timer repaints it)
@@ -971,8 +992,17 @@ function New-FloatingBar {
             ($screen.Right - $form.Width - 10),
             ($screen.Bottom - $form.Height - 10)
         )
-        $script:config.X = $form.Left
-        $script:config.Y = $form.Top
+        # Only claim this fallback as the user's position on a genuine FIRST
+        # RUN. A saved position that merely fails validation today is almost
+        # always a monitor that is currently absent - launching once while
+        # undocked used to overwrite the docked spot in memory, and
+        # FormClosing's Save-Config then persisted the loss. Same class of
+        # bug as the display-change handler, same reasoning: the saved
+        # position is intent, and the runtime position may deviate from it.
+        if ($script:config.X -eq -1 -and $script:config.Y -eq -1) {
+            $script:config.X = $form.Left
+            $script:config.Y = $form.Top
+        }
     }
 
     return $form
@@ -1184,8 +1214,11 @@ function Get-BatteryStateTitle {
     if ($BatteryInfo.NoBattery) { return "No Battery" }
     # Plugged in but neither charging nor full (a firmware charge cap holding
     # the pack): saying "Discharging" here contradicted the popup's own
-    # PowerSource line one row below.
-    if ($BatteryInfo.IsPluggedIn) { return "Plugged In" }
+    # PowerSource line one row below. Keyed on StatusText, which Get-BatteryInfo
+    # already computed - re-deriving it from IsPluggedIn here would miss that
+    # a plugged-in battery can still be genuinely draining on an underpowered
+    # charger, and would mute that warning.
+    if ($BatteryInfo.StatusText -eq 'Plugged In') { return "Plugged In" }
     return "Discharging"
 }
 
@@ -1261,8 +1294,10 @@ function Get-FunStatusLine {
         if ($BatteryInfo.Percent -ge 0 -and $BatteryInfo.Percent -lt 30) { return "Inhaling electrons." }
         return "Refueling."
     }
-    # Plugged in and holding - no runtime anxiety applies on mains power.
-    if ($BatteryInfo.IsPluggedIn) { return "Plugged in, holding steady." }
+    # Plugged in and HOLDING - no runtime anxiety applies. Keyed on StatusText
+    # (see Get-BatteryStateTitle): a battery draining on an underpowered
+    # charger is plugged in but must keep its low-battery lines.
+    if ($BatteryInfo.StatusText -eq 'Plugged In') { return "Plugged in, holding steady." }
     $pct = $BatteryInfo.Percent
     # A low CHARGE outranks a long time estimate. An idle machine (lid shut,
     # screen off) can read 6% with ten hours remaining, and the line used to
@@ -1530,8 +1565,11 @@ function Show-BatteryNotification {
     $notif.Opacity = 0
     Enable-DoubleBuffering -Form $notif
 
-    # Escape-to-dismiss is wired below, once the per-notification state exists
-    $notif.KeyPreview = $true
+    # NOTE: no Escape-to-dismiss. A card is a NoActivateForm - it deliberately
+    # never takes keyboard focus, because taking focus closed whatever dialog
+    # the user had open. No focus means no key events, so a KeyDown handler
+    # here would be dead code pretending to be a feature. Dismissal is by
+    # click (anywhere on the card) or by its own auto-dismiss timer.
 
     # Position on same screen as pill (fallback to primary)
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed) {
@@ -1642,9 +1680,6 @@ function Show-BatteryNotification {
     $notif.Add_Click($dismissClick)
     $nTitle.Add_Click($dismissClick)
     $nSub.Add_Click($dismissClick)
-    $notif.Add_KeyDown({
-            if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $nState.Phase = "out" }
-        }.GetNewClosure())
 
     # Slide-in with cubic ease-out, hold 10s, fade out
     $notifTimer = New-Object System.Windows.Forms.Timer
