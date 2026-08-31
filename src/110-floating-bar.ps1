@@ -1501,49 +1501,66 @@ function Show-BatteryNotification {
     $notifTimer.Start()
 }
 
-function Update-FloatingBar {
-    [OutputType([void])]
-    param([hashtable]$BatteryInfo)
-
-    if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) { return }
-
-    # Update display text based on DisplayMode
+function Get-PillText {
+    [OutputType([hashtable])]
+    param(
+        [hashtable]$BatteryInfo,
+        [string]$DisplayMode
+    )
+    # The words on the pill, for a reading and a display mode.
+    # Returns @{ Primary; Secondary } - Secondary is "" for single-line modes.
     $timeStr = ""
     $pctStr = ""
+    # The percent string is derived ONCE, from the actual reading, for every
+    # state. It used to be hardcoded to "100%" in the fully-charged branch,
+    # which is wrong on two real readings:
+    #   - a laptop with a firmware charge cap (ThinkPad/Dell/ASUS 60% modes)
+    #     reports WMI BatteryStatus 3 "Fully Charged" AT 60%, so the pill said
+    #     100% while the tray tooltip on the same tick said "60% - Fully
+    #     Charged" and the tray icon drew a 60% fill;
+    #   - an unreadable percent (-1) with status 3 printed "100%" invented out
+    #     of no data, bypassing the "--" guard the other branches apply.
+    $pctStr = if ($BatteryInfo.Percent -ge 0) { "$($BatteryInfo.Percent)%" } else { "--" }
     if ($BatteryInfo.NoBattery) {
         # Desktop / no battery: show "AC" rather than a dead "N/A"
         $timeStr = "AC"
         $pctStr = "AC"
     } elseif ($BatteryInfo.IsFullyCharged) {
         $timeStr = "Full"
-        $pctStr = "100%"
     } elseif ($BatteryInfo.TimeMinutes -gt 0) {
         $timeStr = Format-Duration -Minutes $BatteryInfo.TimeMinutes
-        # A rejected/unknown percent stays -1: show "--" rather than "-1%"
-        $pctStr = if ($BatteryInfo.Percent -ge 0) { "$($BatteryInfo.Percent)%" } else { "--" }
     } else {
         # Time not computed yet — fall back to the (real) percent instead of dead dashes
-        $pctStr = if ($BatteryInfo.Percent -ge 0) { "$($BatteryInfo.Percent)%" } else { "--" }
         $timeStr = $pctStr
     }
 
-    $displayMode = $script:config.DisplayMode
-    switch ($displayMode) {
+    switch ($DisplayMode) {
         "percent" {
-            $script:barDisplayText = $pctStr
-            $script:barDisplayText2 = ""
+            return @{ Primary = $pctStr; Secondary = "" }
         }
         "both" {
-            $script:barDisplayText = $pctStr
             # No battery: both lines would read "AC"/"AC" - show it once
-            $script:barDisplayText2 = if ($BatteryInfo.NoBattery) { "" } else { $timeStr }
+            return @{
+                Primary   = $pctStr
+                Secondary = if ($BatteryInfo.NoBattery) { "" } else { $timeStr }
+            }
         }
         default {
             # "time" mode (default)
-            $script:barDisplayText = $timeStr
-            $script:barDisplayText2 = ""
+            return @{ Primary = $timeStr; Secondary = "" }
         }
     }
+}
+
+function Update-FloatingBar {
+    [OutputType([void])]
+    param([hashtable]$BatteryInfo)
+
+    if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) { return }
+
+    $pillText = Get-PillText -BatteryInfo $BatteryInfo -DisplayMode ([string]$script:config.DisplayMode)
+    $script:barDisplayText = $pillText.Primary
+    $script:barDisplayText2 = $pillText.Secondary
 
     # Text crossfade: a changed value fades back in (skip while the intro
     # sweep owns the pill, and skip entirely when animations are off)
