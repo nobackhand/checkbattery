@@ -21,7 +21,8 @@
 # of the code it covers; see history/missions-evidence/mission-09-mutation.log.
 
 . (Join-Path $PSScriptRoot '_harness.ps1')
-. (Import-WidgetFunction 'Update-EMARate', 'Get-CapacityDerivedRate', 'Get-SmoothedTimeRemaining')
+. (Import-WidgetFunction 'Update-EMARate', 'Get-CapacityDerivedRate', 'Get-SmoothedTimeRemaining',
+    'Restore-EstimatorState')
 
 Write-Host 'Estimation.Tests.ps1'
 
@@ -197,6 +198,75 @@ Test-Case 'suppresses the estimate during the post-plug hysteresis window' {
             -PercentExact 50.0 -IsCharging $false -IsPluggedIn $false -Now $t0)
     Assert-Equal (-1) (Get-SmoothedTimeRemaining -RawRate 0 -FullChargeCapacity 50000 `
             -PercentExact 50.0 -IsCharging $true -IsPluggedIn $true -Now $t0.AddSeconds(1))
+}
+
+Test-Case 'restart on a charger does not inherit the discharge rate as time-to-full' {
+    # THE END-TO-END CASE. Save-Config runs on exit, on drag and on every
+    # settings change, so a config holding a discharge rate is completely
+    # ordinary. Plug in, relaunch within 10 minutes, and the first tick used
+    # to produce a confident time-to-full computed from how fast the battery
+    # had been DRAINING - the estimator's AC-transition reset could not fire,
+    # because startup left it with no previous state to compare against.
+    Reset-EstimatorState
+    $saved = @{ EmaRate = 15000.0; LastValidRate = 15000; EmaWasPluggedIn = $false }
+    [void](Restore-EstimatorState -Config $saved -Now $t0)
+    # First tick after the relaunch: plugged in, charger silent so far.
+    [void](Get-SmoothedTimeRemaining -RawRate 0 -FullChargeCapacity 50000 `
+            -PercentExact 50.0 -IsCharging $true -IsPluggedIn $true -Now $t0)
+    Assert-Equal (-1) (Get-SmoothedTimeRemaining -RawRate 0 -FullChargeCapacity 50000 `
+            -PercentExact 50.0 -IsCharging $true -IsPluggedIn $true -Now $t0.AddSeconds(5))
+}
+
+Test-Case 'a config from an older build (no saved power state) is not restored' {
+    # Refuse rather than guess: one tick of "Estimating..." beats a confident
+    # wrong number.
+    Reset-EstimatorState
+    $old = @{ EmaRate = 15000.0; LastValidRate = 15000; EmaWasPluggedIn = $null }
+    Assert-Equal $false (Restore-EstimatorState -Config $old -Now $t0)
+    Assert-Equal (-1) $script:emaRate
+    Assert-Equal $null $script:lastAcState
+}
+
+Test-Case 'a saved state with no rate restores nothing' {
+    Reset-EstimatorState
+    Assert-Equal $false (Restore-EstimatorState -Config @{ EmaRate = -1; LastValidRate = -1; EmaWasPluggedIn = $false } -Now $t0)
+    Assert-Equal (-1) $script:emaRate
+}
+
+Test-Case 'a restored rate is not reused across a power-state change' {
+    # REGRESSION: config persists the EMA so estimates are smooth right after
+    # a restart, and startup stamped it fresh. But the AC-transition reset
+    # needs a PREVIOUS state to compare against, and on startup there was
+    # none ($script:lastAcState = $null), so the guard could not fire on the
+    # first tick. Save while on battery, plug in, relaunch within 10 minutes,
+    # and the estimator computed a confident TIME TO FULL from how fast the
+    # battery had been draining. Startup now seeds lastAcState from config
+    # (EmaWasPluggedIn), which is what lets the existing reset fire.
+    Reset-EstimatorState
+    # A restart that restored a rate measured while DISCHARGING:
+    $script:emaRate = 15000
+    $script:lastValidRate = 15000
+    $script:lastValidRateTime = $t0
+    $script:lastAcState = $false
+    # ...but we are now plugged in, and the charger has reported nothing yet.
+    [void](Get-SmoothedTimeRemaining -RawRate 0 -FullChargeCapacity 50000 `
+            -PercentExact 50.0 -IsCharging $true -IsPluggedIn $true -Now $t0)
+    Assert-Equal (-1) (Get-SmoothedTimeRemaining -RawRate 0 -FullChargeCapacity 50000 `
+            -PercentExact 50.0 -IsCharging $true -IsPluggedIn $true -Now $t0.AddSeconds(5))
+}
+
+Test-Case 'a restored rate IS reused when the power state still matches' {
+    # The feature this protects: a restart that did not change power state
+    # should keep its smooth estimate rather than falling back to
+    # "Estimating..." for no reason.
+    Reset-EstimatorState
+    $script:emaRate = 15000
+    $script:lastValidRate = 15000
+    $script:lastValidRateTime = $t0
+    $script:lastAcState = $false
+    $mins = Get-SmoothedTimeRemaining -RawRate 0 -FullChargeCapacity 50000 `
+        -PercentExact 50.0 -IsCharging $false -IsPluggedIn $false -Now $t0
+    if ($mins -le 0) { throw "expected a usable estimate, got $mins" }
 }
 
 Test-Case 'does not reuse the pre-unplug discharge rate as a charge rate' {
