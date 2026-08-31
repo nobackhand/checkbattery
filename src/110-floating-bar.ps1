@@ -1438,7 +1438,8 @@ function Show-BatteryNotification {
     $gDs.Dispose()
     $nW = [int](320 * $nDs); $nH = [int](100 * $nDs)
 
-    $notif = New-Object System.Windows.Forms.Form
+    # NoActivateForm: a card must never steal focus - see the class comment
+    $notif = New-Object NoActivateForm
     $notif.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $notif.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $notif.Size = New-Object System.Drawing.Size($nW, $nH)
