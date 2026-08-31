@@ -586,8 +586,13 @@ $script:mainForm.Add_FormClosing({
         # Unregister system events to avoid leaks
         [Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($script:powerModeHandler)
         [Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($script:displaySettingsHandler)
-        $script:mutex.ReleaseMutex()
-        $script:mutex.Dispose()
+        # Guarded: the guard can legitimately hold no mutex (see
+        # New-SingleInstanceMutex - a mutex failure lets the app run anyway),
+        # and teardown must not throw and strand the rest of this handler.
+        if ($null -ne $script:mutex) {
+            try { $script:mutex.ReleaseMutex() } catch {}
+            try { $script:mutex.Dispose() } catch {}
+        }
     })
 
 # The UI exists now, so I/O failures can show their own card from here on. Flush

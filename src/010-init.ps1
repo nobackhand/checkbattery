@@ -389,9 +389,40 @@ function Show-AppDialog {
 }
 
 # --- Single-instance guard ---
-$script:mutexName = "Global\BatteryWidgetSingleInstance"
-$script:createdNew = $false
-$script:mutex = New-Object System.Threading.Mutex($true, $script:mutexName, [ref]$script:createdNew)
+function New-SingleInstanceMutex {
+    [OutputType([hashtable])]
+    param([string]$Name = 'Local\BatteryWidgetSingleInstance')
+    # Returns @{ Mutex; IsFirst; Failed }.
+    #
+    # Two deliberate choices here, both learned the hard way:
+    #
+    # 1. Local\, not Global\. Global\ is the machine-wide kernel namespace, so
+    #    the guard spanned LOGON SESSIONS: on a shared PC, with fast user
+    #    switching, or over RDP, user B was told BatteryPill was "already
+    #    running" when there was no pill and no tray icon anywhere in B's
+    #    session. Worse, the mutex user A created carries A's default DACL,
+    #    which does not grant B - and the constructor THROWS
+    #    UnauthorizedAccessException in that case (verified). That throw was
+    #    unguarded at script scope, so the app simply died at startup with no
+    #    window and no message. This widget is per-user: one pill per session
+    #    is the correct meaning of "single instance".
+    #
+    # 2. Never let the guard itself kill the app. If the mutex cannot be
+    #    created for any reason, report Failed and let the app RUN. A second
+    #    pill is a visible annoyance; no app at all is a silent failure.
+    $createdNew = $false
+    try {
+        $mutex = New-Object System.Threading.Mutex($true, $Name, [ref]$createdNew)
+        return @{ Mutex = $mutex; IsFirst = $createdNew; Failed = $false }
+    } catch {
+        return @{ Mutex = $null; IsFirst = $true; Failed = $true }
+    }
+}
+
+$script:mutexName = 'Local\BatteryWidgetSingleInstance'
+$script:instanceGuard = New-SingleInstanceMutex -Name $script:mutexName
+$script:mutex = $script:instanceGuard.Mutex
+$script:createdNew = $script:instanceGuard.IsFirst
 
 if (-not $script:createdNew) {
     Show-AppDialog -Title "Already running" `
