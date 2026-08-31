@@ -60,8 +60,19 @@ if ($text -notmatch $runPattern) {
     exit 1
 }
 $text = $text -replace $runPattern, '# (message loop removed by tools/render-states.ps1)'
-# Harness-specific mutex so a running real widget cannot block us on a MessageBox
-$text = $text.Replace('Global\BatteryWidgetSingleInstance', 'Global\BatteryPillRenderHarness')
+# Harness-specific mutex so a running real widget cannot block us on a modal
+# "Already running" dialog. Matched on the NAME only, never the namespace
+# prefix, and ASSERTED: this replacement silently stopped matching when the
+# widget's mutex moved from Global\ to Local\, so every render run against a
+# machine with the widget open hung forever on that dialog with no output.
+# A guard that can fail silently is not a guard.
+$mutexToken = 'BatteryWidgetSingleInstance'
+if (-not $text.Contains($mutexToken)) {
+    Write-Host "FAIL: single-instance mutex token '$mutexToken' not found in the widget source (renamed?)"
+    Remove-Item $stageDir -Recurse -Force
+    exit 1
+}
+$text = $text.Replace($mutexToken, 'BatteryPillRenderHarness')
 
 $suffix = @'
 

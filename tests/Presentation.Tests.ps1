@@ -14,7 +14,7 @@
 
 . (Join-Path $PSScriptRoot '_harness.ps1')
 . (Import-WidgetFunction 'Get-BatteryStateTitle', 'Get-TimeSentence', 'Get-FunStatusLine',
-    'Get-BatterySessionSummary', 'Get-PillText', 'Format-Duration')
+    'Get-BatterySessionSummary', 'Get-PillText', 'Get-HistorySpanMinutes', 'Format-Duration')
 
 Write-Host 'Presentation.Tests.ps1'
 
@@ -292,6 +292,30 @@ Test-Case 'session: history restored from an old config does not resurrect a sta
     Add-Run -StartMin 4350 -Minutes 60 -FromPct 99 -ToPct 93
     Set-History
     Assert-Equal 'On battery 1h 0m - used 6%' (Get-BatterySessionSummary)
+}
+
+# ---- Get-HistorySpanMinutes (the sparkline's span label) ----
+
+Test-Case 'span: a continuous run is its own length' {
+    Add-Run -StartMin 0 -Minutes 120 -FromPct 95 -ToPct 60
+    Set-History
+    Assert-Equal 120 (Get-HistorySpanMinutes -History $script:batteryHistory)
+}
+
+Test-Case 'span: a gap the graph does not draw is not counted' {
+    # The sparkline's x-axis is index-linear, so an overnight gap occupies one
+    # pixel and reads as a continuous line. Labelling it "23.2h" described
+    # time the picture does not show.
+    Add-Run -StartMin 0 -Minutes 30 -FromPct 95 -ToPct 90
+    # ---- 8h asleep ----
+    Add-Run -StartMin 510 -Minutes 60 -FromPct 88 -ToPct 82
+    Set-History
+    Assert-Equal 90 (Get-HistorySpanMinutes -History $script:batteryHistory)
+}
+
+Test-Case 'span: too little history to describe' {
+    Assert-Equal 0 (Get-HistorySpanMinutes -History @())
+    Assert-Equal 0 (Get-HistorySpanMinutes -History $null)
 }
 
 exit (Complete-Tests)
