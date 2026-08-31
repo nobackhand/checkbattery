@@ -1,0 +1,6 @@
+{
+  "_comment": "Azure Trusted Signing config. Copy to signing.config.json (gitignored, machine-local) and fill in from your Azure Trusted Signing account - see SIGNING.md. No secrets live here: auth comes from 'az login'.",
+  "Endpoint": "https://eus.codesigning.azure.net",
+  "AccountName": "your-trusted-signing-account-name",
+  "ProfileName": "your-certificate-profile-name"
+}

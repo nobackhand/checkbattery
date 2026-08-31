@@ -78,6 +78,22 @@ if (-not (Test-Path $versionedExe)) {
     Stop-Release "expected build output not found: $versionedExe"
 }
 
+# ---- Sign (Azure Trusted Signing; see SIGNING.md) ----
+# Signed BEFORE the stable-named copy so both release assets carry the same
+# signature. Three outcomes from tools\sign-exe.ps1:
+#   exit 0 = signed + verified; exit 2 = not configured on this machine
+#   (release continues UNSIGNED, loudly); anything else = configured but
+#   failed - abort rather than ship an exe that was meant to be signed.
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'tools\sign-exe.ps1') -ExePath $versionedExe
+$signExit = $LASTEXITCODE
+if ($signExit -eq 0) {
+    Write-Host 'Release exe signed and verified.' -ForegroundColor Green
+} elseif ($signExit -eq 2) {
+    Write-Host 'WARNING: releasing UNSIGNED (signing not configured on this machine - see SIGNING.md)' -ForegroundColor Yellow
+} else {
+    Stop-Release 'signing is configured but failed - not shipping a half-signed release'
+}
+
 # ---- Stable-named copy for the website's /releases/latest URL ----
 $stageDir = Join-Path $env:TEMP "batterypill-release-$appVersion"
 New-Item -ItemType Directory -Force -Path $stageDir | Out-Null

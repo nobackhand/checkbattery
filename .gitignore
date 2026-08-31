@@ -4,6 +4,10 @@ BatteryPill-*.exe
 # Runtime config (user-specific position data)
 BatteryWidget.config.json
 
+# Code-signing config (machine-local; holds no secrets but names YOUR Azure
+# resources - the example file is the one that ships)
+signing.config.json
+
 # Debug scripts
 debug_dpi.ps1
 
