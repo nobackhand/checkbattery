@@ -93,6 +93,8 @@ function Update-PillSize {
     $script:floatingBar.Size = $sz
     $script:floatingBar.MinimumSize = $sz
     $script:floatingBar.MaximumSize = $sz
+    # A bigger pill under an unchanged position can hang off the screen edge
+    Set-PillWithinScreen
     # Rebuild region — use pill radius capped at half height for fully rounded ends
     # True capsule: radius = half the height (minus the path helper's -1 inset).
     # The app is named after this shape - it should draw it.
@@ -164,6 +166,48 @@ function Get-SnappedLocation {
     if ([math]::Abs($Y - $wa.Top) -lt $Threshold) { $Y = $wa.Top + $margin }
     if ([math]::Abs(($Y + $Height) - $wa.Bottom) -lt $Threshold) { $Y = $wa.Bottom - $Height - $margin }
     return @{ X = $X; Y = $Y }
+}
+
+function Get-ClampedPosition {
+    [OutputType([hashtable])]
+    param(
+        [int]$X, [int]$Y, [int]$Width, [int]$Height,
+        [int]$AreaLeft, [int]$AreaTop, [int]$AreaRight, [int]$AreaBottom
+    )
+    # Pull a position back inside a working area so the whole pill is visible.
+    #
+    # Needed because the pill's SIZE can change under a saved position: the
+    # pill is DPI-scaled now, so a position saved by an earlier build for a
+    # 108px-wide pill describes a 216px one at 200% - anchored near the right
+    # edge, the extra width hangs off the screen. Test-PositionOnScreen only
+    # checks the pill's CENTRE, so it considers such a position perfectly
+    # valid and nothing corrects it. Changing pill SIZE in Settings has the
+    # same effect, which is why Update-PillSize clamps too.
+    if ($Width -le ($AreaRight - $AreaLeft)) {
+        if (($X + $Width) -gt $AreaRight) { $X = $AreaRight - $Width }
+        if ($X -lt $AreaLeft) { $X = $AreaLeft }
+    }
+    if ($Height -le ($AreaBottom - $AreaTop)) {
+        if (($Y + $Height) -gt $AreaBottom) { $Y = $AreaBottom - $Height }
+        if ($Y -lt $AreaTop) { $Y = $AreaTop }
+    }
+    return @{ X = $X; Y = $Y }
+}
+
+function Set-PillWithinScreen {
+    [OutputType([void])]
+    param()
+    # Apply Get-ClampedPosition to the live pill, on its own screen.
+    if ($null -eq $script:floatingBar -or $script:floatingBar.IsDisposed) { return }
+    $wa = [System.Windows.Forms.Screen]::FromPoint($script:floatingBar.Location).WorkingArea
+    $c = Get-ClampedPosition -X $script:floatingBar.Left -Y $script:floatingBar.Top `
+        -Width $script:floatingBar.Width -Height $script:floatingBar.Height `
+        -AreaLeft $wa.Left -AreaTop $wa.Top -AreaRight $wa.Right -AreaBottom $wa.Bottom
+    if ($c.X -ne $script:floatingBar.Left -or $c.Y -ne $script:floatingBar.Top) {
+        $script:floatingBar.Location = New-Object System.Drawing.Point($c.X, $c.Y)
+        $script:config.X = $c.X
+        $script:config.Y = $c.Y
+    }
 }
 
 function Get-DisplayChangeAction {

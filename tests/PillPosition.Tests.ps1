@@ -13,7 +13,7 @@
 # not restore it, because there was nothing left to restore.
 
 . (Join-Path $PSScriptRoot '_harness.ps1')
-. (Import-WidgetFunction 'Get-DisplayChangeAction')
+. (Import-WidgetFunction 'Get-DisplayChangeAction', 'Get-ClampedPosition')
 
 Write-Host 'PillPosition.Tests.ps1'
 
@@ -64,6 +64,53 @@ Test-Case 'the saved spot always wins when it is available' {
             -CurrentPositionValid $current -AtSavedPosition $false
         Assert-Equal 'restore' $action
     }
+}
+
+# ---- Get-ClampedPosition ----
+# The pill's SIZE can change under a saved position - it is DPI-scaled now,
+# and Settings can change it too - so a position that was flush against the
+# right edge for a 108px pill leaves a 216px one hanging off the screen.
+# Test-PositionOnScreen only checks the pill's CENTRE, so it considers that
+# position valid and never corrects it.
+
+$wa = @{ Left = 0; Top = 0; Right = 1920; Bottom = 1040 }
+
+function Get-Clamped {
+    [OutputType([hashtable])]
+    param([int]$X, [int]$Y, [int]$W, [int]$H)
+    return (Get-ClampedPosition -X $X -Y $Y -Width $W -Height $H `
+            -AreaLeft $wa.Left -AreaTop $wa.Top -AreaRight $wa.Right -AreaBottom $wa.Bottom)
+}
+
+Test-Case 'clamp: a position that already fits is untouched' {
+    $c = Get-Clamped -X 900 -Y 500 -W 216 -H 68
+    Assert-Equal 900 $c.X
+    Assert-Equal 500 $c.Y
+}
+
+Test-Case 'clamp: a grown pill is pulled back inside the right edge' {
+    # Saved flush-right for a 108px pill (1920 - 108 - 10 = 1802); the pill is
+    # now 216px, so it would run 98px off the screen.
+    $c = Get-Clamped -X 1802 -Y 500 -W 216 -H 68
+    Assert-Equal (1920 - 216) $c.X
+    Assert-Equal 500 $c.Y
+}
+
+Test-Case 'clamp: the bottom edge behaves the same way' {
+    $c = Get-Clamped -X 100 -Y 1000 -W 216 -H 68
+    Assert-Equal (1040 - 68) $c.Y
+}
+
+Test-Case 'clamp: a negative position is pulled in from the left and top' {
+    $c = Get-Clamped -X -50 -Y -20 -W 216 -H 68
+    Assert-Equal 0 $c.X
+    Assert-Equal 0 $c.Y
+}
+
+Test-Case 'clamp: a pill wider than the screen is left alone, not mangled' {
+    # Nothing sensible to do; refuse rather than invent a position.
+    $c = Get-Clamped -X 40 -Y 500 -W 3000 -H 68
+    Assert-Equal 40 $c.X
 }
 
 exit (Complete-Tests)
