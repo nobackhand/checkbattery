@@ -1053,9 +1053,8 @@ function New-SparklinePanel {
 
                 # Time range label (right edge)
                 if ($count -ge 2) {
-                    $firstTime = $history[0].Time
-                    $lastTime = $history[$count - 1].Time
-                    $spanMin = [int](($lastTime - $firstTime).TotalMinutes)
+                    # Recorded time, not wall-clock time - see Get-HistorySpanMinutes
+                    $spanMin = Get-HistorySpanMinutes -History $history
                     $spanText = if ($spanMin -ge 60) { "{0}h" -f [math]::Round($spanMin / 60.0, 1) } else { "{0} min" -f $spanMin }
                     $spanSize = $sg.MeasureString($spanText, $guideFont)
                     $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
@@ -1175,6 +1174,35 @@ function Get-HeroPercentColor {
             [int]($statusColor.B * 0.62))
     }
     return $statusColor
+}
+
+function Get-HistorySpanMinutes {
+    [OutputType([int])]
+    param(
+        # any-typed: the history buffer, an ArrayList of sample hashtables.
+        [AllowNull()][object]$History,
+        [int]$MaxGapMinutes = 15
+    )
+    # How much RECORDED time a history buffer covers.
+    #
+    # The sparkline's x-axis is index-linear (every sample gets equal width),
+    # so a gap where nothing was recorded occupies a single pixel and reads as
+    # a continuous line. Labelling the graph with last.Time - first.Time
+    # therefore described time the picture does not show: the first popup
+    # after a restart plots ~200 restored samples (ten minutes of real
+    # recording, from yesterday) plus a few new ones, and the label read
+    # "23.2h" over what looks like one continuous trace.
+    # Summing only the contiguous stretches - the same 15-minute rule
+    # Get-BatterySessionSummary uses - describes what is actually drawn.
+    if ($null -eq $History) { return 0 }
+    $items = @($History)
+    if ($items.Count -lt 2) { return 0 }
+    $total = 0.0
+    for ($i = 1; $i -lt $items.Count; $i++) {
+        $delta = ($items[$i].Time - $items[$i - 1].Time).TotalMinutes
+        if ($delta -gt 0 -and $delta -le $MaxGapMinutes) { $total += $delta }
+    }
+    return [int][math]::Round($total)
 }
 
 function Get-FunStatusLine {
