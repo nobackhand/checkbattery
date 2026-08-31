@@ -138,6 +138,10 @@ function Import-Config {
         BatteryHistory     = @()
         EmaRate            = -1
         LastValidRate      = -1
+        # Which power state the saved rate was measured in. A discharge rate
+        # is not a charge rate, so the restore refuses to reuse one across a
+        # state change - and cannot tell without this.
+        EmaWasPluggedIn    = $null
         ConfigSavedAt      = $null
     }
     if (Test-Path $configPath) {
@@ -220,6 +224,7 @@ function Import-Config {
                     if ($savedAge -lt 10) {
                         $default.EmaRate = [double]$json.EmaRate
                         $default.LastValidRate = [int]$json.LastValidRate
+                        $default.EmaWasPluggedIn = ConvertTo-ConfigBool -Raw $json.EmaWasPluggedIn
                     }
                 } catch {}
             }
@@ -354,6 +359,7 @@ function Save-Config {
             BatteryHistory     = $historyToSave
             EmaRate            = $script:emaRate
             LastValidRate      = $script:lastValidRate
+            EmaWasPluggedIn    = $script:lastAcState
             ConfigSavedAt      = (Get-Date).ToString("o")
         } | ConvertTo-Json -Depth 3
         Write-TextFileAtomic -Path $configPath -Content $json

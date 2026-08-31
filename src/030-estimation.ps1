@@ -2,6 +2,38 @@
 # EMA SMOOTHING FOR DISCHARGE RATE
 # ============================================================
 
+function Restore-EstimatorState {
+    [OutputType([bool])]
+    param(
+        [hashtable]$Config,
+        [AllowNull()][Nullable[datetime]]$Now = $null
+    )
+    # Re-seed the estimator from a recently saved config, so estimates are
+    # smooth immediately after a restart instead of falling back to
+    # "Estimating..." for no reason. Returns $true if state was restored.
+    #
+    # The power state the rate was measured in is REQUIRED. A discharge rate
+    # is not a charge rate, and Get-SmoothedTimeRemaining's AC-transition
+    # reset needs a PREVIOUS state to compare against - on startup there was
+    # none ($script:lastAcState = $null), so the guard could not fire on the
+    # first tick. Saving while on battery, plugging in and relaunching within
+    # 10 minutes therefore handed the estimator a confident DISCHARGE rate to
+    # compute a TIME TO FULL from, and the pill announced an invented
+    # "1h 40m to full" before the charger had reported anything at all.
+    # Seeding lastAcState here is what lets that existing reset do its job.
+    if ($null -eq $Now) { $Now = Get-Date }
+    if ($null -eq $Config) { return $false }
+    if ($Config.EmaRate -le 0) { return $false }
+    # Unknown power state (a config written by an older build): refuse rather
+    # than guess. One tick of "Estimating..." beats a confident wrong number.
+    if ($null -eq $Config.EmaWasPluggedIn) { return $false }
+    $script:emaRate = $Config.EmaRate
+    $script:lastValidRate = $Config.LastValidRate
+    $script:lastValidRateTime = $Now   # config is recent (< 10 min) by construction
+    $script:lastAcState = [bool]$Config.EmaWasPluggedIn
+    return $true
+}
+
 function Update-EMARate {
     [OutputType([int])]
     param([int]$RawRate)

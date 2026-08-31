@@ -114,12 +114,7 @@ if ($script:config.BatteryHistory.Count -gt 0) {
         $script:batteryHistory.Add($entry) | Out-Null
     }
 }
-# Restore persisted EMA state (smooth estimates immediately on restart)
-if ($script:config.EmaRate -gt 0) {
-    $script:emaRate = $script:config.EmaRate
-    $script:lastValidRate = $script:config.LastValidRate
-    $script:lastValidRateTime = Get-Date  # treat as fresh since config was recent (< 10 min)
-}
+$null = Restore-EstimatorState -Config $script:config
 $script:lastIconHandle = $null
 $script:lastBatteryInfo = $null
 $script:cachedIconPercent = -1
