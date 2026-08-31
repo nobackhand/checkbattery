@@ -231,9 +231,13 @@ function New-FloatingBar {
     $script:pulseAlpha = 105
     $script:wasChargingLastUpdate = $false
 
-    # One gate for every animation this file starts: respect the user's
-    # Windows "show animations" setting, sampled once at startup
-    $script:animOK = [Win32Icon]::AnimationsEnabled()
+    # One gate for every animation this file starts. This is an APP setting
+    # (config.Animations, default on) - it deliberately does NOT follow the
+    # Windows "animate controls" toggle, which users switch off for OS-chrome
+    # snappiness (gaming rigs especially) without meaning "still-life my
+    # battery widget". Discovered the hard way: that flag was off on the
+    # primary dev machine and every animation in five releases was invisible.
+    $script:animOK = [bool]$script:config.Animations
 
     # Smooth value transitions: the painted fill level eases toward the real
     # percent (pulse timer), and the pill text fades back in when it changes
@@ -241,9 +245,11 @@ function New-FloatingBar {
     $script:textFadeAlpha = 255
     $script:prevDisplayText = ""
 
-    # Moment animations: full-charge shimmer sweep, plug-in bolt pop
+    # Moment animations: full-charge shimmer sweep, plug-in bolt pop,
+    # click ripple
     $script:shimmerStart = $null
     $script:boltPopStart = $null
+    $script:rippleState = $null
     $script:wasFullyCharged = $false
     $script:fullChargeShown = $false
     $script:plugCardPending = $null
@@ -364,7 +370,27 @@ function New-FloatingBar {
                 $fillBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
                     $fillRect, $fillLeft, $fillRight,
                     [System.Drawing.Drawing2D.LinearGradientMode]::Horizontal)
-                $g.FillRectangle($fillBrush, $fillRect)
+                if ($script:barIsCharging -and $script:animOK -and $fillWidth -gt 5 -and $fillWidth -lt ($w - 5)) {
+                    # Liquid meniscus: while charging, the fill's edge is a
+                    # gently undulating surface instead of a hard vertical line
+                    # (repainted by the pulse timer that's already running)
+                    $mAmp = 2.2
+                    $mT = (Get-Date).Ticks / 10000000.0
+                    $mPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+                    $mPts = New-Object System.Collections.Generic.List[System.Drawing.PointF]
+                    $mPts.Add((New-Object System.Drawing.PointF(0, 0)))
+                    for ($my = 0; $my -le $h; $my += 4) {
+                        $mx = $fillWidth + $mAmp * [math]::Sin(($my / [double]$h) * 6.283 + $mT * 2.1)
+                        $mPts.Add((New-Object System.Drawing.PointF($mx, $my)))
+                    }
+                    $mPts.Add((New-Object System.Drawing.PointF(0, $h)))
+                    $mPath.AddLines($mPts.ToArray())
+                    $mPath.CloseFigure()
+                    $g.FillPath($fillBrush, $mPath)
+                    $mPath.Dispose()
+                } else {
+                    $g.FillRectangle($fillBrush, $fillRect)
+                }
                 $fillBrush.Dispose()
 
                 $g.Clip = $oldClip
@@ -478,6 +504,25 @@ function New-FloatingBar {
                 $pressBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(26, 0, 0, 0))
                 $g.FillPath($pressBrush, $path)
                 $pressBrush.Dispose()
+            }
+
+            # --- Click ripple: a soft ring expands from the click point ---
+            if ($null -ne $script:rippleState) {
+                $rpMs = ((Get-Date) - $script:rippleState.Start).TotalMilliseconds
+                $rpT = $rpMs / 350.0
+                if ($rpT -ge 1.0) {
+                    $script:rippleState = $null
+                } else {
+                    $rpEased = 1.0 - [math]::Pow(1.0 - $rpT, 3)
+                    $rpR = 6.0 + $rpEased * ($w * 0.7)
+                    $rpAlpha = [int](60 * (1.0 - $rpT))
+                    $rpClip = $g.Clip
+                    $g.SetClip($path)
+                    $rpBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($rpAlpha, 255, 255, 255))
+                    $g.FillEllipse($rpBrush, ($script:rippleState.X - $rpR), ($script:rippleState.Y - $rpR), ($rpR * 2), ($rpR * 2))
+                    $rpBrush.Dispose()
+                    $g.Clip = $rpClip
+                }
             }
 
             # --- Full-charge shimmer: one bright band sweeps left-to-right ---
@@ -735,7 +780,12 @@ function New-FloatingBar {
         }
         # Left-click without drag cycles the display mode (works even when position is locked)
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left -and $script:leftPressed -and -not $script:didDrag) {
+            if ($script:animOK) {
+                # Ripple out from the click point (pulse timer repaints it)
+                $script:rippleState = @{ X = $e.X; Y = $e.Y; Start = Get-Date }
+            }
             Invoke-CycleDisplayMode
+            Update-PulseTimerState
         }
         $script:leftPressed = $false
         $script:floatingBar.Invalidate()
@@ -779,8 +829,12 @@ function New-SparklinePanel {
     $panel.Size = New-Object System.Drawing.Size(380, 40)
     $panel.BackColor = [System.Drawing.Color]::Transparent
     # Reveal: 0..1 fraction of the line drawn so far - animated below so the
-    # graph draws itself left-to-right when the popup opens
-    $panel.Tag = @{ AccentColor = $AccentColor; Reveal = 1.0 }
+    # graph draws itself left-to-right when the popup opens.
+    # HoverX: cursor position for the scrub readout (-1 = not hovering).
+    $panel.Tag = @{ AccentColor = $AccentColor; Reveal = 1.0; HoverX = -1 }
+    $panel.Cursor = [System.Windows.Forms.Cursors]::Cross
+    $panel.Add_MouseMove({ param($sender, $e) $sender.Tag.HoverX = $e.X; $sender.Invalidate() })
+    $panel.Add_MouseLeave({ param($sender, $e) $sender.Tag.HoverX = -1; $sender.Invalidate() })
     $panel.Add_Paint({
             param($sender, $e)
             $sg = $e.Graphics
@@ -893,6 +947,28 @@ function New-SparklinePanel {
                     $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
                     $sg.DrawString($spanText, $guideFont, $spanBrush, ($sw - $spanSize.Width - 5), ($sh - $spanSize.Height - 2))
                     $spanBrush.Dispose()
+                }
+
+                # Scrub readout: hovering the graph pins the nearest sample -
+                # crosshair, dot, and "84% - 2:15 PM"
+                $hvX = [int]$sender.Tag.HoverX
+                if ($hvX -ge 0 -and $count -ge 2) {
+                    $hvIdx = [int][math]::Round(($hvX / [double]$sw) * ($count - 1))
+                    $hvIdx = [math]::Max(0, [math]::Min($count - 1, $hvIdx))
+                    $hvPt = $points[$hvIdx]
+                    $hvPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(90, $guide.R, $guide.G, $guide.B), 1)
+                    $hvPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+                    $sg.DrawLine($hvPen, $hvPt.X, 0, $hvPt.X, $sh)
+                    $hvPen.Dispose()
+                    $hvDot = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, $acColor.R, $acColor.G, $acColor.B))
+                    $sg.FillEllipse($hvDot, ($hvPt.X - 2.5), ($hvPt.Y - 2.5), 5, 5)
+                    $hvDot.Dispose()
+                    $hvText = "{0}% - {1}" -f $history[$hvIdx].Percent, $history[$hvIdx].Time.ToString('h:mm tt')
+                    $hvSize = $sg.MeasureString($hvText, $guideFont)
+                    $hvTx = if (($hvPt.X + 6 + $hvSize.Width) -gt $sw) { $hvPt.X - $hvSize.Width - 6 } else { $hvPt.X + 6 }
+                    $hvBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(235, $guide.R, $guide.G, $guide.B))
+                    $sg.DrawString($hvText, $guideFont, $hvBrush, $hvTx, 2)
+                    $hvBrush.Dispose()
                 }
                 $guideFont.Dispose()
             }

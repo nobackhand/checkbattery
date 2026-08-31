@@ -41,7 +41,7 @@ function Start-IntroAnimation {
         Show-FirstRunTooltip
         return
     }
-    if (-not [Win32Icon]::AnimationsEnabled()) {
+    if (-not $script:config.Animations) {
         $script:floatingBar.Opacity = $script:config.Opacity
         Show-FirstRunTooltip
         return
@@ -350,6 +350,25 @@ function Show-SettingsPanel {
     $settingsTooltip.SetToolTip($autoHideCheck, "Hide pill when fullscreen apps are active (games, videos)")
     $y += [int](30 * $ds)
 
+    # Animations checkbox (the app's own gate - deliberately independent of
+    # the Windows "animate controls" toggle; see New-FloatingBar)
+    $animCheck = New-Object DarkCheckBox
+    $animCheck.Text = "Animations"
+    $animCheck.Font = $labelFont
+    $animCheck.ForeColor = $script:theme.PanelText
+    $animCheck.Location = New-Object System.Drawing.Point($m, $y)
+    $animCheck.AutoSize = $false
+    $animCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
+    $animCheck.Checked = $script:config.Animations
+    $animCheck.Add_CheckedChanged({
+            $script:config.Animations = $animCheck.Checked
+            $script:animOK = $animCheck.Checked
+            Save-Config
+        })
+    $settings.Controls.Add($animCheck)
+    $settingsTooltip.SetToolTip($animCheck, "Smooth transitions, glides and little moments (off = everything is instant)")
+    $y += [int](30 * $ds)
+
     # Fun status lines checkbox
     $funLinesCheck = New-Object DarkCheckBox
     $funLinesCheck.Text = "Fun status lines"
@@ -369,7 +388,7 @@ function Show-SettingsPanel {
 
     # Light theme: brighten the checkbox boxes (the C# defaults are the dark palette)
     if (-not $script:theme.IsDark) {
-        foreach ($tcb in @($autoStartCheck, $showBarCheck, $lockPosCheck, $autoHideCheck, $funLinesCheck)) {
+        foreach ($tcb in @($autoStartCheck, $showBarCheck, $lockPosCheck, $autoHideCheck, $animCheck, $funLinesCheck)) {
             $tcb.BoxFill = [System.Drawing.Color]::FromArgb(255, 255, 255)
             $tcb.BoxBorder = [System.Drawing.Color]::FromArgb(168, 168, 178)
             $tcb.BoxBorderHot = [System.Drawing.Color]::FromArgb(120, 120, 132)
@@ -838,6 +857,7 @@ function Show-BatteryHealthCard {
         $hcol = [System.Drawing.Color]::FromArgb([int]($hcol.R * 0.62), [int]($hcol.G * 0.62), [int]($hcol.B * 0.62))
     }
     $script:hcPct = $health
+    $script:hcAnimPct = [double]$health   # ring sweep animates this 0 -> health
     $script:hcColor = $hcol
     $script:hcHasData = $hasData
     $script:hcDs = $ds
@@ -883,7 +903,8 @@ function Show-BatteryHealthCard {
             $tpen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(52, 52, 60), $thick)
             $tpen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $tpen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
             $g.DrawArc($tpen, $rect, -90, 359.9); $tpen.Dispose()
-            $sweep = ($script:hcPct / 100.0) * 360.0
+            # Sweep + center number follow the eased animation value
+            $sweep = ($script:hcAnimPct / 100.0) * 360.0
             if ($sweep -gt 0.5) {
                 $hpen = New-Object System.Drawing.Pen($script:hcColor, $thick)
                 $hpen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $hpen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -897,7 +918,7 @@ function Show-BatteryHealthCard {
             $cy = $ringY + $ringD / 2
             $pctFont = New-Object System.Drawing.Font("Segoe UI Semibold", (26 * $dds), [System.Drawing.FontStyle]::Bold)
             $pctBrush = New-Object System.Drawing.SolidBrush($script:theme.TextPrimary)
-            $g.DrawString(("{0}%" -f $script:hcPct), $pctFont, $pctBrush, $cx, ([single]($cy - 9 * $dds)), $fmt)
+            $g.DrawString(("{0}%" -f [int][math]::Round($script:hcAnimPct)), $pctFont, $pctBrush, $cx, ([single]($cy - 9 * $dds)), $fmt)
             $pctFont.Dispose(); $pctBrush.Dispose()
             $lblFont = New-Object System.Drawing.Font("Segoe UI", (8 * $dds))
             $lblBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
@@ -952,7 +973,39 @@ function Show-BatteryHealthCard {
     $card.Add_KeyDown({ param($s, $e) if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $card.Close() } })
     $card.Add_Deactivate({ $card.Close() })
     $card.Add_Click({ $card.Close() })
+
+    # Ring sweep: 0 -> health over 650ms (ease-out), the center number counts
+    # up with it. Plain scriptblock + $script: state on purpose - a closure's
+    # $script: writes land in the closure module, invisible to the paint
+    # handler (see the GetNewClosure gotcha). ShowDialog pumps the timer.
+    if ($hasData -and $script:animOK) {
+        $script:hcAnimPct = 0.0
+        $script:hcAnimStart = Get-Date
+        $script:hcCard = $card
+        $script:hcAnimTimer = New-Object System.Windows.Forms.Timer
+        $script:hcAnimTimer.Interval = 16
+        $script:hcAnimTimer.Add_Tick({
+                if ($null -eq $script:hcCard -or $script:hcCard.IsDisposed) {
+                    $script:hcAnimTimer.Stop(); return
+                }
+                $t = [math]::Min(1.0, ((Get-Date) - $script:hcAnimStart).TotalMilliseconds / 650.0)
+                $eased = 1.0 - [math]::Pow(1.0 - $t, 3)
+                $script:hcAnimPct = $script:hcPct * $eased
+                $script:hcCard.Invalidate()
+                if ($t -ge 1.0) {
+                    $script:hcAnimPct = [double]$script:hcPct
+                    $script:hcCard.Invalidate()
+                    $script:hcAnimTimer.Stop()
+                }
+            })
+        $script:hcAnimTimer.Start()
+    }
+
     $card.ShowDialog() | Out-Null
+    if ($null -ne $script:hcAnimTimer) {
+        $script:hcAnimTimer.Stop(); $script:hcAnimTimer.Dispose(); $script:hcAnimTimer = $null
+    }
+    $script:hcCard = $null
     foreach ($f in $fontsToDispose) { if ($null -ne $f) { $f.Dispose() } }
     foreach ($ctrl in $card.Controls) { if ($null -ne $ctrl.Font) { $ctrl.Font.Dispose() } }
     $card.Dispose()
