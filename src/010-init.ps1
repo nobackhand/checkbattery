@@ -427,7 +427,7 @@ $script:theme = @{
     IsDark      = $true
 }
 
-$script:appVersion = "1.3.1"
+$script:appVersion = "1.3.2"
 
 function Get-SystemTheme {
     [OutputType([bool])]

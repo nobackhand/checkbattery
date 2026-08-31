@@ -1,6 +1,6 @@
-# Distribution: signing, SmartScreen, and the DPI ceiling
+# Distribution: signing, SmartScreen, Smart App Control, and the DPI ceiling
 
-Decision record for how BatteryPill is distributed. Last reviewed 2026-07-31.
+Decision record for how BatteryPill is distributed. Last reviewed 2026-08-30.
 
 ## Current state
 
@@ -14,6 +14,21 @@ Decision record for how BatteryPill is distributed. Last reviewed 2026-07-31.
   - **AV flags**: some engines heuristically flag PS2EXE output because malware has
     abused the same packer. False positives are possible on VirusTotal and in
     stricter corporate AV.
+  - **Smart App Control (SAC): a HARD block, observed first-hand 2026-08-30.** On a
+    Windows 11 machine with SAC enabled (the default posture on new Win11 installs;
+    it can only be turned off permanently, never re-enabled without a reset), a
+    freshly built unsigned exe is refused with "An Application Control policy has
+    blocked this file" - **no "Run anyway" exists**. SAC admits binaries by signature
+    or by cloud reputation; a new unsigned build has neither. Same day, the same
+    release ran fine on a laptop without SAC (ordinary SmartScreen "Run anyway"
+    flow). Consequence: SAC-enabled users cannot run BatteryPill at all today, and
+    that population grows with every new Windows 11 PC. This moves signing from
+    "conversion-rate optimization" toward "reachability", and is the strongest
+    argument yet for option (b). (Signing helps SAC only if the certificate chains
+    to a trusted CA - Azure Trusted Signing qualifies.)
+    Dev-machine note: `Build.ps1` now keeps the newest previous exe as a fallback,
+    because a blocked fresh build once left zero runnable exes locally (the widget
+    still runs from source via `BatteryWidget.Run.ps1` - SAC doesn't block scripts).
 - Why: two independent causes. (1) The exe carries no Authenticode signature, so it
   has no publisher identity and no SmartScreen reputation to inherit. (2) PS2EXE's
   packer has a poor reputation with AV heuristics regardless of signing.
@@ -69,7 +84,10 @@ Prices checked 2026-07 (list prices, rounded; see sources at bottom).
   and signing wouldn't fix the PS2EXE AV heuristics anyway. Be honest on the website
   instead.
 - **Revisit signing** (Azure Artifact Signing first, at $9.99/mo, then OV) when
-  download volume makes the SmartScreen bounce rate hurt.
+  download volume makes the SmartScreen bounce rate hurt - **or sooner, because of
+  SAC**: SmartScreen users can click through; SAC users are simply locked out
+  (2026-08-30 finding above). If any real user reports the SAC block, that is the
+  trigger to start the Azure Trusted Signing signup.
 - **The rewrite (e) is the eventual ceiling-breaker** for both AV reputation and
   per-monitor DPI. Signing an exe that AV engines still dislike is half a fix.
 
