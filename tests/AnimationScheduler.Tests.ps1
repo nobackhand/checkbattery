@@ -37,6 +37,7 @@ function Reset-AnimationState {
     $script:textFadeAlpha = 255
     $script:displayedFillPct = 50.0
     $script:barDisplayPercent = 50
+    $script:animOK = $true
 }
 
 Test-Case 'scheduler: idle state leaves the timer stopped' {
@@ -129,6 +130,47 @@ Test-Case 'scheduler: a stale moment alongside live animation keeps the timer ru
     Update-PulseTimerState
     Assert-Equal $true $script:pulseTimer.Enabled
     Assert-Equal $null $script:shimmerStart
+}
+
+# ---- The Animations setting ----
+# "Animations off" must mean off. The charging breath and the low-battery
+# pulse are driven by an ongoing CONDITION rather than a one-shot event, so
+# they were the two that kept animating (and kept the 30fps timer running)
+# after the user turned the setting off.
+
+Test-Case 'animations off: charging does not run the timer' {
+    Reset-AnimationState
+    $script:animOK = $false
+    $script:barIsCharging = $true
+    Update-PulseTimerState
+    Assert-Equal $false $script:pulseTimer.Enabled
+}
+
+Test-Case 'animations off: the low-battery pulse does not run the timer' {
+    Reset-AnimationState
+    $script:animOK = $false
+    $script:lowBatPulseActive = $true
+    Update-PulseTimerState
+    Assert-Equal $false $script:pulseTimer.Enabled
+}
+
+Test-Case 'animations off: a still-pulsing "Estimating..." label keeps its timer' {
+    # Not decoration: this one signals that a number is not ready yet, and it
+    # is driven by the popup being open rather than by the setting.
+    Reset-AnimationState
+    $script:animOK = $false
+    $script:estimatingLabel = New-Object System.Windows.Forms.Label
+    try {
+        Update-PulseTimerState
+        Assert-Equal $true $script:pulseTimer.Enabled
+    } finally { $script:estimatingLabel.Dispose(); $script:estimatingLabel = $null }
+}
+
+Test-Case 'animations on: charging still runs the timer (no over-correction)' {
+    Reset-AnimationState
+    $script:barIsCharging = $true
+    Update-PulseTimerState
+    Assert-Equal $true $script:pulseTimer.Enabled
 }
 
 if ($null -ne $script:pulseTimer) { $script:pulseTimer.Dispose() }

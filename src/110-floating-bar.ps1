@@ -1703,7 +1703,7 @@ function Update-FloatingBar {
 
     # Plug/unplug flash — detect AC state change
     if ($null -ne $script:lastPluggedState -and $script:lastPluggedState -ne $BatteryInfo.IsPluggedIn) {
-        $script:flashAlpha = 180  # Start flash
+        if ($script:animOK) { $script:flashAlpha = 180 }  # Start flash (decorative)
         if ($BatteryInfo.IsPluggedIn -and -not $BatteryInfo.NoBattery) {
             # Plug-in moment: the bolt pop + flash carry the "yes, it's
             # charging" feedback. The card is deferred (below) until the first
@@ -1807,6 +1807,22 @@ function Update-FloatingBar {
                 $timeLeft = if ($BatteryInfo.TimeMinutes -gt 0) { "$($BatteryInfo.TimeMinutes) min remaining" } else { "Very low battery" }
                 Show-BatteryNotification -Message "Critical Battery - $pct%" -SubMessage $timeLeft
             }
+        }
+    }
+
+    # With animations off, the low-battery warning still has to be VISIBLE -
+    # it is a warning, not decoration. The pulse timer will not be running to
+    # animate the border alpha, so pin it at a solid value and make sure the
+    # opacity oscillation never leaves the pill part-faded.
+    if (-not $script:animOK) {
+        if ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) {
+            $script:lowBatBorderAlpha = 210
+        } else {
+            $script:lowBatBorderAlpha = 0
+        }
+        if ($script:lowBatOpacityPulse) {
+            $script:lowBatOpacityPulse = $false
+            $script:floatingBar.Opacity = $script:config.Opacity
         }
     }
 

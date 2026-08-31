@@ -374,7 +374,7 @@ $script:pulseTimer.Add_Tick({
             ($null -ne $script:colorFadeActive -and $script:colorFadeActive) -or
             ($script:textFadeAlpha -lt 255) -or
             ([math]::Abs($script:displayedFillPct - $script:barDisplayPercent) -gt 0.4)
-            if ($script:barIsCharging) {
+            if ($script:animOK -and $script:barIsCharging) {
                 # Sine-wave breathing pulse: 5-second cycle, alpha 90-120
                 $t = (Get-Date).Ticks / 10000000.0
                 $script:pulseAlpha = [int](105 + 15 * [Math]::Sin($t * 1.257))
@@ -443,7 +443,7 @@ $script:pulseTimer.Add_Tick({
                 $needsRepaint = $true
             }
             # Low battery warning animations
-            if ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) {
+            if ($script:animOK -and $null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) {
                 # Pulsing red border (~3.1s cycle at 33ms tick = ~94 ticks)
                 $script:lowBatBorderAlpha += $script:lowBatBorderDir * 3
                 if ($script:lowBatBorderAlpha -ge 220) { $script:lowBatBorderAlpha = 220; $script:lowBatBorderDir = -1 }
@@ -478,9 +478,16 @@ function Update-PulseTimerState {
     # Paint handler used to own exclusively, which meant a hidden (never
     # painted) pill could hold the timer on forever - see Clear-ExpiredMoments.
     Clear-ExpiredMoments
-    # Start pulse timer only when animations need it, stop when idle
-    $anyActive = $script:barIsCharging -or ($script:flashAlpha -gt 0) -or
-    ($null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or
+    # Start pulse timer only when animations need it, stop when idle.
+    # The charging breath and the low-battery pulse are the two states driven
+    # by an ongoing CONDITION rather than a one-shot event, so they are the
+    # two that have to consult the Animations setting here - everything else
+    # is only ever set while animations are on. With the setting off the
+    # low-battery border is still drawn, just statically: a warning is not
+    # decoration, but its motion is.
+    $anyActive = ($script:animOK -and $script:barIsCharging) -or
+    ($script:flashAlpha -gt 0) -or
+    ($script:animOK -and $null -ne $script:lowBatPulseActive -and $script:lowBatPulseActive) -or
     ($null -ne $script:estimatingLabel -and -not $script:estimatingLabel.IsDisposed) -or
     ($null -ne $script:shimmerStart) -or ($null -ne $script:boltPopStart) -or
     ($null -ne $script:rippleState) -or
