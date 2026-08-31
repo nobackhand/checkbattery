@@ -445,7 +445,7 @@ function New-FloatingBar {
             $fillWidth = [math]::Max(0, [math]::Round(($pct / 100) * $w))
             if ($fillWidth -gt 0) {
                 # Clip to the rounded pill shape
-                $oldClip = $g.Clip
+                $fillState = $g.Save()
                 $g.SetClip($path)
 
                 # Semi-transparent accent gradient fill (left brighter, right slightly darker)
@@ -486,13 +486,13 @@ function New-FloatingBar {
                 }
                 $fillBrush.Dispose()
 
-                $g.Clip = $oldClip
+                $g.Restore($fillState)
             }
 
             # --- Glass effect: full-height convex sheen (top ~45% of the pill) ---
             # The old 6px sliver read as a scratch; a tall soft falloff is what
             # makes the surface read as curved glass
-            $oldClip2 = $g.Clip
+            $glassState = $g.Save()
             $g.SetClip($path)
             $sheenH = [math]::Max(6, [int]($h * 0.45))
             $topBandRect = New-Object System.Drawing.Rectangle(0, 0, $w, $sheenH)
@@ -536,7 +536,7 @@ function New-FloatingBar {
             $rimPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb($rimAlpha, 0, 0, 0), 2)
             $g.DrawPath($rimPen, $path)
             $rimPen.Dispose()
-            $g.Clip = $oldClip2
+            $g.Restore($glassState)
 
             # --- Text rendering (supports single-line and dual-line modes) ---
             # Press feedback: text sinks 1px while the button is held (not dragging)
@@ -609,12 +609,12 @@ function New-FloatingBar {
                     $rpEased = 1.0 - [math]::Pow(1.0 - $rpT, 3)
                     $rpR = 6.0 + $rpEased * ($w * 0.7)
                     $rpAlpha = [int](60 * (1.0 - $rpT))
-                    $rpClip = $g.Clip
+                    $rpState = $g.Save()
                     $g.SetClip($path)
                     $rpBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($rpAlpha, 255, 255, 255))
                     $g.FillEllipse($rpBrush, ($script:rippleState.X - $rpR), ($script:rippleState.Y - $rpR), ($rpR * 2), ($rpR * 2))
                     $rpBrush.Dispose()
-                    $g.Clip = $rpClip
+                    $g.Restore($rpState)
                 }
             }
 
@@ -627,7 +627,7 @@ function New-FloatingBar {
                 } else {
                     $bandW = [math]::Max(10, [int]($w * 0.45))
                     $bandX = [int]( - $bandW + (($w + 2 * $bandW) * $smT))
-                    $shimClip = $g.Clip
+                    $shimState = $g.Save()
                     $g.SetClip($path)
                     $bandRect = New-Object System.Drawing.Rectangle($bandX, 0, $bandW, $h)
                     $shimBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
@@ -639,7 +639,7 @@ function New-FloatingBar {
                     $shimBrush.SetBlendTriangularShape(0.5)
                     $g.FillRectangle($shimBrush, $bandRect)
                     $shimBrush.Dispose()
-                    $g.Clip = $shimClip
+                    $g.Restore($shimState)
                 }
             }
 
