@@ -16,7 +16,8 @@
       P/INVOKE + SINGLE INSTANCE ... Win32Icon class, DPI awareness, mutex guard
       THEME ....................... $script:theme palette + Set-Theme (dark/light/auto)
       FULLSCREEN DETECTION ........ Test-FullscreenApp
-      BATTERY DATA ................ Get-BatteryInfo (WMI + .NET), EMA smoothing, rates
+      BATTERY DATA ................ Get-BatteryInfo (WMI + .NET), EMA smoothing, rates,
+                                    Get-PowerDraw / Read-PowerMeterMilliwatts (system watts)
       POWER PLANS ................. tray submenu for switching plans
       STATUS COLOR & ACCENT ....... Get-StatusColor, accent presets, Get-AccentColor
       DYNAMIC TRAY ICON ........... New-BatteryIcon
@@ -471,7 +472,7 @@ $script:theme = @{
     IsDark      = $true
 }
 
-$script:appVersion = "1.3.3"
+$script:appVersion = "1.4.0"
 
 function Get-SystemTheme {
     [OutputType([bool])]
@@ -641,4 +642,8 @@ $script:batteryHistory = New-Object System.Collections.ArrayList
 $script:lastAcState = $null    # Previous AC plugged-in state
 $script:stateChangeTime = $null # Timestamp of last AC state change
 $script:hysteresisSeconds = 2  # Dead time after AC plug/unplug to ignore rate spikes
+
+# --- Platform power meter (ACPI EMI via the "Power Meter" counter set) ---
+$script:powerMeterCounter = $null    # cached PerformanceCounter, built on first read
+$script:powerMeterState = 'untried'  # 'untried' | 'ok' | 'unavailable' (never re-probed)
 

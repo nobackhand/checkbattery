@@ -33,6 +33,113 @@ function Read-DeviceNumber {
     return $value
 }
 
+function Read-PowerMeterMilliwatts {
+    <#
+    .SYNOPSIS
+        Instantaneous whole-system power from the platform meter, in
+        milliwatts. -1 when this PC has no meter or it reports nothing.
+
+    .DESCRIPTION
+        Machines with an ACPI Energy Meter (EMI) publish it as the "Power
+        Meter" performance counter set: \Power Meter(_Total)\Power. It is the
+        one source that measures the WHOLE machine, from the wall or the pack,
+        so it still answers while plugged in - when the battery rates go quiet.
+
+        Most laptops expose the counter set but report 0 (verified on a ZBook
+        Ultra G1A: instances present, CookedValue 0), and desktops have no
+        instances at all. 0 and every failure alike mean "no reading".
+
+        The counter object is built once and cached, and a machine without one
+        is remembered as such, so the slow category probe (~100ms+) never runs
+        again on a refresh tick.
+    #>
+    [OutputType([double])]
+    param()
+    if ($script:powerMeterState -eq 'unavailable') { return -1 }
+    try {
+        if ($null -eq $script:powerMeterCounter) {
+            if (-not [System.Diagnostics.PerformanceCounterCategory]::Exists('Power Meter')) {
+                $script:powerMeterState = 'unavailable'
+                return -1
+            }
+            $cat = New-Object System.Diagnostics.PerformanceCounterCategory('Power Meter')
+            if (-not $cat.InstanceExists('_Total')) {
+                $script:powerMeterState = 'unavailable'
+                return -1
+            }
+            $script:powerMeterCounter = New-Object System.Diagnostics.PerformanceCounter('Power Meter', 'Power', '_Total', $true)
+            $script:powerMeterState = 'ok'
+        }
+        $mw = [double]$script:powerMeterCounter.NextValue()
+        if ([double]::IsNaN($mw) -or $mw -le 0) { return -1 }
+        return $mw
+    } catch {
+        # Perf counters are a registry-backed subsystem that can be corrupt or
+        # disabled outright (lodctr /R territory). That must never reach the
+        # timer tick - stop asking.
+        $script:powerMeterState = 'unavailable'
+        if ($null -ne $script:powerMeterCounter) {
+            try { $script:powerMeterCounter.Dispose() } catch {}
+            $script:powerMeterCounter = $null
+        }
+        return -1
+    }
+}
+
+function Get-PowerDraw {
+    <#
+    .SYNOPSIS
+        One reading of "how much power is this PC using", from whichever
+        source can answer this tick.
+
+    .DESCRIPTION
+        Returns @{ Watts; Kind; Source }:
+          Watts  - the reading, -1 when nothing reported one
+          Kind   - "draw"   : power the machine is consuming
+                   "charge" : power flowing INTO the battery while charging.
+                              That is not system draw (the wall is covering
+                              both), so it is labelled as what it is rather
+                              than passed off as consumption.
+                   ""       : no reading
+          Source - "meter" (platform power meter) or "battery" (pack rate)
+
+        Ladder: the platform meter wins whenever it reports, because it
+        measures the whole machine on AC or on battery. Otherwise the pack:
+        while draining, DischargeRate IS the system draw - the battery is the
+        only supply. Plugged in and not charging (full, or parked at a
+        firmware charge cap) there is simply no number: the pack is idle and
+        the wall is unmetered. Every caller treats "" as "say nothing".
+
+        The rates are firmware mW that pass Read-DeviceNumber's range check
+        yet can still be nonsense; a laptop pack does not move 300 W, so
+        anything above that is dropped as a glitch rather than displayed.
+    #>
+    [OutputType([hashtable])]
+    param(
+        [double]$MeterMilliwatts = -1,
+        [int]$DischargeRate = -1,
+        [int]$ChargeRate = -1,
+        [bool]$IsCharging = $false,
+        [bool]$IsFullyCharged = $false,
+        [bool]$NoBattery = $false
+    )
+    $none = @{ Watts = -1.0; Kind = ""; Source = "" }
+    if ($MeterMilliwatts -gt 0 -and $MeterMilliwatts -le 5000000) {
+        return @{ Watts = [math]::Round($MeterMilliwatts / 1000.0, 1); Kind = "draw"; Source = "meter" }
+    }
+    if ($NoBattery -or $IsFullyCharged) { return $none }
+    if ($IsCharging) {
+        if ($ChargeRate -gt 0 -and $ChargeRate -le 300000) {
+            return @{ Watts = [math]::Round($ChargeRate / 1000.0, 1); Kind = "charge"; Source = "battery" }
+        }
+        return $none
+    }
+    if ($DischargeRate -gt 0 -and $DischargeRate -le 300000) {
+        return @{ Watts = [math]::Round($DischargeRate / 1000.0, 1); Kind = "draw"; Source = "battery" }
+    }
+    return $none
+}
+
 function Get-BatteryInfo {
     [OutputType([hashtable])]
     param(
@@ -44,7 +151,11 @@ function Get-BatteryInfo {
         [AllowNull()][object]$WmiBattery = $null,
         # Test seam: same, for the .NET PowerStatus fallback source.
         # any-typed: a PowerStatus instance or a stub with the same properties.
-        [AllowNull()][object]$PowerStatus = $null
+        [AllowNull()][object]$PowerStatus = $null,
+        # Test seam: the platform power meter's reading in milliwatts. Unbound
+        # = read the real counter, but only when the WMI seam is unbound too,
+        # so a test never touches this machine's perf counters. -1 = no meter.
+        [double]$MeterMilliwatts = -1
     )
     if ($null -eq $Now) { $Now = Get-Date }
     $info = @{
@@ -68,6 +179,13 @@ function Get-BatteryInfo {
         FullRuntimeMinutes = -1
         ElapsedTime        = ""
         ElapsedSince       = ""
+        # System power draw. Watts is -1 when nothing reported one. Kind is
+        # "draw" (power the machine is consuming) or "charge" (power flowing
+        # INTO the pack while charging - kept distinct, it is not consumption).
+        # Source is "meter" (platform power meter) or "battery" (pack rate).
+        PowerDrawWatts     = -1.0
+        PowerDrawKind      = ""
+        PowerDrawSource    = ""
     }
 
     # WMI primary source. Dual-battery laptops return an ARRAY here; member access
@@ -87,6 +205,12 @@ function Get-BatteryInfo {
     $dotnetPower = if ($PSBoundParameters.ContainsKey('PowerStatus')) { $PowerStatus }
     else { [System.Windows.Forms.SystemInformation]::PowerStatus }
 
+    # Platform power meter (ACPI EMI, published as the "Power Meter" counters)
+    $meterMw = $MeterMilliwatts
+    if (-not $PSBoundParameters.ContainsKey('MeterMilliwatts') -and -not $PSBoundParameters.ContainsKey('WmiBattery')) {
+        $meterMw = Read-PowerMeterMilliwatts
+    }
+
     # No battery detection
     $dnChargeStatus = if ($dotnetPower) { Read-DeviceNumber -Raw $dotnetPower.BatteryChargeStatus -Min 0 -Max 255 } else { $null }
     if ($null -eq $wmiBattery) {
@@ -95,6 +219,11 @@ function Get-BatteryInfo {
             $info.StatusText = "No Battery"
             $info.TimeString = "N/A"
             $info.PowerSource = "AC Power"
+            # A desktop with a platform meter can still say what it is using
+            $draw = Get-PowerDraw -MeterMilliwatts $meterMw -NoBattery $true
+            $info.PowerDrawWatts = $draw.Watts
+            $info.PowerDrawKind = $draw.Kind
+            $info.PowerDrawSource = $draw.Source
             return $info
         }
     }
@@ -174,6 +303,13 @@ function Get-BatteryInfo {
         $info.BatteryWearPercent = [math]::Round((($info.DesignCapacity - $info.FullChargeCapacity) / $info.DesignCapacity) * 100, 1)
         if ($info.BatteryWearPercent -lt 0) { $info.BatteryWearPercent = 0.0 }
     }
+
+    # System power draw (Get-PowerDraw documents the source ladder)
+    $draw = Get-PowerDraw -MeterMilliwatts $meterMw -DischargeRate $info.DischargeRate -ChargeRate $info.ChargeRate `
+        -IsCharging $info.IsCharging -IsFullyCharged $info.IsFullyCharged -NoBattery $false
+    $info.PowerDrawWatts = $draw.Watts
+    $info.PowerDrawKind = $draw.Kind
+    $info.PowerDrawSource = $draw.Source
 
     # Time remaining — use EMA-smoothed calculation for stability
     $timeMinutes = -1

@@ -21,13 +21,13 @@
 
 param(
     [string]$OutDir = (Join-Path $env:TEMP 'batterypill-renders'),
-    [string[]]$States = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings', 'popup-light', 'pill-light', 'settings-light', 'health'),
+    [string[]]$States = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'pill-power', 'settings', 'popup-light', 'pill-light', 'settings-light', 'health'),
     [switch]$DrawToBitmap,
     [int]$TimeoutSec = 180
 )
 
 $ErrorActionPreference = 'Stop'
-$validStates = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'settings', 'popup-light', 'pill-light', 'settings-light', 'health')
+$validStates = @('popup-discharge', 'popup-charging', 'popup-nobattery', 'popup-collecting', 'pill-time', 'pill-percent', 'pill-both', 'pill-power', 'settings', 'popup-light', 'pill-light', 'settings-light', 'health')
 foreach ($s in $States) {
     if ($validStates -notcontains $s) {
         Write-Host "FAIL: unknown state '$s'. Valid: $($validStates -join ', ')"
@@ -113,7 +113,8 @@ function Seed-History {
         else { $p = [math]::Max(6, 95 - $i * 1.55 + [math]::Sin($i / 3.0) * 2.5) }
         $isC = $false
         if ($charging) { $isC = ($i -lt 34) } else { $isC = ($i -lt 6) }
-        $h += [pscustomobject]@{ Time = $base.AddMinutes($i * 2.5); Percent = [int]$p; IsCharging = $isC }
+        $wt = if ($isC) { -1.0 } else { [math]::Round(6 + 9 * [math]::Abs([math]::Sin($i / 2.0)) + ($i % 5), 1) }
+        $h += [pscustomobject]@{ Time = $base.AddMinutes($i * 2.5); Percent = [int]$p; IsCharging = $isC; Watts = $wt }
     }
     return ,$h
 }
@@ -333,24 +334,28 @@ $hzDischarge = @{
     StatusText = 'Discharging'; TimeMinutes = 188; TimeString = '3 hours 8 minutes'; TimeLabel = 'Time Remaining:'
     PowerSource = 'Battery (unplugged)'; DesignCapacity = 59970; FullChargeCapacity = 56270; DischargeRate = 8241; ChargeRate = -1
     BatteryWearPercent = 6.2; ETA = '6:42 PM'; FullRuntimeMinutes = 272; ElapsedTime = '1:24'; ElapsedSince = '91%'
+    PowerDrawWatts = 8.2; PowerDrawKind = 'draw'; PowerDrawSource = 'battery'
 }
 $hzCharging = @{
     Percent = 47; PercentExact = 47.0; IsCharging = $true; IsPluggedIn = $true; IsFullyCharged = $false; NoBattery = $false
     StatusText = 'Charging'; TimeMinutes = 63; TimeString = '1 hour 3 minutes'; TimeLabel = 'Time to Full:'
     PowerSource = 'AC Power (plugged in)'; DesignCapacity = 59970; FullChargeCapacity = 56270; DischargeRate = -1; ChargeRate = 24680
     BatteryWearPercent = 6.2; ETA = '5:10 PM'; FullRuntimeMinutes = -1; ElapsedTime = '0:21'; ElapsedSince = '35%'
+    PowerDrawWatts = 24.7; PowerDrawKind = 'charge'; PowerDrawSource = 'battery'
 }
 $hzNoBattery = @{
     Percent = -1; PercentExact = -1.0; IsCharging = $false; IsPluggedIn = $false; IsFullyCharged = $false; NoBattery = $true
     StatusText = 'No Battery'; TimeMinutes = -1; TimeString = 'N/A'; TimeLabel = 'Time Remaining:'; PowerSource = 'AC Power'
     DesignCapacity = -1; FullChargeCapacity = -1; DischargeRate = -1; ChargeRate = -1; BatteryWearPercent = -1.0
     ETA = ''; FullRuntimeMinutes = -1; ElapsedTime = ''; ElapsedSince = ''
+    PowerDrawWatts = -1.0; PowerDrawKind = ''; PowerDrawSource = ''
 }
 $hzCollecting = @{
     Percent = 64; PercentExact = 64.0; IsCharging = $false; IsPluggedIn = $false; IsFullyCharged = $false; NoBattery = $false
     StatusText = 'Discharging'; TimeMinutes = -1; TimeString = 'Estimating...'; TimeLabel = 'Time Remaining:'
     PowerSource = 'Battery (unplugged)'; DesignCapacity = 59970; FullChargeCapacity = 56270; DischargeRate = -1; ChargeRate = -1
     BatteryWearPercent = 6.2; ETA = ''; FullRuntimeMinutes = -1; ElapsedTime = '0:02'; ElapsedSince = '64%'
+    PowerDrawWatts = -1.0; PowerDrawKind = ''; PowerDrawSource = ''
 }
 
 $hzFailed = 0
@@ -364,6 +369,7 @@ foreach ($s in $HZSTATES) {
             'pill-time'        { Render-PillState -name $s -info $hzDischarge -mode 'time' }
             'pill-percent'     { Render-PillState -name $s -info $hzDischarge -mode 'percent' }
             'pill-both'        { Render-PillState -name $s -info $hzCharging -mode 'both' }
+            'pill-power'       { Render-PillState -name $s -info $hzDischarge -mode 'power' }
             'settings'         { Render-SettingsState -name $s }
             'popup-light'      { Render-PopupState -name $s -info $hzDischarge -ThemeName 'light' }
             'pill-light'       { Render-PillState -name $s -info $hzDischarge -mode 'time' -ThemeName 'light' }

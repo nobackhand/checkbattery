@@ -26,7 +26,7 @@
 
 . (Join-Path $PSScriptRoot '_harness.ps1')
 . (Import-WidgetFunction @(
-        'Read-DeviceNumber', 'Get-BatteryInfo', 'Get-SmoothedTimeRemaining',
+        'Read-DeviceNumber', 'Get-BatteryInfo', 'Get-PowerDraw', 'Get-SmoothedTimeRemaining',
         'Update-EMARate', 'Get-CapacityDerivedRate',
         'Get-PowerPlans', 'Set-ActivePowerPlan', 'Get-SystemTheme',
         'Write-IoFailure', 'Read-ConfigField', 'Import-Config', 'Get-ConfigPath',
