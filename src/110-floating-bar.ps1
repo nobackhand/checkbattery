@@ -122,8 +122,8 @@ function Update-PillSize {
 function Invoke-CycleDisplayMode {
     [OutputType([void])]
     param()
-    # Left-click on the pill cycles what it shows: time -> percent -> both -> time
-    $order = @("time", "percent", "both")
+    # Left-click on the pill cycles what it shows: time -> percent -> both -> power -> time
+    $order = @("time", "percent", "both", "power")
     $idx = [array]::IndexOf($order, [string]$script:config.DisplayMode)
     if ($idx -lt 0) { $idx = 0 }
     $newIdx = ($idx + 1) % $order.Count
@@ -966,6 +966,13 @@ function New-FloatingBar {
             Invoke-CycleDisplayMode
             Update-PulseTimerState
         }
+        # Middle-click opens the Battery Health card - the one screen the pill
+        # had no direct route to (it lived only in the right-click menu).
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Middle) {
+            $script:hoverTimer.Stop()
+            if ($script:hoverPopupVisible) { Close-HoverPopup }
+            Show-BatteryHealthCard
+        }
         $script:leftPressed = $false
         $script:floatingBar.Invalidate()
     }
@@ -1317,6 +1324,183 @@ function Get-FunStatusLine {
     return ""
 }
 
+# ============================================================
+# POWER DRAW - PRESENTATION
+# ============================================================
+
+function Get-PowerText {
+    [OutputType([string])]
+    param([double]$Watts, [string]$Kind, [int]$Decimals = 1)
+    # "14 W" / "14.2 W"; "+45 W" for power flowing INTO the battery. "" when
+    # there is no reading, so each caller chooses its own fallback.
+    if ($Watts -le 0 -or -not $Kind) { return "" }
+    $num = if ($Decimals -le 0) {
+        "{0}" -f [int][math]::Round($Watts, [System.MidpointRounding]::AwayFromZero)
+    } else {
+        ("{0:F" + $Decimals + "}") -f $Watts
+    }
+    $sign = if ($Kind -eq "charge") { "+" } else { "" }
+    return "$sign$num W"
+}
+
+function Get-PowerDrawWord {
+    [OutputType([string])]
+    param([double]$Watts)
+    # One word for how hard the machine is pulling, on a laptop scale. The
+    # popup's power line wears it when FunLines is on.
+    if ($Watts -le 0) { return "" }
+    if ($Watts -lt 6) { return "sipping" }
+    if ($Watts -lt 13) { return "cruising" }
+    if ($Watts -lt 25) { return "working" }
+    if ($Watts -lt 45) { return "pushing it" }
+    return "full send"
+}
+
+function Get-PowerBandColor {
+    [OutputType([System.Drawing.Color])]
+    param([double]$Watts)
+    # Meter fill by draw band - the accent ladder's colors, so green/yellow/
+    # orange/red mean the same thing here as they do on the pill.
+    if ($Watts -lt 13) { return [System.Drawing.Color]::FromArgb(45, 212, 100) }
+    if ($Watts -lt 25) { return [System.Drawing.Color]::FromArgb(255, 200, 0) }
+    if ($Watts -lt 45) { return [System.Drawing.Color]::FromArgb(255, 140, 0) }
+    return [System.Drawing.Color]::FromArgb(255, 70, 70)
+}
+
+function Get-PowerSentence {
+    [OutputType([string])]
+    param([hashtable]$BatteryInfo, [bool]$Fun = $false)
+    # The popup's power line: "Drawing 14.2 W" (from the pack) / "Using 14.2 W"
+    # (platform meter, which can answer on AC too) / "Charging at 45 W". ""
+    # when there is nothing to report - the line is then simply not shown, so
+    # a laptop parked on AC keeps its lean popup.
+    $text = Get-PowerText -Watts $BatteryInfo.PowerDrawWatts -Kind $BatteryInfo.PowerDrawKind -Decimals 1
+    if (-not $text) { return "" }
+    if ($BatteryInfo.PowerDrawKind -eq "charge") { return "Charging at $($text.TrimStart('+'))" }
+    $verb = if ($BatteryInfo.PowerDrawSource -eq "meter") { "Using" } else { "Drawing" }
+    $line = "$verb $text"
+    if ($Fun) {
+        $word = Get-PowerDrawWord -Watts $BatteryInfo.PowerDrawWatts
+        if ($word) { $line = "$line $([char]0x2014) $word" }
+    }
+    return $line
+}
+
+function Get-PowerDrawStats {
+    [OutputType([hashtable])]
+    param(
+        # any-typed: the history buffer, an ArrayList of sample hashtables.
+        [AllowNull()][object]$History,
+        [int]$MaxGapMinutes = 15,
+        [int]$MinSamples = 3
+    )
+    # Average and peak draw over the CURRENT discharge run: the samples back
+    # to the last charging sample or the last time gap. A gap means the app
+    # was not running (sleep, or history restored at startup) - see
+    # Get-BatterySessionSummary for why that rule matters. Samples with no
+    # draw reading (Watts <= 0: plugged in, the first ticks, files from before
+    # v1.4.0) are skipped. Samples is 0 - "nothing to say yet" - under
+    # MinSamples. (The key is Samples, not Count: a hashtable's own .Count
+    # property shadows a key of that name.)
+    $none = @{ Avg = -1.0; Peak = -1.0; Samples = 0 }
+    if ($null -eq $History -or $History.Count -lt 1) { return $none }
+    $sum = 0.0; $peak = 0.0; $n = 0
+    $idx = $History.Count - 1
+    while ($idx -ge 0) {
+        $s = $History[$idx]
+        if ($s.IsCharging) { break }
+        if ($idx -lt $History.Count - 1) {
+            $gap = ($History[$idx + 1].Time - $s.Time).TotalMinutes
+            if ($gap -gt $MaxGapMinutes) { break }
+        }
+        $w = if ($null -ne $s.Watts) { [double]$s.Watts } else { -1.0 }
+        if ($w -gt 0) {
+            $sum += $w
+            $n++
+            if ($w -gt $peak) { $peak = $w }
+        }
+        $idx--
+    }
+    if ($n -lt $MinSamples) { return $none }
+    return @{ Avg = [math]::Round($sum / $n, 1); Peak = [math]::Round($peak, 1); Samples = $n }
+}
+
+function New-PowerMeterPanel {
+    [OutputType([System.Windows.Forms.Panel])]
+    param([int]$X, [int]$Y, [int]$Width, [double]$DpiScale)
+    # A slim live meter under the popup's power line: a bar filled to the
+    # current watts against the session peak (never below a 20 W floor, so a
+    # quiet machine reads as quiet rather than pegged), an average tick, and
+    # avg/peak captions once there is a session to summarise. Colored by draw
+    # band. Reads its numbers from Tag so the live refresh only has to update
+    # Tag and Invalidate.
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Location = New-Object System.Drawing.Point($X, $Y)
+    $panel.Size = New-Object System.Drawing.Size($Width, [int](22 * $DpiScale))
+    $panel.BackColor = [System.Drawing.Color]::Transparent
+    $panel.Tag = @{ Watts = -1.0; Avg = -1.0; Peak = -1.0; Ds = $DpiScale }
+    $panel.Add_Paint({
+            param($sender, $e)
+            $mg = $e.Graphics
+            $mg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $mg.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+            $t = $sender.Tag
+            $ds = [double]$t.Ds
+            $w = $sender.Width
+            $barH = [math]::Max(4, [int](6 * $ds))
+            $barY = [int](2 * $ds)
+            $watts = [double]$t.Watts
+            $avg = [double]$t.Avg
+            $peak = [double]$t.Peak
+            $scale = [math]::Max(20.0, [math]::Max($watts, $peak))
+            $frac = if ($watts -gt 0) { [math]::Min(1.0, $watts / $scale) } else { 0.0 }
+            $isLight = ($script:theme.PopupBg.GetBrightness() -gt 0.5)
+
+            # Track (rounded), then the fill clipped inside it
+            $trackPath = New-RoundedRectPath -X 0 -Y $barY -Right ($w - $barH - 1) -Bottom $barY -Diameter $barH
+            $trackBrush = New-Object System.Drawing.SolidBrush($script:theme.SparkBg)
+            $mg.FillPath($trackBrush, $trackPath)
+            $trackBrush.Dispose()
+            if ($frac -gt 0) {
+                $fillW = [math]::Max($barH, [int]($frac * $w))
+                $fc = Get-PowerBandColor -Watts $watts
+                if ($isLight) { $fc = [System.Drawing.Color]::FromArgb([int]($fc.R * 0.72), [int]($fc.G * 0.72), [int]($fc.B * 0.72)) }
+                $state = $mg.Save()
+                $mg.SetClip($trackPath)
+                $fillBrush = New-Object System.Drawing.SolidBrush($fc)
+                $mg.FillRectangle($fillBrush, 0, $barY, $fillW, $barH)
+                $fillBrush.Dispose()
+                $mg.Restore($state)
+            }
+            $edgePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(110, $script:theme.Border.R, $script:theme.Border.G, $script:theme.Border.B), 1)
+            $mg.DrawPath($edgePen, $trackPath)
+            $edgePen.Dispose()
+            $trackPath.Dispose()
+
+            # Session average: a thin tick through the bar
+            if ($avg -gt 0) {
+                $ax = [int]([math]::Min(1.0, $avg / $scale) * ($w - 1))
+                $tickPen = New-Object System.Drawing.Pen($script:theme.TextDim, 1)
+                $mg.DrawLine($tickPen, $ax, ($barY - 1), $ax, ($barY + $barH + 1))
+                $tickPen.Dispose()
+            }
+
+            # Captions
+            if ($avg -gt 0 -and $peak -gt 0) {
+                $capFont = New-Object System.Drawing.Font("Segoe UI", 7, [System.Drawing.FontStyle]::Regular)
+                $capBrush = New-Object System.Drawing.SolidBrush($script:theme.TextDim)
+                $capY = [single]($barY + $barH + 1)
+                $avgText = "avg {0} W" -f [int][math]::Round($avg)
+                $peakText = "peak {0} W" -f [int][math]::Round($peak)
+                $mg.DrawString($avgText, $capFont, $capBrush, [single]0, $capY)
+                $peakSize = $mg.MeasureString($peakText, $capFont)
+                $mg.DrawString($peakText, $capFont, $capBrush, ([single]($w - $peakSize.Width)), $capY)
+                $capBrush.Dispose(); $capFont.Dispose()
+            }
+        })
+    return $panel
+}
+
 function New-BatteryPopupContent {
     [OutputType([hashtable])]
     param(
@@ -1426,6 +1610,8 @@ function New-BatteryPopupContent {
         $script:popupTimeLabel = $null
         $script:popupFunLabel = $null
         $script:popupSparkPanel = $null
+        $script:popupPowerLabel = $null
+        $script:popupPowerPanel = $null
         return @{
             TotalHeight = $ny + [int](8 * $DpiScale)
             Fonts       = @($labelFont, $heroValueFont, $titleLabel.Font) + $emptyFonts
@@ -1466,6 +1652,35 @@ function New-BatteryPopupContent {
     $Form.Controls.Add($timeValLabel)
     if ($timeText -eq "Estimating...") { $script:estimatingLabel = $timeValLabel }
     $y += $heroRh
+
+    # Power draw: "Drawing 14.2 W - cruising", and a live meter while on
+    # battery. Hidden entirely when nothing reports a number, so a laptop
+    # parked on AC keeps its lean popup.
+    $powerFont = $null
+    $powerLabel = $null
+    $meterPanel = $null
+    $powerText = Get-PowerSentence -BatteryInfo $BatteryInfo -Fun ([bool]$script:config.FunLines)
+    if ($powerText) {
+        $powerFont = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Regular)
+        $powerLabel = New-Object System.Windows.Forms.Label
+        $powerLabel.Text = $powerText
+        $powerLabel.Font = $powerFont
+        $powerLabel.ForeColor = $script:theme.TextLight
+        $powerLabel.Location = New-Object System.Drawing.Point($lx, $y)
+        $powerLabel.AutoSize = $true
+        $powerLabel.MaximumSize = New-Object System.Drawing.Size(($PopupWidth - $lx * 2), 0)
+        $Form.Controls.Add($powerLabel)
+        $y += [int](20 * $DpiScale)
+        if ($BatteryInfo.PowerDrawKind -eq "draw") {
+            $drawStats = Get-PowerDrawStats -History $script:batteryHistory
+            $meterPanel = New-PowerMeterPanel -X $lx -Y $y -Width ($PopupWidth - $lx * 2) -DpiScale $DpiScale
+            $meterPanel.Tag.Watts = [double]$BatteryInfo.PowerDrawWatts
+            $meterPanel.Tag.Avg = [double]$drawStats.Avg
+            $meterPanel.Tag.Peak = [double]$drawStats.Peak
+            $Form.Controls.Add($meterPanel)
+            $y += [int](24 * $DpiScale)
+        }
+    }
 
     # A line of personality under the facts (optional - Settings toggle)
     $funFont = $null
@@ -1522,9 +1737,12 @@ function New-BatteryPopupContent {
     $script:popupTimeLabel = $timeValLabel
     $script:popupFunLabel = if ($funText) { $funLabel } else { $null }
     $script:popupSparkPanel = $sparkPanel
+    $script:popupPowerLabel = $powerLabel
+    $script:popupPowerPanel = $meterPanel
 
     $fontsToDispose = @($labelFont, $heroValueFont, $heroPctFont, $titleLabel.Font)
     if ($null -ne $funFont) { $fontsToDispose += $funFont }
+    if ($null -ne $powerFont) { $fontsToDispose += $powerFont }
     if ($CloseHintText) { $fontsToDispose += $hintLabel.Font }
     return @{
         TotalHeight = $y + 8
@@ -1751,6 +1969,19 @@ function Get-PillText {
     switch ($DisplayMode) {
         "percent" {
             return @{ Primary = $pctStr; Secondary = "" }
+        }
+        "power" {
+            # Live system draw: "14 W" on battery, "+45 W" flowing into the
+            # pack while charging. With nothing to measure the pill still says
+            # something true - "AC" when the wall is feeding an unmetered
+            # machine (plugged in and idle, or no battery at all), otherwise
+            # the percent: the same fallback the time mode uses for a missing
+            # estimate, so the pill never shows dead dashes.
+            $powerStr = Get-PowerText -Watts $BatteryInfo.PowerDrawWatts -Kind $BatteryInfo.PowerDrawKind -Decimals 0
+            if (-not $powerStr) {
+                $powerStr = if ($BatteryInfo.NoBattery -or $BatteryInfo.IsPluggedIn) { "AC" } else { $pctStr }
+            }
+            return @{ Primary = $powerStr; Secondary = "" }
         }
         "both" {
             # No battery: both lines would read "AC"/"AC" - show it once
