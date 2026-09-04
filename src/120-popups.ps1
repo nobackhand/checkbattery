@@ -70,6 +70,13 @@ function Update-OpenPopupContent {
             $script:popupPowerPanel.Tag.Avg = [double]$drawStats.Avg
             $script:popupPowerPanel.Tag.Peak = [double]$drawStats.Peak
             $script:popupPowerPanel.Invalidate()
+        } elseif ($script:popupPowerPanel.Tag.Watts -gt 0) {
+            # The reading changed kind under an open popup (the cable went in:
+            # the line above now says "Charging at 45 W") or went away. The
+            # live fill was the last discharge tick - draining it is the honest
+            # picture; the avg/peak captions are session history and stay.
+            $script:popupPowerPanel.Tag.Watts = -1.0
+            $script:popupPowerPanel.Invalidate()
         }
     }
     if ($null -ne $script:popupSparkPanel -and -not $script:popupSparkPanel.IsDisposed) {
