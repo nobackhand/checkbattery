@@ -211,10 +211,12 @@ function Import-Config {
                         try { if ($null -ne $entry.Watts) { $wv = [double]$entry.Watts } } catch { $wv = -1.0 }
                         if ([double]::IsNaN($wv) -or $wv -le 0) { $wv = -1.0 }
                         $loadedHistory += @{
-                            Time       = [DateTime]::Parse($entry.Time)
-                            Percent    = $pct
-                            IsCharging = [bool]$entry.IsCharging
-                            Watts      = $wv
+                            Time        = [DateTime]::Parse($entry.Time)
+                            Percent     = $pct
+                            IsCharging  = [bool]$entry.IsCharging
+                            # v1.4.1 field; absent in older files = on battery
+                            IsPluggedIn = [bool]$entry.IsPluggedIn
+                            Watts       = $wv
                         }
                     } catch {}
                 }
@@ -342,10 +344,11 @@ function Save-Config {
             for ($hi = $startIdx; $hi -lt $script:batteryHistory.Count; $hi++) {
                 $h = $script:batteryHistory[$hi]
                 $historyToSave += @{
-                    Time       = $h.Time.ToString("o")
-                    Percent    = $h.Percent
-                    IsCharging = $h.IsCharging
-                    Watts      = if ($null -ne $h.Watts) { $h.Watts } else { -1.0 }
+                    Time        = $h.Time.ToString("o")
+                    Percent     = $h.Percent
+                    IsCharging  = $h.IsCharging
+                    IsPluggedIn = [bool]$h.IsPluggedIn
+                    Watts       = if ($null -ne $h.Watts) { $h.Watts } else { -1.0 }
                 }
             }
         }
