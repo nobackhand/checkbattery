@@ -179,7 +179,7 @@ function Import-Config {
             $default.PositionLocked = Read-ConfigField -Raw $json.PositionLocked -Fallback $default.PositionLocked -Parse {
                 param($r) ConvertTo-ConfigBool -Raw $r }
             $default.DisplayMode = Read-ConfigField -Raw $json.DisplayMode -Fallback $default.DisplayMode -Parse {
-                param($r) if ([string]$r -in @("time", "percent", "both")) { [string]$r } else { $null } }
+                param($r) if ([string]$r -in @("time", "percent", "both", "power")) { [string]$r } else { $null } }
             $default.PillSize = Read-ConfigField -Raw $json.PillSize -Fallback $default.PillSize -Parse {
                 param($r) if ([string]$r -in @("compact", "normal", "expanded")) { [string]$r } else { $null } }
             $default.Theme = Read-ConfigField -Raw $json.Theme -Fallback $default.Theme -Parse {
@@ -205,10 +205,18 @@ function Import-Config {
                     try {
                         $pct = [int]$entry.Percent
                         if ($pct -lt 0 -or $pct -gt 100) { continue }
+                        # Watts arrived with v1.4.0: older files have no field,
+                        # and a bad one must cost only the number, not the entry.
+                        $wv = -1.0
+                        try { if ($null -ne $entry.Watts) { $wv = [double]$entry.Watts } } catch { $wv = -1.0 }
+                        if ([double]::IsNaN($wv) -or $wv -le 0) { $wv = -1.0 }
                         $loadedHistory += @{
-                            Time       = [DateTime]::Parse($entry.Time)
-                            Percent    = $pct
-                            IsCharging = [bool]$entry.IsCharging
+                            Time        = [DateTime]::Parse($entry.Time)
+                            Percent     = $pct
+                            IsCharging  = [bool]$entry.IsCharging
+                            # v1.4.1 field; absent in older files = on battery
+                            IsPluggedIn = [bool]$entry.IsPluggedIn
+                            Watts       = $wv
                         }
                     } catch {}
                 }
@@ -336,9 +344,11 @@ function Save-Config {
             for ($hi = $startIdx; $hi -lt $script:batteryHistory.Count; $hi++) {
                 $h = $script:batteryHistory[$hi]
                 $historyToSave += @{
-                    Time       = $h.Time.ToString("o")
-                    Percent    = $h.Percent
-                    IsCharging = $h.IsCharging
+                    Time        = $h.Time.ToString("o")
+                    Percent     = $h.Percent
+                    IsCharging  = $h.IsCharging
+                    IsPluggedIn = [bool]$h.IsPluggedIn
+                    Watts       = if ($null -ne $h.Watts) { $h.Watts } else { -1.0 }
                 }
             }
         }

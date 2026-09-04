@@ -439,16 +439,17 @@ function Show-SettingsPanel {
     $displayCombo.ForeColor = $script:theme.PanelText
     $displayCombo.Location = New-Object System.Drawing.Point($m, $y)
     $displayCombo.Size = New-Object System.Drawing.Size($cw, [int](28 * $ds))
-    $displayCombo.Items.AddRange(@("Time remaining", "Percentage", "Both (% + time)"))
+    $displayCombo.Items.AddRange(@("Time remaining", "Percentage", "Both (% + time)", "Power draw (watts)"))
     $displayIdx = switch ($script:config.DisplayMode) {
         "time" { 0 }
         "percent" { 1 }
         "both" { 2 }
+        "power" { 3 }
         default { 0 }
     }
     $displayCombo.SelectedIndex = $displayIdx
     $displayCombo.Add_SelectedIndexChanged({
-            $modeMap = @("time", "percent", "both")
+            $modeMap = @("time", "percent", "both", "power")
             $script:config.DisplayMode = $modeMap[$displayCombo.SelectedIndex]
             Update-PillSize
             # Update-PillSize resizes and re-fonts the pill but does NOT rebuild
@@ -464,7 +465,7 @@ function Show-SettingsPanel {
         })
     Set-ThemedComboBox -Combo $displayCombo
     $settings.Controls.Add($displayCombo)
-    $settingsTooltip.SetToolTip($displayCombo, "Choose what information appears on the pill")
+    $settingsTooltip.SetToolTip($displayCombo, "Choose what the pill shows. Power draw is live system watts on battery (+watts into the pack while charging); it reads AC when the PC does not report a number")
     $script:settingsDisplayCombo = $displayCombo   # let click-cycle keep this in sync while the panel is open
     $y += [int](36 * $ds)
 
@@ -886,10 +887,17 @@ function Show-BatteryHealthCard {
     $script:hcDs = $ds
 
     $sessionText = Get-BatterySessionSummary
+    $drawStats = Get-PowerDrawStats -History $script:batteryHistory
+    $drawText = if ($drawStats.Samples -gt 0) {
+        "Draw this session: avg {0} W, peak {1} W" -f [int][math]::Round($drawStats.Avg), [int][math]::Round($drawStats.Peak)
+    } else { "" }
     $fw = [int](300 * $ds)
     $fh = if ($hasData) {
-        # Extra row when there's a current-session line to show
-        if ($sessionText) { [int](356 * $ds) } else { [int](332 * $ds) }
+        # One extra 24px row per current-session line (on-battery span, draw)
+        $extraRows = 0
+        if ($sessionText) { $extraRows++ }
+        if ($drawText) { $extraRows++ }
+        [int]((332 + 24 * $extraRows) * $ds)
     } else { [int](232 * $ds) }
 
     $card = New-Object System.Windows.Forms.Form
@@ -987,8 +995,13 @@ function Show-BatteryHealthCard {
         $fontsToDispose += (Add-CenterLabel -Text $fullTxt -YPos 250 -FontSize 8.5 -Bold $false -Color $script:theme.TextLight).Font
         $wearTxt = "{0:N1}% wear" -f $info.BatteryWearPercent
         $fontsToDispose += (Add-CenterLabel -Text $wearTxt -YPos 274 -FontSize 8.5 -Bold $false -Color $script:theme.TextDim).Font
+        $rowY = 300
         if ($sessionText) {
-            $fontsToDispose += (Add-CenterLabel -Text $sessionText -YPos 300 -FontSize 8.5 -Bold $false -Color $script:theme.TextLight).Font
+            $fontsToDispose += (Add-CenterLabel -Text $sessionText -YPos $rowY -FontSize 8.5 -Bold $false -Color $script:theme.TextLight).Font
+            $rowY += 24
+        }
+        if ($drawText) {
+            $fontsToDispose += (Add-CenterLabel -Text $drawText -YPos $rowY -FontSize 8.5 -Bold $false -Color $script:theme.TextLight).Font
         }
     } else {
         $glyph = Add-CenterLabel -Text ([string][char]0x26A1) -YPos 60 -FontSize 26 -Bold $false -Color ([System.Drawing.Color]::FromArgb(45, 212, 100))
