@@ -19,6 +19,8 @@ function Clear-PopupLiveRefs {
     $script:popupTimeLabel = $null
     $script:popupFunLabel = $null
     $script:popupSparkPanel = $null
+    $script:popupPowerLabel = $null
+    $script:popupPowerPanel = $null
 }
 
 function Update-OpenPopupContent {
@@ -53,6 +55,29 @@ function Update-OpenPopupContent {
     if ($null -ne $script:popupFunLabel -and -not $script:popupFunLabel.IsDisposed -and $script:config.FunLines) {
         $fun = Get-FunStatusLine -BatteryInfo $BatteryInfo
         if ($fun -and $script:popupFunLabel.Text -ne $fun) { $script:popupFunLabel.Text = $fun }
+    }
+    if ($null -ne $script:popupPowerLabel -and -not $script:popupPowerLabel.IsDisposed) {
+        # The line exists because there WAS a reading when the popup opened;
+        # a tick with none keeps the last text rather than blanking a row
+        # the layout already reserved.
+        $power = Get-PowerSentence -BatteryInfo $BatteryInfo -Fun ([bool]$script:config.FunLines)
+        if ($power -and $script:popupPowerLabel.Text -ne $power) { $script:popupPowerLabel.Text = $power }
+    }
+    if ($null -ne $script:popupPowerPanel -and -not $script:popupPowerPanel.IsDisposed) {
+        if ($BatteryInfo.PowerDrawKind -eq "draw" -and $BatteryInfo.PowerDrawWatts -gt 0) {
+            $drawStats = Get-PowerDrawStats -History $script:batteryHistory
+            $script:popupPowerPanel.Tag.Watts = [double]$BatteryInfo.PowerDrawWatts
+            $script:popupPowerPanel.Tag.Avg = [double]$drawStats.Avg
+            $script:popupPowerPanel.Tag.Peak = [double]$drawStats.Peak
+            $script:popupPowerPanel.Invalidate()
+        } elseif ($script:popupPowerPanel.Tag.Watts -gt 0) {
+            # The reading changed kind under an open popup (the cable went in:
+            # the line above now says "Charging at 45 W") or went away. The
+            # live fill was the last discharge tick - draining it is the honest
+            # picture; the avg/peak captions are session history and stay.
+            $script:popupPowerPanel.Tag.Watts = -1.0
+            $script:popupPowerPanel.Invalidate()
+        }
     }
     if ($null -ne $script:popupSparkPanel -and -not $script:popupSparkPanel.IsDisposed) {
         # New history points landed this tick - repaint the graph

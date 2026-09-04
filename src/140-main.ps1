@@ -22,10 +22,20 @@ function Add-BatteryHistorySample {
     # buffer and the persisted one disagreed about the same tick.
     if ($Info.NoBattery) { return }
     if ($Info.Percent -lt 0 -or $Info.Percent -gt 100) { return }
+    # Watts: the system draw this tick, or -1. Only "draw" readings count -
+    # a charge rate is power going the other way, and averaging it into the
+    # session's draw would be nonsense. Get-PowerDrawStats skips the -1s.
+    $watts = -1.0
+    if ($Info.PowerDrawKind -eq "draw" -and $Info.PowerDrawWatts -gt 0) { $watts = [double]$Info.PowerDrawWatts }
+    # IsPluggedIn: a full or charge-capped pack on the cable is neither
+    # charging nor drawing, and Get-PowerDrawStats needs to see that stretch
+    # to know the next unplug starts a NEW run.
     $null = $script:batteryHistory.Add(@{
-            Time       = $Now
-            Percent    = $Info.Percent
-            IsCharging = $Info.IsCharging
+            Time        = $Now
+            Percent     = $Info.Percent
+            IsCharging  = $Info.IsCharging
+            IsPluggedIn = [bool]$Info.IsPluggedIn
+            Watts       = $watts
         })
     while ($script:batteryHistory.Count -gt 2400) {
         $script:batteryHistory.RemoveAt(0)
@@ -76,6 +86,8 @@ function Update-TrayIcon {
         if ($info.TimeString -and $info.TimeString -ne "N/A (plugged in)") {
             $tipText += " | $($info.TimeString)"
         }
+        $tipWatts = Get-PowerText -Watts $info.PowerDrawWatts -Kind $info.PowerDrawKind -Decimals 0
+        if ($tipWatts) { $tipText += " | $tipWatts" }
         # NotifyIcon.Text throws ArgumentOutOfRangeException above 63 characters
         # (verified) - the old 127 guard was the Win32 NOTIFYICONDATA size, not
         # the .NET one, so an over-long tooltip would throw out of

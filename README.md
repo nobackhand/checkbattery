@@ -7,8 +7,9 @@ BatteryPill is a Windows desktop battery widget built with PowerShell and WinFor
 ## Features
 
 - **Floating Pill Bar**: Draggable indicator with snap-to-edge functionality and fullscreen auto-hide.
-- **Display Modes**: Click the pill to cycle what it shows - time remaining, percentage, or both stacked.
-- **Detailed Popup**: Hover over the pill (500ms delay) to see a large status-colored percentage, capacity, charge/discharge rate, ETA, elapsed time, battery wear, and a history sparkline.
+- **Display Modes**: Click the pill to cycle what it shows - time remaining, percentage, both stacked, or live power draw in watts. Middle-click opens the Battery Health card.
+- **Power Draw**: How much power the PC is using right now, from the battery's discharge rate while unplugged (or the platform power meter where Windows exposes one). The popup shows it as a sentence plus a live meter with the session's average and peak; while charging it reports the watts flowing into the pack instead, labelled as such.
+- **Detailed Popup**: Hover over the pill (500ms delay) to see a large status-colored percentage, time remaining with ETA, current power draw, and a history sparkline.
 - **Smart Estimates**: Uses Exponential Moving Average (EMA) smoothing to provide stable time remaining estimates that resist "jumping" caused by CPU load changes.
 - **Themes & Personalization**: Supports Dark, Light, and Auto themes; 8 accent color presets; and three pill size variants (Compact, Normal, Expanded).
 - **Visual Alerts**: Includes pulsing red borders and notifications for low battery states (15%, 10%, and 5%).
