@@ -27,11 +27,15 @@ function Add-BatteryHistorySample {
     # session's draw would be nonsense. Get-PowerDrawStats skips the -1s.
     $watts = -1.0
     if ($Info.PowerDrawKind -eq "draw" -and $Info.PowerDrawWatts -gt 0) { $watts = [double]$Info.PowerDrawWatts }
+    # IsPluggedIn: a full or charge-capped pack on the cable is neither
+    # charging nor drawing, and Get-PowerDrawStats needs to see that stretch
+    # to know the next unplug starts a NEW run.
     $null = $script:batteryHistory.Add(@{
-            Time       = $Now
-            Percent    = $Info.Percent
-            IsCharging = $Info.IsCharging
-            Watts      = $watts
+            Time        = $Now
+            Percent     = $Info.Percent
+            IsCharging  = $Info.IsCharging
+            IsPluggedIn = [bool]$Info.IsPluggedIn
+            Watts       = $watts
         })
     while ($script:batteryHistory.Count -gt 2400) {
         $script:batteryHistory.RemoveAt(0)

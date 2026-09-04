@@ -1394,21 +1394,27 @@ function Get-PowerDrawStats {
         [int]$MaxGapMinutes = 15,
         [int]$MinSamples = 3
     )
-    # Average and peak draw over the CURRENT discharge run: the samples back
-    # to the last charging sample or the last time gap. A gap means the app
-    # was not running (sleep, or history restored at startup) - see
-    # Get-BatterySessionSummary for why that rule matters. Samples with no
-    # draw reading (Watts <= 0: plugged in, the first ticks, files from before
-    # v1.4.0) are skipped. Samples is 0 - "nothing to say yet" - under
-    # MinSamples. (The key is Samples, not Count: a hashtable's own .Count
-    # property shadows a key of that name.)
+    # Average and peak draw over the CURRENT run: the samples back to the
+    # last charging sample, the last change of power source, or the last time
+    # gap. A gap means the app was not running (sleep, or history restored at
+    # startup) - see Get-BatterySessionSummary for why that rule matters.
+    # The power-source rule matters because a full (or charge-capped) pack on
+    # AC never produces a charging sample: without it, an hour parked on the
+    # cable at 100% was invisible and the next unplug inherited the previous
+    # run's avg/peak. Samples older than the flag (pre-v1.4.1 files) count as
+    # on-battery. Samples with no draw reading (Watts <= 0: the first ticks,
+    # files from before v1.4.0) are skipped. Samples is 0 - "nothing to say
+    # yet" - under MinSamples. (The key is Samples, not Count: a hashtable's
+    # own .Count property shadows a key of that name.)
     $none = @{ Avg = -1.0; Peak = -1.0; Samples = 0 }
     if ($null -eq $History -or $History.Count -lt 1) { return $none }
     $sum = 0.0; $peak = 0.0; $n = 0
     $idx = $History.Count - 1
+    $onAc = [bool]$History[$idx].IsPluggedIn
     while ($idx -ge 0) {
         $s = $History[$idx]
         if ($s.IsCharging) { break }
+        if ([bool]$s.IsPluggedIn -ne $onAc) { break }
         if ($idx -lt $History.Count - 1) {
             $gap = ($History[$idx + 1].Time - $s.Time).TotalMinutes
             if ($gap -gt $MaxGapMinutes) { break }

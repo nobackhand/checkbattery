@@ -264,6 +264,33 @@ Test-Case 'stats: a time gap (sleep / restored history) ends the run' {
     Assert-Equal 10.0 $s.Peak
 }
 
+Test-Case 'stats: a plugged-in stretch (full, or parked at a charge cap) ends the run' {
+    # Battery run peaks at 90 W, cable goes in at 100% (IsCharging false -
+    # nothing flows, so no charge sample ever lands), cable comes out an
+    # hour later: the new run must not inherit last run's peak.
+    $h = New-History @(@{ Watts = 90.0 }, @{ Watts = 90.0 },
+        @{ Watts = -1.0; IsPluggedIn = $true }, @{ Watts = -1.0; IsPluggedIn = $true }, @{ Watts = -1.0; IsPluggedIn = $true },
+        @{ Watts = 10.0 }, @{ Watts = 10.0 }, @{ Watts = 10.0 })
+    $s = Get-PowerDrawStats -History $h
+    Assert-Equal 3 $s.Samples
+    Assert-Equal 10.0 $s.Peak
+}
+
+Test-Case 'stats: on AC with a platform meter, the run is the AC stretch only' {
+    $h = New-History @(@{ Watts = 90.0 }, @{ Watts = 90.0 }, @{ Watts = 90.0 },
+        @{ Watts = 12.0; IsPluggedIn = $true }, @{ Watts = 14.0; IsPluggedIn = $true }, @{ Watts = 16.0; IsPluggedIn = $true })
+    $s = Get-PowerDrawStats -History $h
+    Assert-Equal 3 $s.Samples
+    Assert-Equal 14.0 $s.Avg
+    Assert-Equal 16.0 $s.Peak
+}
+
+Test-Case 'stats: samples from before the plugged flag existed count as on-battery' {
+    $h = New-History @(@{ Watts = 10.0 }, @{ Watts = 20.0 }, @{ Watts = 30.0 })
+    foreach ($s in $h) { $s.Remove('IsPluggedIn') }
+    Assert-Equal 3 (Get-PowerDrawStats -History $h).Samples
+}
+
 Test-Case 'stats: while charging there is no draw session' {
     $h = New-History @(@{ Watts = 10.0 }, @{ Watts = 10.0 }, @{ Watts = 10.0 }, @{ Watts = -1.0; IsCharging = $true })
     Assert-Equal 0 (Get-PowerDrawStats -History $h).Samples
@@ -281,6 +308,14 @@ Test-Case 'history: a charge rate is NOT recorded as draw' {
     $script:batteryHistory = New-Object System.Collections.ArrayList
     Add-BatteryHistorySample -Info (New-DrawReading -Watts 24.7 -Kind 'charge' -IsCharging $true) -Now $pdT0
     Assert-Equal (-1.0) $script:batteryHistory[0].Watts
+}
+
+Test-Case 'history: the plugged-in state is recorded, so a full-and-parked stretch can end a run' {
+    $script:batteryHistory = New-Object System.Collections.ArrayList
+    Add-BatteryHistorySample -Info (New-DrawReading -Watts -1 -Kind '' -Source '' -IsPluggedIn $true -IsFullyCharged $true) -Now $pdT0
+    Add-BatteryHistorySample -Info (New-DrawReading -Watts 8.2) -Now $pdT0.AddSeconds(3)
+    Assert-Equal $true $script:batteryHistory[0].IsPluggedIn
+    Assert-Equal $false $script:batteryHistory[1].IsPluggedIn
 }
 
 Test-Case 'history: no reading records -1' {
