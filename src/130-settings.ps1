@@ -25,6 +25,25 @@ function Set-ThemedComboBox {
         })
 }
 
+function Get-SwatchRingColor {
+    [OutputType([System.Drawing.Color])]
+    param(
+        [System.Drawing.Color]$Swatch,
+        [bool]$IsDark
+    )
+    # The selected accent swatch's ring has to stand out against the PANEL -
+    # a panel-coloured gap already separates it from the dot. It used to be
+    # chosen by the swatch's brightness alone, which assumed the dark panel:
+    # on the light panel the near-white ring (240,240,245 on 246,246,250)
+    # vanished, and nothing showed which accent was selected.
+    if (-not $IsDark) { return [System.Drawing.Color]::FromArgb(70, 70, 80) }
+    # Dark panel: light ring, but grey around the near-white preset so a
+    # white ring and a white dot do not read as one blob
+    $lum = ($Swatch.R * 0.299) + ($Swatch.G * 0.587) + ($Swatch.B * 0.114)
+    if ($lum -gt 180) { return [System.Drawing.Color]::FromArgb(120, 120, 130) }
+    return [System.Drawing.Color]::FromArgb(240, 240, 245)
+}
+
 function Start-IntroAnimation {
     [OutputType([void])]
     param()
@@ -122,6 +141,10 @@ function Show-FirstRunTooltip {
 
     # NoActivateForm: the tip appears unattended and must not steal focus
     $script:firstRunTip = New-Object NoActivateForm
+    # Manual, or Windows ignores the "near the pill" Location set below: a new
+    # user's tips landed at the default cascade spot in the top-left corner
+    # (measured 114,114 with the pill bottom-right).
+    $script:firstRunTip.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $script:firstRunTip.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $script:firstRunTip.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $script:firstRunTip.Size = New-Object System.Drawing.Size($ttW, $ttH)
@@ -558,13 +581,8 @@ function Show-SettingsPanel {
                     $gapPen = New-Object System.Drawing.Pen($script:theme.PanelBg, 2)
                     $cg.DrawEllipse($gapPen, 1, 1, $sender.Width - 3, $sender.Height - 3)
                     $gapPen.Dispose()
-                    # Ring: light on dark swatches, dark on light ones (e.g. the white preset)
-                    $lum = ($color.R * 0.299) + ($color.G * 0.587) + ($color.B * 0.114)
-                    $ringColor = if ($lum -gt 180) {
-                        [System.Drawing.Color]::FromArgb(120, 120, 130)
-                    } else {
-                        [System.Drawing.Color]::FromArgb(240, 240, 245)
-                    }
+                    # Ring: contrasts with the panel (see Get-SwatchRingColor)
+                    $ringColor = Get-SwatchRingColor -Swatch $color -IsDark $script:theme.IsDark
                     $ringPen = New-Object System.Drawing.Pen($ringColor, 2)
                     $cg.DrawEllipse($ringPen, 0, 0, $sender.Width - 1, $sender.Height - 1)
                     $ringPen.Dispose()
@@ -675,7 +693,6 @@ function Show-SettingsPanel {
     # TrackBar can't be themed (light track, system-blue thumb, tick marks) and
     # was the one un-dark control on the panel; this one matches the app.
     $script:opacityVal = [int]($script:config.Opacity * 100)
-    $script:opacityDragging = $false
     $sliderH = [int](24 * $ds)
     $opacitySlider = New-Object System.Windows.Forms.Panel
     $opacitySlider.Location = New-Object System.Drawing.Point($m, $y)
@@ -716,9 +733,14 @@ function Show-SettingsPanel {
         $opacityValueLabel.Text = "$val%"
         $opacitySlider.Invalidate()
     }
-    $opacitySlider.Add_MouseDown({ param($s, $e) $script:opacityDragging = $true; & $setOpacityFromX $e.X }.GetNewClosure())
-    $opacitySlider.Add_MouseMove({ param($s, $e) if ($script:opacityDragging) { & $setOpacityFromX $e.X } }.GetNewClosure())
-    $opacitySlider.Add_MouseUp({ $script:opacityDragging = $false; Save-Config }.GetNewClosure())
+    # Drag state is a captured HASHTABLE, shared by reference. It used to be
+    # $script:opacityDragging - but each GetNewClosure() gets its own module
+    # scope, so MouseDown set one variable and MouseMove read another ($null):
+    # the thumb jumped to the click and never followed a drag.
+    $sliderDrag = @{ Active = $false }
+    $opacitySlider.Add_MouseDown({ param($s, $e) $sliderDrag.Active = $true; & $setOpacityFromX $e.X }.GetNewClosure())
+    $opacitySlider.Add_MouseMove({ param($s, $e) if ($sliderDrag.Active) { & $setOpacityFromX $e.X } }.GetNewClosure())
+    $opacitySlider.Add_MouseUp({ $sliderDrag.Active = $false; Save-Config }.GetNewClosure())
     $settings.Controls.Add($opacitySlider)
     $y += [int](40 * $ds)
 
@@ -832,18 +854,22 @@ function Get-BatterySessionSummary {
     # short to say anything meaningful.
     if ($null -eq $script:batteryHistory -or $script:batteryHistory.Count -lt 2) { return "" }
     $last = $script:batteryHistory[$script:batteryHistory.Count - 1]
-    if ($last.IsCharging) { return "" }
+    # Plugged in counts too, not just charging: a full or charge-capped pack on
+    # the cable never charges, and the card used to call that stretch "On
+    # battery". (Samples older than the flag read as unplugged.)
+    if ($last.IsCharging -or $last.IsPluggedIn) { return "" }
     # Walk back to the start of the continuous discharge run. A run ends at a
-    # charge sample OR at a TIME GAP: samples are recorded every refresh tick
-    # (1-60s), so a gap of minutes means the app was not running - the machine
-    # slept, or this history was restored from config at startup. Without the
-    # gap check the walk-back ran straight through an overnight sleep and told
-    # the user they had been on battery for nine and a half hours.
+    # charge or plugged-in sample OR at a TIME GAP: samples are recorded every
+    # refresh tick (1-60s), so a gap of minutes means the app was not running
+    # - the machine slept, or this history was restored from config at
+    # startup. Without the gap check the walk-back ran straight through an
+    # overnight sleep and told the user they had been on battery for nine and
+    # a half hours.
     $maxGapMinutes = 15
     $startIdx = $script:batteryHistory.Count - 1
     while ($startIdx -gt 0) {
         $prev = $script:batteryHistory[$startIdx - 1]
-        if ($prev.IsCharging) { break }
+        if ($prev.IsCharging -or $prev.IsPluggedIn) { break }
         $gap = ($script:batteryHistory[$startIdx].Time - $prev.Time).TotalMinutes
         if ($gap -gt $maxGapMinutes) { break }
         $startIdx--

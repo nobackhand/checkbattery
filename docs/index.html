@@ -304,23 +304,26 @@
   /* Install */
   .install ol { list-style: none; counter-reset: steps; }
 
+  /* Number in the gutter, text as ordinary inline flow. (A flex li turned
+     every text run and link into its own flex item - step 2 rendered as three
+     side-by-side columns either side of its "open source" link.) */
   .install li {
     counter-increment: steps;
     font-size: 14px;
     color: var(--text-2);
-    padding: 8px 0;
+    padding: 8px 0 8px 28px;
     border-bottom: 1px solid var(--border);
-    display: flex;
-    gap: 12px;
+    position: relative;
   }
 
   .install li::before {
     content: counter(steps);
+    position: absolute;
+    left: 0;
+    top: 9px;
     color: var(--text-3);
     font-family: var(--mono);
     font-size: 12px;
-    min-width: 16px;
-    padding-top: 1px;
   }
 
   .install-note {
@@ -367,7 +370,9 @@
   @media (max-width: 520px) {
     .features ul { grid-template-columns: 1fr; }
     .footer-inner { flex-direction: column; gap: 12px; }
-    .nav-right span { display: none; }
+    /* Phone width: the brand ran straight into "Features" (0px apart at
+       375px). Keep GitHub + Download; the in-page links are a scroll away. */
+    .nav-right a[href^="#"] { display: none; }
   }
 </style>
 </head>

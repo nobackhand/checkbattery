@@ -8,13 +8,26 @@ function New-BatteryIcon {
         [int]$Percent,
         [string]$Status,
         # Charging gloss animation step (0..3); -1 = no animation frame
-        [int]$AnimPhase = -1
+        [int]$AnimPhase = -1,
+        # Icon size in pixels; 0 = the size Windows shows tray icons at
+        [int]$Size = 0
     )
 
-    $bmp = New-Object System.Drawing.Bitmap(16, 16)
+    # Drawn at the tray's real size. The design below is laid out on a 16px
+    # grid, but at 125/150/200% scaling Windows shows tray icons at 20/24/32px
+    # and stretched a 16px bitmap to fit - a soft icon beside crisp ones. The
+    # same drawing is now scaled up instead (the process is DPI-aware, so
+    # SmallIconSize reports the real size).
+    $n = $Size
+    if ($n -le 0) {
+        try { $n = [System.Windows.Forms.SystemInformation]::SmallIconSize.Width } catch { $n = 16 }
+    }
+    $n = [math]::Max(16, $n)
+    $bmp = New-Object System.Drawing.Bitmap($n, $n)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $g.Clear([System.Drawing.Color]::Transparent)
+    $g.ScaleTransform(($n / 16.0), ($n / 16.0))
 
     # Pill dimensions (leave 1px margin for anti-aliasing)
     $pillX = 1
@@ -71,6 +84,10 @@ function New-BatteryIcon {
             (New-Object System.Drawing.PointF(8.4, 6.8))
         )
         $boltPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(170, 0, 0, 0), 1.6)  # dark edge for contrast on amber
+        # Round joins: the default MITER join extends sharp corners up to 10x
+        # the pen width, and the bolt's two tips are very sharp - the outline
+        # shot a dark spike out above and below the battery, onto the taskbar
+        $boltPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
         $g.DrawPolygon($boltPen, $bolt); $boltPen.Dispose()
         $boltBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
         $g.FillPolygon($boltBrush, $bolt); $boltBrush.Dispose()

@@ -49,28 +49,26 @@ function Read-PowerMeterMilliwatts {
         Ultra G1A: instances present, CookedValue 0), and desktops have no
         instances at all. 0 and every failure alike mean "no reading".
 
-        The counter object is built once and cached, and a machine without one
-        is remembered as such, so the slow category probe (~100ms+) never runs
-        again on a refresh tick.
+        The probe for the counter set runs OFF the UI thread (PowerMeterProbe,
+        010-init): a process's first perf-category query reads every provider
+        on the machine and was measured at 22.7s on a busy desktop - made here,
+        on the UI thread at startup, it froze the app with no pill. Until the
+        probe answers there is simply no meter reading yet, and the battery
+        rates carry the power line as on any meterless machine. A machine
+        without a meter is remembered as such and never re-probed.
     #>
     [OutputType([double])]
     param()
     if ($script:powerMeterState -eq 'unavailable') { return -1 }
     try {
-        if ($null -eq $script:powerMeterCounter) {
-            if (-not [System.Diagnostics.PerformanceCounterCategory]::Exists('Power Meter')) {
-                $script:powerMeterState = 'unavailable'
-                return -1
-            }
-            $cat = New-Object System.Diagnostics.PerformanceCounterCategory('Power Meter')
-            if (-not $cat.InstanceExists('_Total')) {
-                $script:powerMeterState = 'unavailable'
-                return -1
-            }
-            $script:powerMeterCounter = New-Object System.Diagnostics.PerformanceCounter('Power Meter', 'Power', '_Total', $true)
-            $script:powerMeterState = 'ok'
+        $probe = [PowerMeterProbe]::State()
+        if ($probe -eq 0) { return -1 }
+        if ($probe -lt 0) {
+            $script:powerMeterState = 'unavailable'
+            return -1
         }
-        $mw = [double]$script:powerMeterCounter.NextValue()
+        $script:powerMeterState = 'ok'
+        $mw = [double][PowerMeterProbe]::Read()
         if ([double]::IsNaN($mw) -or $mw -le 0) { return -1 }
         return $mw
     } catch {
@@ -78,10 +76,7 @@ function Read-PowerMeterMilliwatts {
         # disabled outright (lodctr /R territory). That must never reach the
         # timer tick - stop asking.
         $script:powerMeterState = 'unavailable'
-        if ($null -ne $script:powerMeterCounter) {
-            try { $script:powerMeterCounter.Dispose() } catch {}
-            $script:powerMeterCounter = $null
-        }
+        try { [PowerMeterProbe]::Close() } catch {}
         return -1
     }
 }

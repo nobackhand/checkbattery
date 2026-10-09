@@ -195,6 +195,23 @@ $script:displaySettingsHandler = {
 }
 [Microsoft.Win32.SystemEvents]::add_DisplaySettingsChanged($script:displaySettingsHandler)
 
+# "Auto (follow Windows)" follows a Windows light/dark switch while running.
+# It used to read the Windows theme only at startup or on a Settings change,
+# so the pill and popups kept the old palette until a restart. Windows
+# announces the switch as a settings broadcast (WM_SETTINGCHANGE
+# "ImmersiveColorSet"), which SystemEvents raises as UserPreferenceChanged.
+# That fires for many unrelated settings, hence the cheap 'auto' check first.
+$script:userPrefHandler = {
+    param($sender, $e)
+    try {
+        if ($script:config.Theme -ne 'auto') { return }
+        if (Test-AutoThemeStale -ThemeSetting $script:config.Theme -IsDark $script:theme.IsDark -SystemLight (Get-SystemTheme)) {
+            Set-Theme
+        }
+    } catch {}
+}
+[Microsoft.Win32.SystemEvents]::add_UserPreferenceChanged($script:userPrefHandler)
+
 # Auto-dismiss timer for pill context menu (closes when mouse moves away)
 $script:menuDismissTimer = New-Object System.Windows.Forms.Timer
 $script:menuDismissTimer.Interval = 200
@@ -629,6 +646,7 @@ $script:mainForm.Add_FormClosing({
         # Unregister system events to avoid leaks
         [Microsoft.Win32.SystemEvents]::remove_PowerModeChanged($script:powerModeHandler)
         [Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($script:displaySettingsHandler)
+        [Microsoft.Win32.SystemEvents]::remove_UserPreferenceChanged($script:userPrefHandler)
         # Guarded: the guard can legitimately hold no mutex (see
         # New-SingleInstanceMutex - a mutex failure lets the app run anyway),
         # and teardown must not throw and strand the rest of this handler.
