@@ -48,8 +48,11 @@ function Import-HelperTypes {
     param(
         [string]$Source,
         [string[]]$References,
-        # Where compiled helpers are kept. Tests point this elsewhere.
-        [string]$CacheDir = (Join-Path $env:LOCALAPPDATA 'BatteryPill')
+        # Where compiled helpers are kept; empty means %LOCALAPPDATA%\BatteryPill.
+        # Tests point this elsewhere.
+        [string]$CacheDir = '',
+        # Test seam: $null asks Windows whether this process is elevated.
+        [AllowNull()][Nullable[bool]]$Elevated = $null
     )
     # Load the C# helper types, compiling them only when they changed. Add-Type
     # with source runs the C# compiler on EVERY launch - measured 1-3s on an
@@ -59,49 +62,73 @@ function Import-HelperTypes {
     # references and the CLR, so any change to the C# compiles afresh and an
     # unchanged build loads in ~35ms. Any failure along the way falls back to
     # the old in-memory compile. Returns which path was taken.
-    $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $keyBytes = [System.Text.Encoding]::UTF8.GetBytes(($Source + '|' + ($References -join ',') + '|' + [Environment]::Version))
-        $hash = -join ($sha.ComputeHash($keyBytes)[0..7] | ForEach-Object { $_.ToString('x2') })
-    } finally { $sha.Dispose() }
-    $dll = Join-Path $CacheDir ('helpers-' + $hash + '.dll')
-    $loadFailed = $false
-    if (Test-Path -LiteralPath $dll) {
+        if ($null -eq $Elevated) {
+            $principal = New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())
+            $Elevated = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+        }
+        # An elevated process must not load code from a folder the unelevated
+        # user can write to: compile in memory, as before the cache existed
+        if ($Elevated) { throw 'elevated: not using the cache' }
+        # Resolved in here, not as the parameter default: a default that throws
+        # (LOCALAPPDATA unset) fails binding, the fallback never runs, and no
+        # helper type loads at all
+        if (-not $CacheDir) { $CacheDir = Join-Path $env:LOCALAPPDATA 'BatteryPill' }
+        $sha = [System.Security.Cryptography.SHA256]::Create()
         try {
-            Add-Type -Path $dll -ErrorAction Stop
-            return 'cache'
-        } catch {
-            # Unreadable or damaged: compile it again below
-            $loadFailed = $true
-            try { Remove-Item -LiteralPath $dll -Force -ErrorAction Stop } catch {}
+            $keyBytes = [System.Text.Encoding]::UTF8.GetBytes(($Source + '|' + ($References -join ',') + '|' + [Environment]::Version))
+            $hash = -join ($sha.ComputeHash($keyBytes)[0..7] | ForEach-Object { $_.ToString('x2') })
+        } finally { $sha.Dispose() }
+        $dll = Join-Path $CacheDir ('helpers-' + $hash + '.dll')
+        $how = $null
+        $load = $dll
+        $loadFailed = $false
+        if (Test-Path -LiteralPath $dll) {
+            try {
+                Add-Type -Path $dll -ErrorAction Stop
+                $how = 'cache'
+            } catch {
+                # Unreadable or damaged: compile it again below
+                $loadFailed = $true
+                try { Remove-Item -LiteralPath $dll -Force -ErrorAction Stop } catch {}
+            }
         }
-    }
-    try {
-        if (-not (Test-Path -LiteralPath $CacheDir)) { New-Item -ItemType Directory -Path $CacheDir -Force -ErrorAction Stop | Out-Null }
-        # Compile beside the final name, then rename: a second instance
-        # starting at the same moment never loads a half-written DLL
-        $tmp = Join-Path $CacheDir ('helpers-' + $hash + '.' + $PID + '.tmp.dll')
-        Add-Type -ReferencedAssemblies $References -TypeDefinition $Source -OutputAssembly $tmp -OutputType Library -ErrorAction Stop
-        if ($loadFailed) {
-            # .NET remembers a failed load per PATH for the rest of the
-            # process, so the rebuilt DLL cannot load under the old name
-            # now. Load it from its own name; the copy under the real name
-            # serves the next launch.
-            try { Copy-Item -LiteralPath $tmp -Destination $dll -Force -ErrorAction Stop } catch {}
-            $load = $tmp
-        } else {
-            $load = $dll
-            try { Move-Item -LiteralPath $tmp -Destination $dll -ErrorAction Stop } catch { $load = $tmp }
+        if ($null -eq $how) {
+            if (-not (Test-Path -LiteralPath $CacheDir)) { New-Item -ItemType Directory -Path $CacheDir -Force -ErrorAction Stop | Out-Null }
+            # Compile beside the final name, then rename: a second instance
+            # starting at the same moment never loads a half-written DLL
+            $tmp = Join-Path $CacheDir ('helpers-' + $hash + '.' + $PID + '.tmp.dll')
+            Add-Type -ReferencedAssemblies $References -TypeDefinition $Source -OutputAssembly $tmp -OutputType Library -ErrorAction Stop
+            if ($loadFailed) {
+                # .NET remembers a failed load per PATH for the rest of the
+                # process, so the rebuilt DLL cannot load under the old name
+                # now. Load it from its own name; the copy under the real name
+                # serves the next launch.
+                try { Copy-Item -LiteralPath $tmp -Destination $dll -Force -ErrorAction Stop } catch {}
+                $load = $tmp
+            } else {
+                try { Move-Item -LiteralPath $tmp -Destination $dll -ErrorAction Stop } catch { $load = $tmp }
+            }
+            Add-Type -Path $load -ErrorAction Stop
+            $how = 'compiled'
         }
-        Add-Type -Path $load -ErrorAction Stop
-        # Older builds' helpers are dead weight now
-        Get-ChildItem -LiteralPath $CacheDir -Filter 'helpers-*.dll' -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -ne $dll -and $_.FullName -ne $load } | ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop } catch {} }
-        return 'compiled'
     } catch {
         Add-Type -ReferencedAssemblies $References -TypeDefinition $Source
         return 'memory'
     }
+    # Sweep older builds' helpers and the temp DLLs earlier launches had to
+    # load from their own name (a loaded DLL cannot be deleted while it runs).
+    # Compare NAMES: Get-ChildItem reports long paths while $CacheDir may be an
+    # 8.3 short path, and a FullName compare deleted the DLL just rebuilt.
+    # Anything under a minute old may be another launch's compile in flight.
+    try {
+        $keep = @([System.IO.Path]::GetFileName($dll), [System.IO.Path]::GetFileName($load))
+        $cutoff = (Get-Date).AddMinutes(-1)
+        Get-ChildItem -LiteralPath $CacheDir -Filter 'helpers-*.dll' -ErrorAction SilentlyContinue |
+            Where-Object { $keep -notcontains $_.Name -and $_.LastWriteTime -lt $cutoff } |
+            ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop } catch {} }
+    } catch {}
+    return $how
 }
 
 # All native/C# helper types in ONE compilation (four separate Add-Type calls
