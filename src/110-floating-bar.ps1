@@ -1843,6 +1843,32 @@ function New-BatteryPopupContent {
 # of rendering on top of each other. Pruned of closed cards at each Show.
 $script:openNotifCards = New-Object System.Collections.ArrayList
 
+function Get-NotificationStackBottom {
+    [OutputType([int])]
+    param(
+        [System.Drawing.Rectangle]$WorkingArea,
+        [int]$CardWidth,
+        [int]$CardHeight,
+        # The pill's bounds; Empty when it is hidden (or not created yet)
+        [System.Drawing.Rectangle]$Pill = [System.Drawing.Rectangle]::Empty,
+        [int]$Gap = 8
+    )
+    # Where the stack of cards rests - the bottom edge of the lowest card.
+    # Normally 20px above the bottom of the screen, bottom-right. That is
+    # also where the pill rests by default, so a 10-second battery warning
+    # sat on top of the very reading it was warning about. If the lowest
+    # card would cover the pill, the stack starts just above it instead.
+    $bottom = $WorkingArea.Bottom - 20
+    if ($Pill.IsEmpty) { return $bottom }
+    $card = New-Object System.Drawing.Rectangle(($WorkingArea.Right - $CardWidth - 10), ($bottom - $CardHeight), $CardWidth, $CardHeight)
+    $padded = New-Object System.Drawing.Rectangle(($Pill.X - $Gap), ($Pill.Y - $Gap), ($Pill.Width + 2 * $Gap), ($Pill.Height + 2 * $Gap))
+    if (-not $card.IntersectsWith($padded)) { return $bottom }
+    $above = $Pill.Top - $Gap
+    # No room above a pill near the top of the screen: keep the corner
+    if (($above - $CardHeight) -lt ($WorkingArea.Top + 8)) { return $bottom }
+    return $above
+}
+
 function Show-BatteryNotification {
     [OutputType([void])]
     param(
@@ -1978,7 +2004,13 @@ function Show-BatteryNotification {
     # Slide in over a short rise just below the resting slot (a stacked card
     # rising from the true screen bottom would cross the cards under it).
     # Clamped so a tall stack can never push a card off the top of the screen.
-    $slideTarget = [math]::Max($screen.Top + 8, $screen.Bottom - $nH - 20 - $stackOffset)
+    # The stack starts above the pill when it would otherwise cover it.
+    $pillRect = [System.Drawing.Rectangle]::Empty
+    if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed -and $script:floatingBar.Visible) {
+        $pillRect = $script:floatingBar.Bounds
+    }
+    $stackBottom = Get-NotificationStackBottom -WorkingArea $screen -CardWidth $nW -CardHeight $nH -Pill $pillRect
+    $slideTarget = [math]::Max($screen.Top + 8, $stackBottom - $nH - $stackOffset)
     $notif.Top = $slideTarget + 18
     $nState = @{
         Phase       = "in"      # "in", "hold", "out"
