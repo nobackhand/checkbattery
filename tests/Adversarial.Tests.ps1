@@ -653,16 +653,29 @@ Test-Case 'CheckBattery.ps1 takes the first pack of a dual-battery array' {
         'the WMI query must collapse the dual-battery array before any [int] cast'
 }
 
-Test-Case 'CheckBattery.ps1: a laptop holding at a charge cap (WMI status 2) says Plugged In, not Charging' {
-    # The real CLI in its own process, with Win32_Battery stubbed: plugged in
-    # at an 80% cap, run time unknown (the on-AC sentinel), nothing charging
+# The real CLI in its own process, with Win32_Battery stubbed and .NET taken
+# out (Add-Type throws, so the CLI's PowerStatus is $null) - otherwise the
+# host's own live power state (a laptop on battery, or charging) decides.
+function Invoke-CliWithBattery {
+    [OutputType([string])]
+    param([int]$Percent, [int]$Status)
     $cli = Join-Path (Split-Path -Parent $PSScriptRoot) 'CheckBattery.ps1'
-    $probe = Join-Path $script:tmpDir 'cli-cap-probe.ps1'
-    $body = "function Get-CimInstance { [pscustomobject]@{ EstimatedChargeRemaining = 80; BatteryStatus = 2; EstimatedRunTime = 71582788; TimeToFullCharge = `$null } }`r`n& '$cli'`r`n"
+    $probe = Join-Path $script:tmpDir ('cli-probe-' + [guid]::NewGuid().ToString('N') + '.ps1')
+    $body = "function Add-Type { throw 'stubbed' }`r`n" +
+    "function Get-CimInstance { [pscustomobject]@{ EstimatedChargeRemaining = $Percent; BatteryStatus = $Status; EstimatedRunTime = 71582788; TimeToFullCharge = `$null } }`r`n" +
+    "& '$cli'`r`n"
     [System.IO.File]::WriteAllText($probe, $body)
-    $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe 2>&1 | Out-String)
+    return (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe 2>&1 | Out-String)
+}
+
+Test-Case 'CheckBattery.ps1: a laptop holding at a charge cap (WMI status 2) says Plugged In, not Charging' {
+    $out = Invoke-CliWithBattery -Percent 80 -Status 2
     Assert-True ($out -match 'Status:\s+Plugged In') "the CLI said:`n$out"
     Assert-True ($out -match 'N/A \(plugged in\)') "the CLI said:`n$out"
 }
-Remove-Item $script:tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+
+Test-Case 'CheckBattery.ps1: plugged in at 15% still says Low (Plugged In never hides the low bands)' {
+    $out = Invoke-CliWithBattery -Percent 15 -Status 11
+    Assert-True ($out -match 'Status:\s+Low') "the CLI said:`n$out"
+}Remove-Item $script:tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 exit (Complete-Tests)

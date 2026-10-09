@@ -195,16 +195,18 @@ if ($isFullyCharged) {
 } elseif ($isCharging) {
     $statusText = "Charging"
     $statusColor = "Yellow"
-} elseif ($isPluggedIn -and $timeMinutes -le 0) {
-    # Plugged in and holding (a charge cap): neither charging nor draining
-    $statusText = "Plugged In"
-    $statusColor = "Cyan"
 } elseif ($chargePercent -ge 0 -and $chargePercent -le 10) {
     $statusText = "Critical"
     $statusColor = "Red"
 } elseif ($chargePercent -ge 0 -and $chargePercent -le 20) {
     $statusText = "Low"
     $statusColor = "DarkYellow"
+} elseif ($isPluggedIn) {
+    # Plugged in and holding (a charge cap): neither charging nor draining.
+    # Below the Critical/Low bands on purpose - on AC the Status label is the
+    # only low-charge cue left (the warnings below skip plugged-in machines).
+    $statusText = "Plugged In"
+    $statusColor = "Cyan"
 } else {
     $statusText = "Discharging"
     $statusColor = "Cyan"
