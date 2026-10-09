@@ -122,6 +122,10 @@ function Show-FirstRunTooltip {
 
     # NoActivateForm: the tip appears unattended and must not steal focus
     $script:firstRunTip = New-Object NoActivateForm
+    # Manual, or Windows ignores the "near the pill" Location set below: a new
+    # user's tips landed at the default cascade spot in the top-left corner
+    # (measured 114,114 with the pill bottom-right).
+    $script:firstRunTip.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $script:firstRunTip.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $script:firstRunTip.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $script:firstRunTip.Size = New-Object System.Drawing.Size($ttW, $ttH)
