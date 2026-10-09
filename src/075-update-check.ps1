@@ -198,7 +198,10 @@ function Set-UpdateCheckEnabled {
 
 function Show-PendingUpdateCard {
     [OutputType([void])]
-    param()
+    param(
+        # Complete-UpdateCheck saves once itself, after deciding the stamp
+        [switch]$NoSave
+    )
     # Announce a found release - but not over a fullscreen game or video,
     # where nobody would see it and it would still count as said. It waits
     # for the next schedule tick instead.
@@ -209,7 +212,10 @@ function Show-PendingUpdateCard {
     if ($fullscreen) { return }
     $script:pendingUpdateCard = $null
     $script:config.AnnouncedVersion = $rel.Version
-    Save-Config
+    # The check that found it was left unstamped while the card waited;
+    # now that it is said, that counts as today's check (no extra request)
+    $script:config.LastUpdateCheck = Get-Date
+    if (-not $NoSave) { Save-Config }
     Show-BatteryNotification -Message "BatteryPill $($rel.Version) is out" `
         -SubMessage "You have $script:appVersion. Click here to get the new one." `
         -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100)) -HoldSeconds 12 -ClickUrl $rel.Url
@@ -267,19 +273,18 @@ function Complete-UpdateCheck {
         $script:pendingUpdateCard = $null
         $script:config.AnnouncedVersion = $result.Announced
     }
-    Save-Config
     Update-UpdateMenuItems
     if ($result.Notify) {
         # AnnouncedVersion is written when the card is actually SHOWN
         $script:pendingUpdateCard = $release
-        Show-PendingUpdateCard
+        Show-PendingUpdateCard -NoSave
         # Held back for a fullscreen app: leave today's check unstamped. The
         # offer lives only in memory until the card is seen, so a restart
         # must re-check (a minute after launch) rather than wait a day with
         # nothing on offer.
-        if ($null -ne $script:pendingUpdateCard) {
-            $script:config.LastUpdateCheck = $previousCheck
-            Save-Config
-        }
+        if ($null -ne $script:pendingUpdateCard) { $script:config.LastUpdateCheck = $previousCheck }
     }
+    # ONE save per check: a config that cannot be written shows a failure
+    # card per save, and this can run every 30 minutes through a game.
+    Save-Config
 }
