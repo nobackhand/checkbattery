@@ -107,30 +107,52 @@ Test-Case 'schedule: a last-check stamp in the future (clock went back) checks n
 
 Test-Case 'result: a newer release is announced once' {
     $rel = @{ Version = '1.5.0'; Url = 'u' }
-    $first = Resolve-UpdateCheckResult -Release $rel -CurrentVersion '1.4.0' -NotifiedVersion $null
+    $first = Resolve-UpdateCheckResult -Release $rel -CurrentVersion '1.4.0' -AnnouncedVersion $null
     Assert-Equal 'available' $first.State
     Assert-Equal $true $first.Notify
-    $again = Resolve-UpdateCheckResult -Release $rel -CurrentVersion '1.4.0' -NotifiedVersion '1.5.0'
+    $again = Resolve-UpdateCheckResult -Release $rel -CurrentVersion '1.4.0' -AnnouncedVersion '1.5.0'
     Assert-Equal 'available' $again.State
     Assert-Equal $false $again.Notify
 }
 
 Test-Case 'result: a release newer than the one already announced is announced too' {
-    $r = Resolve-UpdateCheckResult -Release @{ Version = '1.6.0'; Url = 'u' } -CurrentVersion '1.4.0' -NotifiedVersion '1.5.0'
+    $r = Resolve-UpdateCheckResult -Release @{ Version = '1.6.0'; Url = 'u' } -CurrentVersion '1.4.0' -AnnouncedVersion '1.5.0'
     Assert-Equal $true $r.Notify
 }
 
 Test-Case 'result: up to date, and a failed check, both stay quiet' {
-    $cur = Resolve-UpdateCheckResult -Release @{ Version = '1.4.0'; Url = 'u' } -CurrentVersion '1.4.0' -NotifiedVersion $null
+    $cur = Resolve-UpdateCheckResult -Release @{ Version = '1.4.0'; Url = 'u' } -CurrentVersion '1.4.0' -AnnouncedVersion $null
     Assert-Equal 'current' $cur.State
     Assert-Equal $false $cur.Notify
-    $fail = Resolve-UpdateCheckResult -Release $null -CurrentVersion '1.4.0' -NotifiedVersion $null
+    $fail = Resolve-UpdateCheckResult -Release $null -CurrentVersion '1.4.0' -AnnouncedVersion $null
     Assert-Equal 'failed' $fail.State
     Assert-Equal $false $fail.Notify
 }
 
+Test-Case 'result: an up-to-date answer withdraws an earlier announcement (a pulled release)' {
+    # 1.5.0 was announced, then pulled: latest is 1.4.0 again. Keeping
+    # AnnouncedVersion would re-offer the pulled release after every restart.
+    $r = Resolve-UpdateCheckResult -Release @{ Version = '1.4.0'; Url = 'u' } -CurrentVersion '1.4.0' -AnnouncedVersion '1.5.0'
+    Assert-Equal 'current' $r.State
+    Assert-Equal $null $r.Announced
+    $a = Resolve-UpdateCheckResult -Release @{ Version = '1.5.0'; Url = 'u' } -CurrentVersion '1.4.0' -AnnouncedVersion $null
+    Assert-Equal '1.5.0' $a.Announced
+}
+
+Test-Case 'result: no response retries soon; an unusable response counts as checked' {
+    # Offline: not stamped, so the next 30-minute tick tries again.
+    $off = Resolve-UpdateCheckResult -Release $null -CurrentVersion '1.4.0' -AnnouncedVersion '1.5.0' -Received $false
+    Assert-Equal $false $off.Stamp
+    Assert-Equal '1.5.0' $off.Announced
+    # A reply with a non-version tag: retrying every 30 minutes would not
+    # change the answer, so it waits for tomorrow.
+    $junk = Resolve-UpdateCheckResult -Release $null -CurrentVersion '1.4.0' -AnnouncedVersion $null -Received $true
+    Assert-Equal 'failed' $junk.State
+    Assert-Equal $true $junk.Stamp
+}
+
 Test-Case 'result: a dev build AHEAD of the latest release is up to date' {
-    $r = Resolve-UpdateCheckResult -Release @{ Version = '1.4.0'; Url = 'u' } -CurrentVersion '1.4.1' -NotifiedVersion $null
+    $r = Resolve-UpdateCheckResult -Release @{ Version = '1.4.0'; Url = 'u' } -CurrentVersion '1.4.1' -AnnouncedVersion $null
     Assert-Equal 'current' $r.State
 }
 
@@ -142,15 +164,15 @@ Test-Case 'about: the version line says what the last check found' {
 }
 
 Test-Case 'restart: an announced release still newer than this build stays on offer' {
-    $r = Restore-UpdateAvailability -CurrentVersion '1.4.0' -NotifiedVersion '1.5.0'
+    $r = Restore-UpdateAvailability -CurrentVersion '1.4.0' -AnnouncedVersion '1.5.0'
     Assert-Equal '1.5.0' $r.Version
     Assert-True ($r.Url -like 'https://github.com/nobackhand/checkbattery/releases/*')
 }
 
 Test-Case 'restart: once the user has upgraded, nothing is offered' {
-    Assert-Equal $null (Restore-UpdateAvailability -CurrentVersion '1.5.0' -NotifiedVersion '1.5.0')
-    Assert-Equal $null (Restore-UpdateAvailability -CurrentVersion '1.4.0' -NotifiedVersion $null)
-    Assert-Equal $null (Restore-UpdateAvailability -CurrentVersion '1.4.0' -NotifiedVersion 'garbage')
+    Assert-Equal $null (Restore-UpdateAvailability -CurrentVersion '1.5.0' -AnnouncedVersion '1.5.0')
+    Assert-Equal $null (Restore-UpdateAvailability -CurrentVersion '1.4.0' -AnnouncedVersion $null)
+    Assert-Equal $null (Restore-UpdateAvailability -CurrentVersion '1.4.0' -AnnouncedVersion 'garbage')
 }
 
 exit (Complete-Tests)

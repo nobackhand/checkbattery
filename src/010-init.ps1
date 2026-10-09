@@ -351,6 +351,23 @@ public static class PowerMeterProbe {
         }
     }
 }
+
+// The daily update check's download, entirely on a pool thread. WebClient's
+// own *Async methods still resolve DNS and the proxy on the CALLING thread
+// before returning - measured 1.1-2.2s of frozen UI per check. The widget
+// polls the returned Task from a Forms.Timer; no PowerShell runs off the UI
+// thread.
+public static class UpdateFetch {
+    public static System.Threading.Tasks.Task<string> Start(string uri, string userAgent) {
+        return System.Threading.Tasks.Task.Run(new Func<string>(delegate {
+            using (System.Net.WebClient wc = new System.Net.WebClient()) {
+                wc.Headers.Add("User-Agent", userAgent);
+                wc.Encoding = System.Text.Encoding.UTF8;
+                return wc.DownloadString(uri);
+            }
+        }));
+    }
+}
 "@
 
 # Declare DPI awareness before any forms are created
