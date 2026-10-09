@@ -266,7 +266,9 @@ function Get-BatteryInfo {
         if ($dotnetPower.PowerLineStatus -eq 'Online') {
             $info.IsPluggedIn = $true
         }
-        if ($null -ne $dnChargeStatus -and ([int]$dnChargeStatus -band 8) -eq 8) {
+        # 255 is BatteryFlag "Unknown" - every bit set, Charging (8) included -
+        # so it said "Charging" for a laptop draining on battery.
+        if ($null -ne $dnChargeStatus -and [int]$dnChargeStatus -ne 255 -and ([int]$dnChargeStatus -band 8) -eq 8) {
             $info.IsCharging = $true
         }
     }

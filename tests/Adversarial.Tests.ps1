@@ -317,6 +317,12 @@ Test-Case 'status 6 (Charging) is charging without any help from .NET' {
     Assert-Equal $true $i.IsCharging
 }
 
+Test-Case '.NET "Unknown" (255) does not make a draining laptop read as charging' {
+    # 255 sets every bit, Charging (8) included
+    $i = Invoke-Battery -Wmi (New-FakeBattery -BatteryStatus 1) -Power (New-FakePowerStatus -BatteryChargeStatus 255)
+    Assert-Equal $false $i.IsCharging
+}
+
 Test-Case 'out-of-range BatteryStatus is treated as unknown, not as a state' {
     $i = Invoke-Battery -Wmi (New-FakeBattery -BatteryStatus 99)
     Assert-Equal $false $i.IsCharging
