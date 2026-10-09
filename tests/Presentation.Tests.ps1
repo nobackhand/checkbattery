@@ -289,10 +289,10 @@ function Add-Run {
     # close together in time - fixtures have to reflect that, because the gap
     # between samples is exactly what separates one session from the next.
     [OutputType([void])]
-    param([int]$StartMin, [int]$Minutes, [int]$FromPct, [int]$ToPct, [bool]$Charging = $false)
+    param([int]$StartMin, [int]$Minutes, [int]$FromPct, [int]$ToPct, [bool]$Charging = $false, [bool]$PluggedIn = $false)
     for ($i = 0; $i -le $Minutes; $i++) {
         $pct = [int][math]::Round($FromPct + (($ToPct - $FromPct) * ($i / [double]$Minutes)))
-        $script:sessSamples += , @(($StartMin + $i), $pct, $Charging)
+        $script:sessSamples += , @(($StartMin + $i), $pct, $Charging, $PluggedIn)
     }
 }
 
@@ -303,9 +303,10 @@ function Set-History {
     $script:batteryHistory = New-Object System.Collections.ArrayList
     foreach ($s in $script:sessSamples) {
         $null = $script:batteryHistory.Add(@{
-                Time       = $sessT0.AddMinutes($s[0])
-                Percent    = [int]$s[1]
-                IsCharging = [bool]$s[2]
+                Time        = $sessT0.AddMinutes($s[0])
+                Percent     = [int]$s[1]
+                IsCharging  = [bool]$s[2]
+                IsPluggedIn = [bool]$s[3]
             })
     }
     $script:sessSamples = @()
@@ -370,6 +371,26 @@ Test-Case 'session: history restored from an old config does not resurrect a sta
     Add-Run -StartMin 4350 -Minutes 60 -FromPct 99 -ToPct 93
     Set-History
     Assert-Equal 'On battery 1h 0m - used 6%' (Get-BatterySessionSummary)
+}
+
+Test-Case 'session: silent while parked on the cable at a charge cap' {
+    # A pack held at a charge limit (or simply full) on AC is neither charging
+    # nor on battery, so it never produces the charging sample the walk-back
+    # stopped at. The card used to announce "On battery 2h 0m - used 15%"
+    # for a laptop that had been on the charger for the last hour.
+    Add-Run -StartMin 0 -Minutes 60 -FromPct 95 -ToPct 80
+    Add-Run -StartMin 61 -Minutes 60 -FromPct 80 -ToPct 80 -PluggedIn $true
+    Set-History
+    Assert-Equal '' (Get-BatterySessionSummary)
+}
+
+Test-Case 'session: an unplug after sitting full on the cable starts a new run' {
+    # The other side of the same gap: an hour parked at 100% on AC, then
+    # unplugged. Time on the cable is not time on battery.
+    Add-Run -StartMin 0 -Minutes 60 -FromPct 100 -ToPct 100 -PluggedIn $true
+    Add-Run -StartMin 61 -Minutes 60 -FromPct 100 -ToPct 90
+    Set-History
+    Assert-Equal 'On battery 1h 0m - used 10%' (Get-BatterySessionSummary)
 }
 
 # ---- Get-HistorySpanMinutes (the sparkline's span label) ----
