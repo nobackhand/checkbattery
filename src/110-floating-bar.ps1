@@ -722,6 +722,9 @@ function New-FloatingBar {
                             (New-Object System.Drawing.PointF(($bcx + 0.02 * $bu), ($bcy - 0.12 * $bu)))
                         )
                         $boltEdge = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb([int]($bpAlpha * 0.6), 0, 0, 0), 1.6)
+                        # Round joins - a miter join spikes far past the bolt's
+                        # sharp tips (same fix as the tray icon's bolt)
+                        $boltEdge.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
                         $g.DrawPolygon($boltEdge, $boltPts); $boltEdge.Dispose()
                         $boltFill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb($bpAlpha, 255, 255, 255))
                         $g.FillPolygon($boltFill, $boltPts); $boltFill.Dispose()
