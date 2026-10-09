@@ -72,7 +72,10 @@ if (-not $text.Contains($mutexToken)) {
     Remove-Item $stageDir -Recurse -Force
     exit 1
 }
-$text = $text.Replace($mutexToken, 'BatteryPillRenderHarness')
+# Unique per run, too: two renders at once (two worktrees, a reviewer agent
+# alongside an author) used to share one harness mutex, so the second sat on
+# that same modal until its timeout.
+$text = $text.Replace($mutexToken, ('BatteryPillRenderHarness' + [guid]::NewGuid().ToString('N')))
 
 $suffix = @'
 
@@ -179,7 +182,10 @@ function Render-PopupState {
     $script:hzPath = Join-Path $OUT ($name + '.png')
     $script:hzDtb = $HZDTB
     $script:hzTimer = New-Object System.Windows.Forms.Timer
-    $script:hzTimer.Interval = 450
+    # Well past the sparkline's 450ms draw-in: capturing AT 450ms raced it,
+    # and the graph's end dot (drawn only once the line is complete) was
+    # missing from some renders and present in others.
+    $script:hzTimer.Interval = 900
     $script:hzTimer.Add_Tick({
         $script:hzTimer.Stop()
         $cf = $script:hzForm
@@ -209,6 +215,18 @@ function Render-PillState {
     $script:config.DisplayMode = $mode
     Update-PillSize
     for ($k = 0; $k -lt 15; $k++) { Update-FloatingBar -BatteryInfo $info }   # converge accent lerp
+    # Land every animation the pulse timer would have finished. There is no
+    # message loop here, so without this the capture froze mid-animation: the
+    # first pill showed an empty fill and half-faded text (intro), and the
+    # charging state's plug-in bolt sat on top of its own text and the next
+    # state's too. Renders are the review oracle - they show the steady state.
+    $script:displayedFillPct = [double]$script:barDisplayPercent
+    $script:textFadeAlpha = 255
+    $script:flashAlpha = 0
+    $script:boltPopStart = $null
+    $script:shimmerStart = $null
+    $script:rippleState = $null
+    $script:themeFade = $null
     $script:floatingBar.Refresh()
     $w = $script:floatingBar.Width; $h = $script:floatingBar.Height
     $bmp = New-Object System.Drawing.Bitmap($w, $h)

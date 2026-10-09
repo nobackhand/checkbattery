@@ -342,7 +342,6 @@ function Reset-Estimator {
     # If Get-BatteryInfo ever reached the real meter under a bound seam, this
     # would be the tell: the function is not lifted here and would throw.
     $script:powerMeterState = 'untried'
-    $script:powerMeterCounter = $null
 }
 
 function New-WmiStub {
