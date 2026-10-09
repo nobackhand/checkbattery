@@ -538,6 +538,21 @@ function Get-SystemTheme {
     }
 }
 
+function Test-AutoThemeStale {
+    [OutputType([bool])]
+    param(
+        [string]$ThemeSetting,
+        [bool]$IsDark,
+        # Get-SystemTheme's answer: $true = Windows apps use the light theme
+        [bool]$SystemLight
+    )
+    # "Auto (follow Windows)" means FOLLOW: true when the Windows app theme
+    # no longer matches the palette on screen. Only 'auto' follows - an
+    # explicit dark/light choice is the user's, not Windows'.
+    if ($ThemeSetting -ne 'auto') { return $false }
+    return ($IsDark -eq $SystemLight)
+}
+
 function Set-Theme {
     [OutputType([void])]
     param()
