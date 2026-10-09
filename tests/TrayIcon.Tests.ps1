@@ -22,7 +22,9 @@ function Get-StrayPixelCount {
     # 0-2 and 14-15.
     [OutputType([int])]
     param([int]$Percent, [string]$Status)
-    $r = New-BatteryIcon -Percent $Percent -Status $Status
+    # -Size 16 pinned: these rows describe the 16px grid, and the default size
+    # is whatever the tray uses on THIS machine (24 at 150% scaling)
+    $r = New-BatteryIcon -Percent $Percent -Status $Status -Size 16
     $b = $r.Icon.ToBitmap()
     $n = 0
     for ($y = 0; $y -lt $b.Height; $y++) {
@@ -45,7 +47,7 @@ Test-Case 'tray icon: plain states draw nothing outside the battery either' {
 }
 
 Test-Case 'tray icon: charging still shows a bolt (white pixels inside the body)' {
-    $r = New-BatteryIcon -Percent 47 -Status 'Charging'
+    $r = New-BatteryIcon -Percent 47 -Status 'Charging' -Size 16
     $b = $r.Icon.ToBitmap()
     $white = 0
     for ($y = 4; $y -le 11; $y++) { for ($x = 0; $x -lt 16; $x++) { $c = $b.GetPixel($x, $y); if ($c.A -gt 200 -and $c.R -gt 230 -and $c.G -gt 230 -and $c.B -gt 230) { $white++ } } }
