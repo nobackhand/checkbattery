@@ -15,18 +15,19 @@ Write-Host 'NativeHelpers.Tests.ps1'
 
 $errs = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseInput((Get-AssembledWidgetText), [ref]$null, [ref]$errs)
+# The helper source is the here-string holding class Win32Icon (assigned to
+# $script:helperTypesSource and compiled by Import-HelperTypes)
 $csharp = $null
-foreach ($cmd in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true)) {
-    if ($cmd.GetCommandName() -ne 'Add-Type') { continue }
-    foreach ($el in $cmd.CommandElements) {
-        if (($el -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or
-                $el -is [System.Management.Automation.Language.StringConstantExpressionAst]) -and
-            $el.Value -match 'class Win32Icon') { $csharp = $el.Value }
-    }
+foreach ($s in $ast.FindAll({
+            param($n)
+            $n -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or
+            $n -is [System.Management.Automation.Language.StringConstantExpressionAst]
+        }, $true)) {
+    if ($s.Value -match 'public class Win32Icon') { $csharp = $s.Value }
 }
 
 Test-Case 'native: the single Add-Type helper block is found' {
-    Assert-True ($null -ne $csharp) 'no Add-Type here-string containing class Win32Icon'
+    Assert-True ($null -ne $csharp) 'no here-string containing class Win32Icon'
     Assert-True ($csharp -notmatch '\$') 'the block is an expandable here-string: a $ in the C# would be expanded by PowerShell'
 }
 
