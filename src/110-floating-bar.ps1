@@ -1853,7 +1853,10 @@ function Show-BatteryNotification {
         [System.Drawing.Color]$Accent = [System.Drawing.Color]::FromArgb(255, 70, 70),
         # Warnings deserve the long default; informational cards should pass
         # something shorter and get out of the way.
-        [int]$HoldSeconds = 10
+        [int]$HoldSeconds = 10,
+        # Optional: a link a click on the card opens (the update card). A click
+        # still dismisses the card either way.
+        [string]$ClickUrl = ''
     )
     # Custom dark-themed notification card — slides in from bottom-right, auto-dismiss 10s
     $gDs = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
@@ -1987,11 +1990,25 @@ function Show-BatteryNotification {
         Fonts       = @($nTitle.Font, $nSub.Font)
     }
 
-    # Dismissers: click anywhere on the card, or Escape
-    $dismissClick = { $nState.Phase = "out" }.GetNewClosure()
+    # Dismisser: click anywhere on the card (no Escape - see above). A card
+    # with a link opens it on that click, once: a double-click or a second
+    # click on a fading card must not open the browser twice. .NET's
+    # Process.Start rather than Open-ExternalLink: this is a closure, and a
+    # closure cannot see the script's functions or $script: state (see the
+    # GetNewClosure gotcha).
+    $dismissClick = {
+        if ($nState.Phase -eq "out") { return }
+        $nState.Phase = "out"
+        if ($ClickUrl) {
+            try { [void][System.Diagnostics.Process]::Start($ClickUrl) } catch {}
+        }
+    }.GetNewClosure()
     $notif.Add_Click($dismissClick)
     $nTitle.Add_Click($dismissClick)
     $nSub.Add_Click($dismissClick)
+    if ($ClickUrl) {
+        foreach ($cc in @($notif, $nTitle, $nSub)) { $cc.Cursor = [System.Windows.Forms.Cursors]::Hand }
+    }
 
     # Slide-in with cubic ease-out, hold 10s, fade out
     $notifTimer = New-Object System.Windows.Forms.Timer
