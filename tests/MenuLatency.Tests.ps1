@@ -57,6 +57,21 @@ Test-Case 'menus: both Power Plan submenus fill themselves when they open' {
     Assert-True ($targets -contains '$trayPowerItem') ('tray menu Power Plan has no DropDownOpening fill; found: ' + ($targets -join ', '))
 }
 
+Test-Case 'menus: both Power Plan items start with a placeholder (no arrow, no submenu without one)' {
+    # An item with no children shows no arrow, and WinForms never opens (so
+    # never fires DropDownOpening for) an empty dropdown: without the
+    # placeholder the plans could not be reached at all.
+    $seeded = @($ast.FindAll({
+                param($n)
+                $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+                $n.Member -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                $n.Member.Value -eq 'Add' -and
+                $n.Expression -is [System.Management.Automation.Language.MemberExpressionAst] -and
+                $n.Expression.Member.Extent.Text -eq 'DropDownItems'
+            }, $true) | ForEach-Object { $_.Expression.Expression.Extent.Text })
+    Assert-True ($seeded -contains '$pillPowerItem') 'the pill menu Power Plan item gets no placeholder'
+    Assert-True ($seeded -contains '$trayPowerItem') 'the tray menu Power Plan item gets no placeholder'
+}
 Test-Case 'menus: the placeholder that gives the submenu its arrow is replaced by the plans' {
     function Get-PowerPlans {
         [OutputType([hashtable[]])]
