@@ -9,7 +9,7 @@
 
 ## Architecture
 
-- **src/** — The widget source, split into 14 ordered modules (`010-init.ps1` … `140-main.ps1`) that concatenate byte-exactly, in filename order, into the single script that ships (`tools\_assemble.ps1` is the shared assembler; dot-source it and call `Write-AssembledWidget`/`Get-AssembledWidgetText`). The widget creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position. Supports dark/light/auto themes, configurable pill size and display mode, accent color presets, battery history sparkline, and fullscreen auto-hide. `$script:appVersion` lives in `src\010-init.ps1`.
+- **src/** — The widget source, split into 15 ordered modules (`010-init.ps1` … `140-main.ps1`) that concatenate byte-exactly, in filename order, into the single script that ships (`tools\_assemble.ps1` is the shared assembler; dot-source it and call `Write-AssembledWidget`/`Get-AssembledWidgetText`). The widget creates a system tray `NotifyIcon` with context menu and a floating transparent pill bar. Uses WMI (`Win32_Battery`) for battery data with EMA-smoothed time estimates, a 3-second timer for updates, and a config file for persisting bar position. Supports dark/light/auto themes, configurable pill size and display mode, accent color presets, battery history sparkline, and fullscreen auto-hide. `$script:appVersion` lives in `src\010-init.ps1`.
 - **BatteryWidget.Run.ps1** — Source-run wrapper: assembles `src\` to `%TEMP%\BatteryPill-source-run\BatteryWidget.ps1`, carries the repo-root config json to/from the staging dir, and runs it via `powershell -STA -File`.
 - **Build.ps1** — Assembles `src\` to a temp staging file and compiles it to `BatteryPill-<version>.exe` using `Invoke-PS2EXE`.
 - **release.ps1** — One-command GitHub release: refuses a dirty tree or already-released version, runs `scripts/verify.sh`, builds, tags `v<version>`, and uploads two assets (versioned exe + stable-named `BatteryPill.exe` that the website's download button always points at).
@@ -27,7 +27,7 @@
 ### Rounded Corners (two mechanisms)
 - **The pill** uses Region-based clipping with `GraphicsPath` (no `TransparencyKey` = no purple fringe) — it's a capsule, which DWM can't produce.
 - **Popups/cards/notifications/tips** use native Win11 DWM rounded corners (`Set-NativeRoundedCorners` → `Win32Icon.TryRoundCorners`, DWMWA 33 = DWMWCP_ROUND): antialiased edges + the system window shadow. On Win10 (DWM call fails) they fall back to CS_DROPSHADOW + the old Region clip inside the same helper.
-- All C# helper types (`Win32Icon`, `DarkMenuColorTable`, `DarkCheckBox`, `PillMenuRenderer`, `PowerMeterProbe`) compile in ONE `Add-Type` call in `010-init.ps1` — splitting them back into separate calls costs ~1s of launch time (measured).
+- All C# helper types (`Win32Icon`, `DarkMenuColorTable`, `DarkCheckBox`, `PillMenuRenderer`, `PowerMeterProbe`, `UpdateFetch`) compile in ONE `Add-Type` call in `010-init.ps1` — splitting them back into separate calls costs ~1s of launch time (measured).
 
 ### Floating Pill Bar
 - `AutoScaleMode = None` set **before** `Size`, plus `MinimumSize`/`MaximumSize` constraints (108x34) to prevent WinForms DPI auto-scaling.

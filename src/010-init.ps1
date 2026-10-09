@@ -21,6 +21,8 @@
       POWER PLANS ................. tray submenu for switching plans
       STATUS COLOR & ACCENT ....... Get-StatusColor, accent presets, Get-AccentColor
       DYNAMIC TRAY ICON ........... New-BatteryIcon
+      UPDATE CHECK ................ daily latest-release check: Start/Complete-UpdateCheck,
+                                    the "is out" card, Set-UpdateCheckEnabled
       CONFIG ...................... Get-ConfigPath / Import-Config / Save-Config, autostart
       GDI HELPERS ................. Enable-DoubleBuffering, New-RoundedRectPath
       CACHED GDI+ BRUSHES/PENS .... Initialize-PillBrushes
