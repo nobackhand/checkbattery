@@ -22,6 +22,10 @@ $script:ioFailureAccent = $null
 
 $script:asDir = Join-Path $env:TEMP ("batterypill-autostart-" + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $script:asDir
+# Long form: GitHub's Windows runners set TEMP to an 8.3 short path
+# (C:\Users\RUNNER~1\...), while a shortcut's TargetPath always reads back
+# long - so comparing the two failed three cases in CI only, for the same file.
+$script:asDir = (Get-Item -LiteralPath $script:asDir).FullName
 $script:lnk = Join-Path $script:asDir 'BatteryPill.lnk'
 
 function New-FakeExe {
