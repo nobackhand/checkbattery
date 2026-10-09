@@ -294,6 +294,29 @@ Test-Case 'a FullChargeCapacity above DesignCapacity clamps wear at 0, never neg
     Assert-Equal 0.0 $i.BatteryWearPercent
 }
 
+# WMI BatteryStatus 2 is "on AC" - per Microsoft, "not necessarily charging".
+# A firmware charge cap parks there for hours; .NET's Charging flag (8) says
+# whether the pack is actually taking charge.
+Test-Case 'status 2 at a charge cap (no .NET Charging flag) is plugged in, not charging' {
+    $i = Invoke-Battery -Wmi (New-FakeBattery -EstimatedChargeRemaining 80 -BatteryStatus 2 -DischargeRate 0) `
+        -Power (New-FakePowerStatus -BatteryChargeStatus 1 -PowerLineStatus 'Online')
+    Assert-Equal $false $i.IsCharging
+    Assert-Equal $true $i.IsPluggedIn
+    Assert-Equal 'Plugged In' $i.StatusText
+}
+
+Test-Case 'status 2 while .NET says Charging is still charging' {
+    $i = Invoke-Battery -Wmi (New-FakeBattery -EstimatedChargeRemaining 55 -BatteryStatus 2 -DischargeRate 0) `
+        -Power (New-FakePowerStatus -BatteryChargeStatus 8 -PowerLineStatus 'Online')
+    Assert-Equal $true $i.IsCharging
+    Assert-Equal 'Charging' $i.StatusText
+}
+
+Test-Case 'status 6 (Charging) is charging without any help from .NET' {
+    $i = Invoke-Battery -Wmi (New-FakeBattery -EstimatedChargeRemaining 55 -BatteryStatus 6 -DischargeRate 0)
+    Assert-Equal $true $i.IsCharging
+}
+
 Test-Case 'out-of-range BatteryStatus is treated as unknown, not as a state' {
     $i = Invoke-Battery -Wmi (New-FakeBattery -BatteryStatus 99)
     Assert-Equal $false $i.IsCharging
