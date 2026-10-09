@@ -143,6 +143,41 @@ Test-Case 'compat: a config from a NEWER build keeps its unknown fields out of t
     Assert-Equal $true $loaded.Animations
 }
 
+Test-Case 'round trip: the update-check state survives' {
+    # A lost LastUpdateCheck re-checks on every launch; a lost
+    # AnnouncedVersion re-announces the same release every day; a lost
+    # FALSE turns the user's opt-out back on.
+    $cfg = New-FullConfig
+    $cfg.CheckForUpdates = $false
+    $cfg.LastUpdateCheck = [datetime]'2026-10-09T09:15:30'
+    $cfg.AnnouncedVersion = '1.5.0'
+    Set-WidgetState -Config $cfg
+    Save-Config -Path $script:cfgPath
+    $loaded = Import-Config -Path $script:cfgPath
+    Assert-Equal $false $loaded.CheckForUpdates
+    Assert-Equal ([datetime]'2026-10-09T09:15:30') $loaded.LastUpdateCheck
+    Assert-Equal '1.5.0' $loaded.AnnouncedVersion
+}
+
+Test-Case 'compat: a config from before the update check turns it on, never checked' {
+    $old = @{ X = 100; Y = 200; DisplayMode = 'time' } | ConvertTo-Json
+    [System.IO.File]::WriteAllText($script:cfgPath, $old, (New-Object System.Text.UTF8Encoding $false))
+    $loaded = Import-Config -Path $script:cfgPath
+    Assert-Equal $true $loaded.CheckForUpdates
+    Assert-Equal $null $loaded.LastUpdateCheck
+    Assert-Equal $null $loaded.AnnouncedVersion
+}
+
+Test-Case 'update fields: junk falls back instead of costing other settings' {
+    $junk = @{ X = 100; Y = 200; LastUpdateCheck = 'not a date'; AnnouncedVersion = 'v1.5.0-beta'; CheckForUpdates = 'maybe' } | ConvertTo-Json
+    [System.IO.File]::WriteAllText($script:cfgPath, $junk, (New-Object System.Text.UTF8Encoding $false))
+    $loaded = Import-Config -Path $script:cfgPath
+    Assert-Equal $null $loaded.LastUpdateCheck
+    Assert-Equal $null $loaded.AnnouncedVersion
+    Assert-Equal $true $loaded.CheckForUpdates
+    Assert-Equal 100 $loaded.X
+}
+
 Test-Case 'round trip: the estimator state survives, including its power state' {
     # Save-Config serializes the estimator from MODULE state, not from
     # $script:config, so New-FullConfig cannot cover it. EmaWasPluggedIn is

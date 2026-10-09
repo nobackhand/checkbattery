@@ -254,6 +254,11 @@ $pillContextMenu.Add_Opening({
     })
 $pillContextMenu.Add_Closed({ $script:menuDismissTimer.Stop() })
 
+# "Get BatteryPill x.y.z" - hidden until an update check finds a newer build
+$pillUpdateItem = New-Object System.Windows.Forms.ToolStripMenuItem("Get the new BatteryPill")
+$pillUpdateItem.Visible = $false
+$pillUpdateItem.Add_Click({ if ($null -ne $script:updateAvailable) { [void](Open-ExternalLink -Url $script:updateAvailable.Url) } })
+
 $pillHideItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hide Pill")
 $pillHideItem.Add_Click({
         $script:floatingBar.Hide()
@@ -294,6 +299,7 @@ $pillExitItem.Add_Click({
         $script:mainForm.Close()
     })
 
+$pillContextMenu.Items.Add($pillUpdateItem) | Out-Null
 $pillContextMenu.Items.Add($pillHideItem) | Out-Null
 $pillContextMenu.Items.Add($pillHealthItem) | Out-Null
 $pillContextMenu.Items.Add($pillSettingsItem) | Out-Null
@@ -309,6 +315,10 @@ $script:floatingBar.ContextMenuStrip = $pillContextMenu
 
 # Tray context menu
 $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+
+$updateItem = New-Object System.Windows.Forms.ToolStripMenuItem("Get the new BatteryPill")
+$updateItem.Visible = $false
+$updateItem.Add_Click({ if ($null -ne $script:updateAvailable) { [void](Open-ExternalLink -Url $script:updateAvailable.Url) } })
 
 $toggleBarItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hide Bar")
 $toggleBarItem.Add_Click({
@@ -356,6 +366,7 @@ $contextMenu.Add_Opening({
         Update-PowerPlanMenu -MenuItem $trayPowerItem
     })
 
+$contextMenu.Items.Add($updateItem) | Out-Null
 $contextMenu.Items.Add($toggleBarItem) | Out-Null
 $contextMenu.Items.Add($healthItem) | Out-Null
 $contextMenu.Items.Add($settingsItem) | Out-Null
@@ -370,6 +381,29 @@ Set-MenuTheme -Menu $contextMenu
 $script:appMenus = @($pillContextMenu, $contextMenu)
 
 $script:notifyIcon.ContextMenuStrip = $contextMenu
+
+# Update check. A release the card announced before a restart is still on
+# offer; the schedule tick (first one a minute after launch, so it never
+# competes with startup, then every 30 minutes) asks whether a check is due,
+# and the poll timer watches the one request in flight.
+$script:updateMenuItems = @($pillUpdateItem, $updateItem)
+$script:updateAvailable = Restore-UpdateAvailability -CurrentVersion $script:appVersion `
+    -NotifiedVersion $script:config.AnnouncedVersion
+if ($null -ne $script:updateAvailable) { $script:updateCheckState = 'available' }
+Update-UpdateMenuItems
+$script:updatePollTimer = New-Object System.Windows.Forms.Timer
+$script:updatePollTimer.Interval = 500
+$script:updatePollTimer.Add_Tick({
+        try { Complete-UpdateCheck } catch { Clear-UpdateRequest }
+    })
+$script:updateTimer = New-Object System.Windows.Forms.Timer
+$script:updateTimer.Interval = 60000
+$script:updateTimer.Add_Tick({
+        try {
+            $script:updateTimer.Interval = 1800000
+            if (Test-UpdateCheckDue -LastCheck $script:config.LastUpdateCheck -Now (Get-Date)) { Start-UpdateCheck }
+        } catch {}
+    })
 
 # Left-click tray icon opens popup
 $script:notifyIcon.Add_MouseClick({
@@ -587,6 +621,10 @@ $script:mainForm.Add_FormClosing({
         $script:pulseTimer.Dispose()
         $script:fullscreenTimer.Stop()
         $script:fullscreenTimer.Dispose()
+        $script:updateTimer.Stop()
+        $script:updateTimer.Dispose()
+        Clear-UpdateRequest
+        $script:updatePollTimer.Dispose()
         if ($null -ne $script:introTimer) {
             $script:introTimer.Stop()
             $script:introTimer.Dispose()
@@ -675,6 +713,7 @@ if ($script:ioFailures.Count -gt 0) {
 Update-TrayIcon
 Start-IntroAnimation
 $script:timer.Start()
+$script:updateTimer.Start()
 
 # Run the application message loop
 [System.Windows.Forms.Application]::Run($script:mainForm)

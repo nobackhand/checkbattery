@@ -418,11 +418,28 @@ function Show-SettingsPanel {
         })
     $settings.Controls.Add($funLinesCheck)
     $settingsTooltip.SetToolTip($funLinesCheck, "A line of personality in the battery popup")
+    $y += [int](30 * $ds)
+
+    # Daily update check (075-update-check.ps1)
+    $updateCheck = New-Object DarkCheckBox
+    $updateCheck.Text = "Check for updates"
+    $updateCheck.Font = $labelFont
+    $updateCheck.ForeColor = $script:theme.PanelText
+    $updateCheck.Location = New-Object System.Drawing.Point($m, $y)
+    $updateCheck.AutoSize = $false
+    $updateCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
+    $updateCheck.Checked = [bool]$script:config.CheckForUpdates
+    $updateCheck.Add_CheckedChanged({
+            $script:config.CheckForUpdates = $updateCheck.Checked
+            Save-Config
+        })
+    $settings.Controls.Add($updateCheck)
+    $settingsTooltip.SetToolTip($updateCheck, "Once a day, asks GitHub whether a newer BatteryPill is out. Nothing about you or this PC is sent.")
     $y += [int](36 * $ds)
 
     # Light theme: brighten the checkbox boxes (the C# defaults are the dark palette)
     if (-not $script:theme.IsDark) {
-        foreach ($tcb in @($autoStartCheck, $showBarCheck, $lockPosCheck, $autoHideCheck, $animCheck, $funLinesCheck)) {
+        foreach ($tcb in @($autoStartCheck, $showBarCheck, $lockPosCheck, $autoHideCheck, $animCheck, $funLinesCheck, $updateCheck)) {
             $tcb.BoxFill = [System.Drawing.Color]::FromArgb(255, 255, 255)
             $tcb.BoxBorder = [System.Drawing.Color]::FromArgb(168, 168, 178)
             $tcb.BoxBorderHot = [System.Drawing.Color]::FromArgb(120, 120, 132)
@@ -1138,7 +1155,7 @@ function Show-AboutDialog {
 
     # Version
     $versionLabel = New-Object System.Windows.Forms.Label
-    $versionLabel.Text = "Version $script:appVersion"
+    $versionLabel.Text = Get-AboutVersionText -Version $script:appVersion -State $script:updateCheckState -Available $script:updateAvailable
     $versionLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $versionLabel.ForeColor = $script:theme.TextDim
     $versionLabel.AutoSize = $true
