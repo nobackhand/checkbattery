@@ -209,6 +209,18 @@ function Render-PillState {
     $script:config.DisplayMode = $mode
     Update-PillSize
     for ($k = 0; $k -lt 15; $k++) { Update-FloatingBar -BatteryInfo $info }   # converge accent lerp
+    # Land every animation the pulse timer would have finished. There is no
+    # message loop here, so without this the capture froze mid-animation: the
+    # first pill showed an empty fill and half-faded text (intro), and the
+    # charging state's plug-in bolt sat on top of its own text and the next
+    # state's too. Renders are the review oracle - they show the steady state.
+    $script:displayedFillPct = [double]$script:barDisplayPercent
+    $script:textFadeAlpha = 255
+    $script:flashAlpha = 0
+    $script:boltPopStart = $null
+    $script:shimmerStart = $null
+    $script:rippleState = $null
+    $script:themeFade = $null
     $script:floatingBar.Refresh()
     $w = $script:floatingBar.Width; $h = $script:floatingBar.Height
     $bmp = New-Object System.Drawing.Bitmap($w, $h)
