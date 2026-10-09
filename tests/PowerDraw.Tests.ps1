@@ -336,6 +336,7 @@ function Reset-Estimator {
     $script:lastCapacityCheck = $null
     $script:capacityRateMismatchCount = 0
     $script:lastAcState = $null
+    $script:lastChargingState = $null
     $script:stateChangeTime = $null
     $script:hysteresisSeconds = 2
     $script:lastStateChange = @{ Time = $pdT0; Percent = -1; State = "" }
