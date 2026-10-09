@@ -720,6 +720,7 @@ $script:batteryHistory = New-Object System.Collections.ArrayList
 
 # --- Hysteresis state for AC state transitions ---
 $script:lastAcState = $null    # Previous AC plugged-in state
+$script:lastChargingState = $null  # Previous IsCharging (charging can stop while plugged in)
 $script:stateChangeTime = $null # Timestamp of last AC state change
 $script:hysteresisSeconds = 2  # Dead time after AC plug/unplug to ignore rate spikes
 
