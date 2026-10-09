@@ -25,6 +25,25 @@ function Set-ThemedComboBox {
         })
 }
 
+function Get-SwatchRingColor {
+    [OutputType([System.Drawing.Color])]
+    param(
+        [System.Drawing.Color]$Swatch,
+        [bool]$IsDark
+    )
+    # The selected accent swatch's ring has to stand out against the PANEL -
+    # a panel-coloured gap already separates it from the dot. It used to be
+    # chosen by the swatch's brightness alone, which assumed the dark panel:
+    # on the light panel the near-white ring (240,240,245 on 246,246,250)
+    # vanished, and nothing showed which accent was selected.
+    if (-not $IsDark) { return [System.Drawing.Color]::FromArgb(70, 70, 80) }
+    # Dark panel: light ring, but grey around the near-white preset so a
+    # white ring and a white dot do not read as one blob
+    $lum = ($Swatch.R * 0.299) + ($Swatch.G * 0.587) + ($Swatch.B * 0.114)
+    if ($lum -gt 180) { return [System.Drawing.Color]::FromArgb(120, 120, 130) }
+    return [System.Drawing.Color]::FromArgb(240, 240, 245)
+}
+
 function Start-IntroAnimation {
     [OutputType([void])]
     param()
@@ -562,13 +581,8 @@ function Show-SettingsPanel {
                     $gapPen = New-Object System.Drawing.Pen($script:theme.PanelBg, 2)
                     $cg.DrawEllipse($gapPen, 1, 1, $sender.Width - 3, $sender.Height - 3)
                     $gapPen.Dispose()
-                    # Ring: light on dark swatches, dark on light ones (e.g. the white preset)
-                    $lum = ($color.R * 0.299) + ($color.G * 0.587) + ($color.B * 0.114)
-                    $ringColor = if ($lum -gt 180) {
-                        [System.Drawing.Color]::FromArgb(120, 120, 130)
-                    } else {
-                        [System.Drawing.Color]::FromArgb(240, 240, 245)
-                    }
+                    # Ring: contrasts with the panel (see Get-SwatchRingColor)
+                    $ringColor = Get-SwatchRingColor -Swatch $color -IsDark $script:theme.IsDark
                     $ringPen = New-Object System.Drawing.Pen($ringColor, 2)
                     $cg.DrawEllipse($ringPen, 0, 0, $sender.Width - 1, $sender.Height - 1)
                     $ringPen.Dispose()
