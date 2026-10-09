@@ -7,7 +7,7 @@
 # quietly: a field the writer emits but the reader rejects (or never reads)
 # resets on every launch, and the user just sees their preference "not
 # sticking" with no error anywhere. Every persisted field is asserted here,
-# including the ones added most recently (FunLines, Animations), plus the
+# including the ones added most recently (the update check's three), plus the
 # forward/backward compatibility cases that a shipped app actually meets:
 # a config written by an OLDER build, and one written by a NEWER build.
 
@@ -58,6 +58,9 @@ function New-FullConfig {
         FirstRunShown      = $true
         FunLines           = $false
         Animations         = $false
+        CheckForUpdates    = $false
+        LastUpdateCheck    = [datetime]'2026-10-09T09:15:30'
+        AnnouncedVersion   = '1.5.0'
         BatteryHistory     = @()
         EmaRate            = -1
         LastValidRate      = -1
@@ -71,7 +74,7 @@ Test-Case 'round trip: every persisted field survives save then load' {
     $loaded = Import-Config -Path $script:cfgPath
     foreach ($field in @('X', 'Y', 'Opacity', 'RefreshInterval', 'PositionLocked', 'DisplayMode',
             'PillSize', 'Theme', 'AccentColorIndex', 'AutoHideFullscreen', 'FirstRunShown',
-            'FunLines', 'Animations')) {
+            'FunLines', 'Animations', 'CheckForUpdates', 'LastUpdateCheck', 'AnnouncedVersion')) {
         Assert-Equal $script:config.$field $loaded.$field
     }
 }
@@ -97,7 +100,7 @@ Test-Case 'round trip: two consecutive saves are stable' {
     $second = Import-Config -Path $script:cfgPath
     foreach ($field in @('X', 'Y', 'Opacity', 'RefreshInterval', 'PositionLocked', 'DisplayMode',
             'PillSize', 'Theme', 'AccentColorIndex', 'AutoHideFullscreen', 'FirstRunShown',
-            'FunLines', 'Animations')) {
+            'FunLines', 'Animations', 'CheckForUpdates', 'LastUpdateCheck', 'AnnouncedVersion')) {
         Assert-Equal $first.$field $second.$field
     }
 }

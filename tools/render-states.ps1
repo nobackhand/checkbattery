@@ -87,6 +87,10 @@ $HZDTB = ('__DTB__' -eq '1')
 $GEOM = Join-Path $OUT 'geometry.txt'
 # Quiesce the live update timer so real WMI data cannot repaint mid-capture
 if ($null -ne $script:timer) { $script:timer.Stop() }
+# ...and the daily update check: a render must never call GitHub, write the
+# config, or slide an "is out" card into a capture
+if ($null -ne $script:updateTimer) { $script:updateTimer.Stop() }
+if ($null -ne $script:updatePollTimer) { $script:updatePollTimer.Stop() }
 # Stealth: in DrawToBitmap mode nothing needs to be visible on screen -
 # park the pill offscreen and stop the intro so a render run never flashes
 # windows over whatever the user is doing (e.g. a fullscreen game)

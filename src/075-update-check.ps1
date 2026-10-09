@@ -258,6 +258,7 @@ function Complete-UpdateCheck {
         -AnnouncedVersion $script:config.AnnouncedVersion -Received $received
     $script:updateCheckState = $result.State
     if (-not $result.Stamp) { return }
+    $previousCheck = $script:config.LastUpdateCheck
     $script:config.LastUpdateCheck = Get-Date
     if ($result.State -eq 'available') {
         $script:updateAvailable = $release
@@ -272,5 +273,13 @@ function Complete-UpdateCheck {
         # AnnouncedVersion is written when the card is actually SHOWN
         $script:pendingUpdateCard = $release
         Show-PendingUpdateCard
+        # Held back for a fullscreen app: leave today's check unstamped. The
+        # offer lives only in memory until the card is seen, so a restart
+        # must re-check (a minute after launch) rather than wait a day with
+        # nothing on offer.
+        if ($null -ne $script:pendingUpdateCard) {
+            $script:config.LastUpdateCheck = $previousCheck
+            Save-Config
+        }
     }
 }
