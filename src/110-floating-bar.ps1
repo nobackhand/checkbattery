@@ -1842,6 +1842,8 @@ function New-BatteryPopupContent {
 # Live notification cards, tracked so simultaneous cards stack upward instead
 # of rendering on top of each other. Pruned of closed cards at each Show.
 $script:openNotifCards = New-Object System.Collections.ArrayList
+# Where the current stack of cards rests (see Resolve-NotificationStackBottom)
+$script:notifStackBottom = $null
 
 function Get-NotificationStackBottom {
     [OutputType([int])]
@@ -1867,6 +1869,22 @@ function Get-NotificationStackBottom {
     # No room above a pill near the top of the screen: keep the corner
     if (($above - $CardHeight) -lt ($WorkingArea.Top + 8)) { return $bottom }
     return $above
+}
+
+function Resolve-NotificationStackBottom {
+    [OutputType([int])]
+    param(
+        [bool]$StackWasEmpty,
+        [AllowNull()][Nullable[int]]$Held,
+        [int]$Fresh
+    )
+    # One base per stack. A new stack takes the fresh base; a card joining a
+    # live stack keeps the base the stack started with. Recomputed per card,
+    # two bases mixed in one stack whenever the pill hid or moved while a
+    # lifted card was up - Hide Pill shows a card of its own - and the new
+    # card overlapped the older one by 41px (its title included).
+    if ($StackWasEmpty -or $null -eq $Held) { return $Fresh }
+    return [int]$Held
 }
 
 function Show-BatteryNotification {
@@ -1937,6 +1955,7 @@ function Show-BatteryNotification {
     while ($usedSlots.ContainsKey($slot)) { $slot++ }
     $notif.Tag = $slot
     $stackOffset = $slot * ($nH + 8)
+    $stackWasEmpty = ($script:openNotifCards.Count -eq 0)
     $script:openNotifCards.Add($notif) | Out-Null
 
     $notif.Location = New-Object System.Drawing.Point(($screen.Right - $nW - 10), ($screen.Bottom - 10))
@@ -2004,12 +2023,15 @@ function Show-BatteryNotification {
     # Slide in over a short rise just below the resting slot (a stacked card
     # rising from the true screen bottom would cross the cards under it).
     # Clamped so a tall stack can never push a card off the top of the screen.
-    # The stack starts above the pill when it would otherwise cover it.
+    # The stack starts above the pill when it would otherwise cover it -
+    # decided once per stack (see Resolve-NotificationStackBottom).
     $pillRect = [System.Drawing.Rectangle]::Empty
     if ($null -ne $script:floatingBar -and -not $script:floatingBar.IsDisposed -and $script:floatingBar.Visible) {
         $pillRect = $script:floatingBar.Bounds
     }
-    $stackBottom = Get-NotificationStackBottom -WorkingArea $screen -CardWidth $nW -CardHeight $nH -Pill $pillRect
+    $freshBottom = Get-NotificationStackBottom -WorkingArea $screen -CardWidth $nW -CardHeight $nH -Pill $pillRect
+    $stackBottom = Resolve-NotificationStackBottom -StackWasEmpty $stackWasEmpty -Held $script:notifStackBottom -Fresh $freshBottom
+    $script:notifStackBottom = $stackBottom
     $slideTarget = [math]::Max($screen.Top + 8, $stackBottom - $nH - $stackOffset)
     $notif.Top = $slideTarget + 18
     $nState = @{

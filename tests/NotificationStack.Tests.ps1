@@ -7,7 +7,7 @@
 # lowest card would cover it.
 
 . (Join-Path $PSScriptRoot '_harness.ps1')
-. (Import-WidgetFunction 'Get-NotificationStackBottom')
+. (Import-WidgetFunction 'Get-NotificationStackBottom', 'Resolve-NotificationStackBottom')
 Add-Type -AssemblyName System.Drawing
 
 Write-Host 'NotificationStack.Tests.ps1'
@@ -60,6 +60,18 @@ Test-Case 'cards: a non-zero work-area origin (second monitor) is respected' {
     Assert-Equal 1060 (Get-NotificationStackBottom -WorkingArea $second -CardWidth $cw -CardHeight $ch)
     $pill = New-Rect -X (2880 + 1920 - 172) -Y (1080 - 61)
     Assert-Equal ($pill.Top - 8) (Get-NotificationStackBottom -WorkingArea $second -CardWidth $cw -CardHeight $ch -Pill $pill)
+}
+
+Test-Case 'stack: a new stack takes the fresh base' {
+    Assert-Equal 1708 (Resolve-NotificationStackBottom -StackWasEmpty $true -Held 1659 -Fresh 1708)
+    Assert-Equal 1659 (Resolve-NotificationStackBottom -StackWasEmpty $true -Held $null -Fresh 1659)
+}
+
+Test-Case 'stack: a card joining a live stack keeps the stack''s base' {
+    # The pill hid (Hide Pill shows its own card) while a lifted card was up:
+    # the fresh base is the corner again, but the new card must stack on the
+    # existing one, not overlap it.
+    Assert-Equal 1659 (Resolve-NotificationStackBottom -StackWasEmpty $false -Held 1659 -Fresh 1708)
 }
 
 exit (Complete-Tests)
