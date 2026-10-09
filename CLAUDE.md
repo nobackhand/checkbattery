@@ -59,7 +59,7 @@
 - Tray icon left-click still uses modal popup (closes on deactivate or Escape).
 
 ### Single Instance
-- Uses a global mutex (`Global\BatteryWidgetSingleInstance`) to prevent multiple instances.
+- Uses a session-scoped mutex (`Local\BatteryWidgetSingleInstance`, see `New-SingleInstanceMutex`) to prevent multiple instances per signed-in user.
 
 ### Position Persistence
 - Bar position saved to `BatteryWidget.config.json` on drag and exit, loaded on startup.
