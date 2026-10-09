@@ -675,7 +675,6 @@ function Show-SettingsPanel {
     # TrackBar can't be themed (light track, system-blue thumb, tick marks) and
     # was the one un-dark control on the panel; this one matches the app.
     $script:opacityVal = [int]($script:config.Opacity * 100)
-    $script:opacityDragging = $false
     $sliderH = [int](24 * $ds)
     $opacitySlider = New-Object System.Windows.Forms.Panel
     $opacitySlider.Location = New-Object System.Drawing.Point($m, $y)
@@ -716,9 +715,14 @@ function Show-SettingsPanel {
         $opacityValueLabel.Text = "$val%"
         $opacitySlider.Invalidate()
     }
-    $opacitySlider.Add_MouseDown({ param($s, $e) $script:opacityDragging = $true; & $setOpacityFromX $e.X }.GetNewClosure())
-    $opacitySlider.Add_MouseMove({ param($s, $e) if ($script:opacityDragging) { & $setOpacityFromX $e.X } }.GetNewClosure())
-    $opacitySlider.Add_MouseUp({ $script:opacityDragging = $false; Save-Config }.GetNewClosure())
+    # Drag state is a captured HASHTABLE, shared by reference. It used to be
+    # $script:opacityDragging - but each GetNewClosure() gets its own module
+    # scope, so MouseDown set one variable and MouseMove read another ($null):
+    # the thumb jumped to the click and never followed a drag.
+    $sliderDrag = @{ Active = $false }
+    $opacitySlider.Add_MouseDown({ param($s, $e) $sliderDrag.Active = $true; & $setOpacityFromX $e.X }.GetNewClosure())
+    $opacitySlider.Add_MouseMove({ param($s, $e) if ($sliderDrag.Active) { & $setOpacityFromX $e.X } }.GetNewClosure())
+    $opacitySlider.Add_MouseUp({ $sliderDrag.Active = $false; Save-Config }.GetNewClosure())
     $settings.Controls.Add($opacitySlider)
     $y += [int](40 * $ds)
 
