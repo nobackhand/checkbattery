@@ -430,11 +430,10 @@ function Show-SettingsPanel {
     $updateCheck.Size = New-Object System.Drawing.Size($cw, [int](22 * $ds))
     $updateCheck.Checked = [bool]$script:config.CheckForUpdates
     $updateCheck.Add_CheckedChanged({
-            $script:config.CheckForUpdates = $updateCheck.Checked
-            Save-Config
+            Set-UpdateCheckEnabled -Enabled $updateCheck.Checked
         })
     $settings.Controls.Add($updateCheck)
-    $settingsTooltip.SetToolTip($updateCheck, "Once a day, asks GitHub whether a newer BatteryPill is out. Nothing about you or this PC is sent.")
+    $settingsTooltip.SetToolTip($updateCheck, "Once a day, asks GitHub whether a newer BatteryPill is out (GitHub sees the request like any web visit)")
     $y += [int](36 * $ds)
 
     # Light theme: brighten the checkbox boxes (the C# defaults are the dark palette)

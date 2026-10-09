@@ -1990,11 +1990,14 @@ function Show-BatteryNotification {
         Fonts       = @($nTitle.Font, $nSub.Font)
     }
 
-    # Dismissers: click anywhere on the card, or Escape. A card with a link
-    # opens it on that same click. .NET's Process.Start rather than
-    # Open-ExternalLink: this is a closure, and a closure cannot see the
-    # script's functions or $script: state (see the GetNewClosure gotcha).
+    # Dismisser: click anywhere on the card (no Escape - see above). A card
+    # with a link opens it on that click, once: a double-click or a second
+    # click on a fading card must not open the browser twice. .NET's
+    # Process.Start rather than Open-ExternalLink: this is a closure, and a
+    # closure cannot see the script's functions or $script: state (see the
+    # GetNewClosure gotcha).
     $dismissClick = {
+        if ($nState.Phase -eq "out") { return }
         $nState.Phase = "out"
         if ($ClickUrl) {
             try { [void][System.Diagnostics.Process]::Start($ClickUrl) } catch {}

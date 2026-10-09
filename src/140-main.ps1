@@ -387,9 +387,11 @@ $script:notifyIcon.ContextMenuStrip = $contextMenu
 # competes with startup, then every 30 minutes) asks whether a check is due,
 # and the poll timer watches the one request in flight.
 $script:updateMenuItems = @($pillUpdateItem, $updateItem)
-$script:updateAvailable = Restore-UpdateAvailability -CurrentVersion $script:appVersion `
-    -NotifiedVersion $script:config.AnnouncedVersion
-if ($null -ne $script:updateAvailable) { $script:updateCheckState = 'available' }
+if ($script:config.CheckForUpdates) {
+    $script:updateAvailable = Restore-UpdateAvailability -CurrentVersion $script:appVersion `
+        -AnnouncedVersion $script:config.AnnouncedVersion
+    if ($null -ne $script:updateAvailable) { $script:updateCheckState = 'available' }
+}
 Update-UpdateMenuItems
 $script:updatePollTimer = New-Object System.Windows.Forms.Timer
 $script:updatePollTimer.Interval = 500
@@ -401,6 +403,8 @@ $script:updateTimer.Interval = 60000
 $script:updateTimer.Add_Tick({
         try {
             $script:updateTimer.Interval = 1800000
+            # A card held back while a game was fullscreen gets its turn here
+            Show-PendingUpdateCard
             if (Test-UpdateCheckDue -LastCheck $script:config.LastUpdateCheck -Now (Get-Date)) { Start-UpdateCheck }
         } catch {}
     })

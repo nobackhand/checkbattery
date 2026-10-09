@@ -6,18 +6,19 @@
 # user that a newer build existed - "am I on the latest version?" had no
 # answer short of comparing About against the website. Once a day (opt-out
 # in Settings) the app asks GitHub's public releases API for the latest
-# release. Nothing about the user or the PC is sent beyond the request.
+# release. GitHub sees that request like any web visit; nothing else is sent.
 #
 # Threading: a PowerShell scriptblock must run on the thread that owns its
-# runspace, so there is no completion callback. The download is a Task that a
-# Forms.Timer polls on the UI thread; nothing ever runs on a pool thread.
+# runspace, so there is no completion callback. The download runs entirely
+# on a pool thread in C# (UpdateFetch, 010-init) and a Forms.Timer polls its
+# Task on the UI thread.
 
 $script:updateCheckUri = 'https://api.github.com/repos/nobackhand/checkbattery/releases/latest'
 $script:updateAvailable = $null    # @{ Version; Url } once a newer release is seen
 $script:updateCheckState = 'idle'  # idle | checking | current | available | failed
-$script:updateClient = $null
 $script:updateTask = $null
-$script:updateStarted = $null
+$script:updateWatch = $null        # Stopwatch: the timeout must survive a clock change
+$script:pendingUpdateCard = $null  # a release to announce once no game is fullscreen
 $script:updateMenuItems = @()
 
 function ConvertTo-AppVersion {
@@ -73,7 +74,7 @@ function Test-UpdateCheckDue {
         [datetime]$Now,
         [double]$IntervalHours = 24
     )
-    # Once a day. Only a SUCCESSFUL check is stamped, so a laptop that boots
+    # Once a day. A failed DOWNLOAD is not stamped, so a laptop that boots
     # before its Wi-Fi is up retries on the next schedule tick instead of
     # waiting a day. A stamp in the future means the clock moved backwards
     # (or the stamp is junk) - check rather than wait it out.
@@ -90,17 +91,29 @@ function Resolve-UpdateCheckResult {
     param(
         [AllowNull()][hashtable]$Release,
         [string]$CurrentVersion,
-        [AllowNull()][AllowEmptyString()][string]$NotifiedVersion
+        [AllowNull()][AllowEmptyString()][string]$AnnouncedVersion,
+        # Whether a response arrived at all (vs. offline / timed out / HTTP error)
+        [bool]$Received = $true
     )
-    # What one finished check means. State: 'available', 'current', or
-    # 'failed' (no usable release - offline, rate-limited, junk). Notify is
-    # true only the FIRST time a given version is seen: the card says it
-    # once, the menu item and About keep saying it quietly.
-    if ($null -eq $Release) { return @{ State = 'failed'; Notify = $false } }
-    if (-not (Test-NewerVersion -Current $CurrentVersion -Candidate $Release.Version)) {
-        return @{ State = 'current'; Notify = $false }
+    # What one finished check means:
+    #   State     'available' | 'current' | 'failed'
+    #   Notify    true only the FIRST time a given version is seen - the card
+    #             says it once; the menu item and About keep saying it quietly
+    #   Announced what AnnouncedVersion should hold afterwards. A 'current'
+    #             answer clears it: a release that was announced and then
+    #             pulled must stop being offered after a restart.
+    #   Stamp     whether this counts as today's check. A response that
+    #             arrived but held no usable release (a non-version tag) is
+    #             stamped too - retrying it every 30 minutes forever would
+    #             not change the answer. Only no-response retries soon.
+    if ($null -eq $Release) {
+        return @{ State = 'failed'; Notify = $false; Announced = $AnnouncedVersion; Stamp = $Received }
     }
-    return @{ State = 'available'; Notify = ($NotifiedVersion -ne $Release.Version) }
+    if (-not (Test-NewerVersion -Current $CurrentVersion -Candidate $Release.Version)) {
+        return @{ State = 'current'; Notify = $false; Announced = $null; Stamp = $true }
+    }
+    $notify = ($AnnouncedVersion -ne $Release.Version)
+    return @{ State = 'available'; Notify = $notify; Announced = $Release.Version; Stamp = $true }
 }
 
 function Get-AboutVersionText {
@@ -122,15 +135,15 @@ function Restore-UpdateAvailability {
     [OutputType([hashtable])]
     param(
         [string]$CurrentVersion,
-        [AllowNull()][AllowEmptyString()][string]$NotifiedVersion
+        [AllowNull()][AllowEmptyString()][string]$AnnouncedVersion
     )
     # After a restart the last check's answer is gone, and the next check can
     # be up to a day away. A release the card already announced that is still
     # newer than this build IS the answer - keep offering it from the menu
     # until the user upgrades.
-    if (-not (Test-NewerVersion -Current $CurrentVersion -Candidate $NotifiedVersion)) { return $null }
+    if (-not (Test-NewerVersion -Current $CurrentVersion -Candidate $AnnouncedVersion)) { return $null }
     return @{
-        Version = (ConvertTo-AppVersion -Text $NotifiedVersion).ToString(3)
+        Version = (ConvertTo-AppVersion -Text $AnnouncedVersion).ToString(3)
         Url     = 'https://github.com/nobackhand/checkbattery/releases/latest'
     }
 }
@@ -138,13 +151,11 @@ function Restore-UpdateAvailability {
 function Clear-UpdateRequest {
     [OutputType([void])]
     param()
+    # Drops the in-flight request. The pool-thread download cannot be
+    # cancelled, but nothing reads its result once this reference is gone.
     if ($null -ne $script:updatePollTimer) { $script:updatePollTimer.Stop() }
-    if ($null -ne $script:updateClient) {
-        try { $script:updateClient.Dispose() } catch {}
-    }
-    $script:updateClient = $null
     $script:updateTask = $null
-    $script:updateStarted = $null
+    $script:updateWatch = $null
 }
 
 function Update-UpdateMenuItems {
@@ -163,6 +174,45 @@ function Update-UpdateMenuItems {
     }
 }
 
+function Set-UpdateCheckEnabled {
+    [OutputType([void])]
+    param([bool]$Enabled)
+    # The Settings toggle. Off means off: no checks, and no "update
+    # available" anywhere - not even an offer an earlier check already found.
+    $script:config.CheckForUpdates = $Enabled
+    if ($Enabled) {
+        $script:updateAvailable = Restore-UpdateAvailability -CurrentVersion $script:appVersion `
+            -AnnouncedVersion $script:config.AnnouncedVersion
+        $script:updateCheckState = if ($null -ne $script:updateAvailable) { 'available' } else { 'idle' }
+    } else {
+        Clear-UpdateRequest
+        $script:updateAvailable = $null
+        $script:pendingUpdateCard = $null
+        $script:updateCheckState = 'idle'
+    }
+    Update-UpdateMenuItems
+    Save-Config
+}
+
+function Show-PendingUpdateCard {
+    [OutputType([void])]
+    param()
+    # Announce a found release - but not over a fullscreen game or video,
+    # where nobody would see it and it would still count as said. It waits
+    # for the next schedule tick instead.
+    $rel = $script:pendingUpdateCard
+    if ($null -eq $rel) { return }
+    $fullscreen = $false
+    try { $fullscreen = Test-FullscreenApp } catch { $fullscreen = $false }
+    if ($fullscreen) { return }
+    $script:pendingUpdateCard = $null
+    $script:config.AnnouncedVersion = $rel.Version
+    Save-Config
+    Show-BatteryNotification -Message "BatteryPill $($rel.Version) is out" `
+        -SubMessage "You have $script:appVersion. Click here to get the new one." `
+        -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100)) -HoldSeconds 12 -ClickUrl $rel.Url
+}
+
 function Start-UpdateCheck {
     [OutputType([void])]
     param()
@@ -172,13 +222,9 @@ function Start-UpdateCheck {
         # api.github.com is TLS 1.2+, which .NET Framework does not offer by
         # default on every Windows build it runs on.
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-        $wc = New-Object System.Net.WebClient
+        $script:updateWatch = [System.Diagnostics.Stopwatch]::StartNew()
         # The API refuses requests without a User-Agent
-        $wc.Headers.Add('User-Agent', "BatteryPill/$script:appVersion")
-        $wc.Encoding = [System.Text.Encoding]::UTF8
-        $script:updateClient = $wc
-        $script:updateStarted = Get-Date
-        $script:updateTask = $wc.DownloadStringTaskAsync([uri]$script:updateCheckUri)
+        $script:updateTask = [UpdateFetch]::Start($script:updateCheckUri, "BatteryPill/$script:appVersion")
         $script:updateCheckState = 'checking'
         $script:updatePollTimer.Start()
     } catch {
@@ -196,33 +242,33 @@ function Complete-UpdateCheck {
     $task = $script:updateTask
     if ($null -eq $task) { Clear-UpdateRequest; return }
     if (-not $task.IsCompleted) {
-        if (((Get-Date) - $script:updateStarted).TotalSeconds -gt 30) {
-            try { $script:updateClient.CancelAsync() } catch {}
+        if ($null -eq $script:updateWatch -or $script:updateWatch.Elapsed.TotalSeconds -gt 30) {
             $script:updateCheckState = 'failed'
             Clear-UpdateRequest
         }
         return
     }
-    $json = $null
-    if ($task.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion) { $json = $task.Result }
+    $received = ($task.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion)
+    $json = if ($received) { $task.Result } else { $null }
     Clear-UpdateRequest
     $release = ConvertFrom-ReleaseJson -Json $json
     $result = Resolve-UpdateCheckResult -Release $release -CurrentVersion $script:appVersion `
-        -NotifiedVersion $script:config.AnnouncedVersion
+        -AnnouncedVersion $script:config.AnnouncedVersion -Received $received
     $script:updateCheckState = $result.State
-    if ($result.State -eq 'failed') { return }
+    if (-not $result.Stamp) { return }
     $script:config.LastUpdateCheck = Get-Date
     if ($result.State -eq 'available') {
         $script:updateAvailable = $release
-        if ($result.Notify) { $script:config.AnnouncedVersion = $release.Version }
-    } else {
+    } elseif ($result.State -eq 'current') {
         $script:updateAvailable = $null
+        $script:pendingUpdateCard = $null
+        $script:config.AnnouncedVersion = $result.Announced
     }
     Save-Config
     Update-UpdateMenuItems
     if ($result.Notify) {
-        Show-BatteryNotification -Message "BatteryPill $($release.Version) is out" `
-            -SubMessage "You have $script:appVersion. Click here to get the new one." `
-            -Accent ([System.Drawing.Color]::FromArgb(45, 212, 100)) -HoldSeconds 12 -ClickUrl $release.Url
+        # AnnouncedVersion is written when the card is actually SHOWN
+        $script:pendingUpdateCard = $release
+        Show-PendingUpdateCard
     }
 }
