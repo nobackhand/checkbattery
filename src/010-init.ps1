@@ -305,6 +305,47 @@ public class PillMenuRenderer : ToolStripProfessionalRenderer {
         return p;
     }
 }
+
+// The platform power meter, probed OFF the UI thread. A process's first
+// PerformanceCounterCategory query reads every perf provider on the machine
+// (HKEY_PERFORMANCE_DATA): measured at 22.7s on a busy desktop, then 0ms.
+// The widget made that query on the UI thread during startup, so the app sat
+// frozen - no pill, a dead tray icon - until it returned. Pure C#, so no
+// PowerShell ever runs on the pool thread; the widget polls State() from its
+// refresh tick.
+public static class PowerMeterProbe {
+    private static System.Threading.Tasks.Task<System.Diagnostics.PerformanceCounter> _probe;
+    private static System.Diagnostics.PerformanceCounter _counter;
+    // 0 = probe still running, 1 = meter ready, -1 = no usable meter here
+    public static int State() {
+        if (_counter != null) return 1;
+        if (_probe == null) {
+            _probe = System.Threading.Tasks.Task.Run(new Func<System.Diagnostics.PerformanceCounter>(Open));
+        }
+        if (!_probe.IsCompleted) return 0;
+        if (_probe.Status != System.Threading.Tasks.TaskStatus.RanToCompletion || _probe.Result == null) return -1;
+        _counter = _probe.Result;
+        return 1;
+    }
+    private static System.Diagnostics.PerformanceCounter Open() {
+        if (!System.Diagnostics.PerformanceCounterCategory.Exists("Power Meter")) return null;
+        System.Diagnostics.PerformanceCounterCategory cat = new System.Diagnostics.PerformanceCounterCategory("Power Meter");
+        if (!cat.InstanceExists("_Total")) return null;
+        return new System.Diagnostics.PerformanceCounter("Power Meter", "Power", "_Total", true);
+    }
+    // Instantaneous milliwatts; throws if the counter fails (the caller then
+    // gives up on the meter for good).
+    public static double Read() {
+        if (_counter == null) return -1;
+        return _counter.NextValue();
+    }
+    public static void Close() {
+        if (_counter != null) {
+            try { _counter.Dispose(); } catch { }
+            _counter = null;
+        }
+    }
+}
 "@
 
 # Declare DPI awareness before any forms are created
@@ -644,6 +685,6 @@ $script:stateChangeTime = $null # Timestamp of last AC state change
 $script:hysteresisSeconds = 2  # Dead time after AC plug/unplug to ignore rate spikes
 
 # --- Platform power meter (ACPI EMI via the "Power Meter" counter set) ---
-$script:powerMeterCounter = $null    # cached PerformanceCounter, built on first read
+# The counter itself lives in PowerMeterProbe (C#, above), probed off the UI thread
 $script:powerMeterState = 'untried'  # 'untried' | 'ok' | 'unavailable' (never re-probed)
 
