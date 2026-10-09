@@ -182,7 +182,10 @@ function Render-PopupState {
     $script:hzPath = Join-Path $OUT ($name + '.png')
     $script:hzDtb = $HZDTB
     $script:hzTimer = New-Object System.Windows.Forms.Timer
-    $script:hzTimer.Interval = 450
+    # Well past the sparkline's 450ms draw-in: capturing AT 450ms raced it,
+    # and the graph's end dot (drawn only once the line is complete) was
+    # missing from some renders and present in others.
+    $script:hzTimer.Interval = 900
     $script:hzTimer.Add_Tick({
         $script:hzTimer.Stop()
         $cf = $script:hzForm
