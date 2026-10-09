@@ -43,10 +43,71 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 
-# All native/C# helper types in ONE Add-Type call. This used to be four
-# separate Add-Type invocations - four compiler runs at every launch; merging
-# them into a single compilation measurably cuts startup time.
-Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing @"
+function Import-HelperTypes {
+    [OutputType([string])]
+    param(
+        [string]$Source,
+        [string[]]$References,
+        # Where compiled helpers are kept. Tests point this elsewhere.
+        [string]$CacheDir = (Join-Path $env:LOCALAPPDATA 'BatteryPill')
+    )
+    # Load the C# helper types, compiling them only when they changed. Add-Type
+    # with source runs the C# compiler on EVERY launch - measured 1-3s on an
+    # idle machine and 10-15s on a busy one (a login with other apps starting
+    # is exactly that) - before the pill can appear. The compiled DLL is kept
+    # in %LOCALAPPDATA%\BatteryPill, named by a hash of the source, the
+    # references and the CLR, so any change to the C# compiles afresh and an
+    # unchanged build loads in ~35ms. Any failure along the way falls back to
+    # the old in-memory compile. Returns which path was taken.
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $keyBytes = [System.Text.Encoding]::UTF8.GetBytes(($Source + '|' + ($References -join ',') + '|' + [Environment]::Version))
+        $hash = -join ($sha.ComputeHash($keyBytes)[0..7] | ForEach-Object { $_.ToString('x2') })
+    } finally { $sha.Dispose() }
+    $dll = Join-Path $CacheDir ('helpers-' + $hash + '.dll')
+    $loadFailed = $false
+    if (Test-Path -LiteralPath $dll) {
+        try {
+            Add-Type -Path $dll -ErrorAction Stop
+            return 'cache'
+        } catch {
+            # Unreadable or damaged: compile it again below
+            $loadFailed = $true
+            try { Remove-Item -LiteralPath $dll -Force -ErrorAction Stop } catch {}
+        }
+    }
+    try {
+        if (-not (Test-Path -LiteralPath $CacheDir)) { New-Item -ItemType Directory -Path $CacheDir -Force -ErrorAction Stop | Out-Null }
+        # Compile beside the final name, then rename: a second instance
+        # starting at the same moment never loads a half-written DLL
+        $tmp = Join-Path $CacheDir ('helpers-' + $hash + '.' + $PID + '.tmp.dll')
+        Add-Type -ReferencedAssemblies $References -TypeDefinition $Source -OutputAssembly $tmp -OutputType Library -ErrorAction Stop
+        if ($loadFailed) {
+            # .NET remembers a failed load per PATH for the rest of the
+            # process, so the rebuilt DLL cannot load under the old name
+            # now. Load it from its own name; the copy under the real name
+            # serves the next launch.
+            try { Copy-Item -LiteralPath $tmp -Destination $dll -Force -ErrorAction Stop } catch {}
+            $load = $tmp
+        } else {
+            $load = $dll
+            try { Move-Item -LiteralPath $tmp -Destination $dll -ErrorAction Stop } catch { $load = $tmp }
+        }
+        Add-Type -Path $load -ErrorAction Stop
+        # Older builds' helpers are dead weight now
+        Get-ChildItem -LiteralPath $CacheDir -Filter 'helpers-*.dll' -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $dll -and $_.FullName -ne $load } | ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop } catch {} }
+        return 'compiled'
+    } catch {
+        Add-Type -ReferencedAssemblies $References -TypeDefinition $Source
+        return 'memory'
+    }
+}
+
+# All native/C# helper types in ONE compilation (four separate Add-Type calls
+# used to mean four compiler runs per launch), cached between launches by
+# Import-HelperTypes so an unchanged build compiles nothing at all.
+$script:helperTypesSource = @"
 using System;
 using System.Runtime.InteropServices;
 using System.Drawing;
@@ -371,6 +432,7 @@ public static class UpdateFetch {
     }
 }
 "@
+$script:helperTypesPath = Import-HelperTypes -Source $script:helperTypesSource -References @('System.Windows.Forms', 'System.Drawing')
 
 # Declare DPI awareness before any forms are created
 [Win32Icon]::SetProcessDPIAware() | Out-Null
