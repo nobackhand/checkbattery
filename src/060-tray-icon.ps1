@@ -71,6 +71,10 @@ function New-BatteryIcon {
             (New-Object System.Drawing.PointF(8.4, 6.8))
         )
         $boltPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(170, 0, 0, 0), 1.6)  # dark edge for contrast on amber
+        # Round joins: the default MITER join extends sharp corners up to 10x
+        # the pen width, and the bolt's two tips are very sharp - the outline
+        # shot a dark spike out above and below the battery, onto the taskbar
+        $boltPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
         $g.DrawPolygon($boltPen, $bolt); $boltPen.Dispose()
         $boltBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
         $g.FillPolygon($boltBrush, $bolt); $boltBrush.Dispose()
