@@ -190,12 +190,15 @@ function Get-BatteryInfo {
         $wmiBattery = @($WmiBattery) | Select-Object -First 1
     } else {
         # Off the UI thread (BatteryQuery, 010-init): the latest finished
-        # reading, with a fresh one already under way. $null until the first
-        # lands (the first moments after launch) - then the .NET PowerStatus
-        # source below answers on its own, exactly as when WMI fails.
+        # reading, with a fresh one already under way. The very first call
+        # waits for the first reading (once), so launch sees complete data -
+        # a .NET-only first tick flipped the charging state a tick later.
+        # $null after that only when WMI fails or hangs; the .NET PowerStatus
+        # source below then answers on its own.
         $wmiBattery = $null
         try {
             $snap = [BatteryQuery]::Poll()
+            if ($null -eq $snap) { $snap = [BatteryQuery]::WaitFirst(10000) }
             if ($null -ne $snap -and $snap['Found']) { $wmiBattery = New-Object PSObject -Property $snap }
         } catch {
             $wmiBattery = $null

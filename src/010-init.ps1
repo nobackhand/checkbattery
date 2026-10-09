@@ -375,8 +375,8 @@ public static class UpdateFetch {
 // (measured, more under load) and used to run on the UI thread every refresh
 // tick, stalling the pill's animations and drags each time. Poll() hands back
 // the latest finished reading and keeps one fresh query in flight, so the UI
-// never waits; until the first reading lands it returns null and the widget
-// answers from .NET's PowerStatus instead.
+// does not wait - except for the very first reading (WaitFirst), so startup
+// sees the same complete data it always did.
 //
 // It also reads the right classes. Win32_Battery has NO charge/discharge rate
 // properties at all, and leaves the capacities empty on most modern laptops,
@@ -385,18 +385,55 @@ public static class UpdateFetch {
 // one missing class (desktops, odd firmware) cannot cost the others.
 public static class BatteryQuery {
     private static System.Threading.Tasks.Task<System.Collections.Hashtable> _task;
+    private static DateTime _taskStarted;
     private static System.Collections.Hashtable _last;
+    private static DateTime _lastAt;
+    // Capacities change over months, not seconds: cached, not queried per tick
+    private static System.Collections.Hashtable _caps;
+    private static DateTime _capsAt;
+
+    // The latest finished reading, or null when there is none fresh enough to
+    // trust (a WMI call can hang - a reading older than a minute is stale,
+    // and the widget falls back to .NET's PowerStatus).
     public static System.Collections.Hashtable Poll() {
         if (_task != null && _task.IsCompleted) {
-            if (_task.Status == System.Threading.Tasks.TaskStatus.RanToCompletion) _last = _task.Result;
+            if (_task.Status == System.Threading.Tasks.TaskStatus.RanToCompletion) {
+                _last = _task.Result;
+                _lastAt = DateTime.UtcNow;
+            }
             _task = null;
         }
+        // A query stuck for 30s is abandoned (it cannot be cancelled; its
+        // result, if it ever comes, is simply never read)
+        if (_task != null && (DateTime.UtcNow - _taskStarted).TotalSeconds > 30) _task = null;
         if (_task == null) {
+            _taskStarted = DateTime.UtcNow;
             _task = System.Threading.Tasks.Task.Run(new Func<System.Collections.Hashtable>(Read));
         }
+        if (_last != null && (DateTime.UtcNow - _lastAt).TotalSeconds > 60) return null;
         return _last;
     }
-    // One complete reading (synchronous - pool thread only, or tests)
+    // Startup: wait (up to timeoutMs) for the first reading rather than
+    // showing a partial .NET-only one first and flipping a tick later.
+    // Only ever waits once: a WMI that hangs at startup must not stall every
+    // later tick too.
+    private static bool _waited;
+    public static System.Collections.Hashtable WaitFirst(int timeoutMs) {
+        Poll();
+        System.Threading.Tasks.Task<System.Collections.Hashtable> t = _task;
+        if (!_waited && _last == null && t != null) {
+            _waited = true;
+            try { t.Wait(timeoutMs); } catch { }
+        }
+        return Poll();
+    }
+    // The tray's Refresh: a fresh reading now, synchronously
+    public static System.Collections.Hashtable ReadNow() {
+        _last = Read();
+        _lastAt = DateTime.UtcNow;
+        return _last;
+    }
+    // One complete reading (synchronous)
     public static System.Collections.Hashtable Read() {
         System.Collections.Hashtable h = new System.Collections.Hashtable();
         h["Found"] = false;
@@ -415,16 +452,30 @@ public static class BatteryQuery {
             return h;
         }
         if (!(bool)h["Found"]) return h;
+        System.Collections.Hashtable caps = Capacities();
+        // A battery that reports RELATIVE units (BATTERY_CAPACITY_RELATIVE)
+        // has no mW/mWh to offer - leave rates and capacities unfilled
+        if ((bool)caps["Relative"]) return h;
         System.Collections.Hashtable rates = FirstInstance("BatteryStatus", "DischargeRate, ChargeRate");
         h["DischargeRate"] = rates["DischargeRate"];
         h["ChargeRate"] = rates["ChargeRate"];
-        if (IsEmpty(h["FullChargeCapacity"])) {
-            h["FullChargeCapacity"] = FirstInstance("BatteryFullChargedCapacity", "FullChargedCapacity")["FullChargedCapacity"];
-        }
-        if (IsEmpty(h["DesignCapacity"])) {
-            h["DesignCapacity"] = FirstInstance("BatteryStaticData", "DesignedCapacity")["DesignedCapacity"];
-        }
+        if (IsEmpty(h["FullChargeCapacity"])) h["FullChargeCapacity"] = caps["FullChargedCapacity"];
+        if (IsEmpty(h["DesignCapacity"])) h["DesignCapacity"] = caps["DesignedCapacity"];
         return h;
+    }
+    static System.Collections.Hashtable Capacities() {
+        System.Collections.Hashtable c = _caps;
+        if (c != null && (DateTime.UtcNow - _capsAt).TotalMinutes < 10) return c;
+        c = new System.Collections.Hashtable();
+        c["FullChargedCapacity"] = FirstInstance("BatteryFullChargedCapacity", "FullChargedCapacity")["FullChargedCapacity"];
+        System.Collections.Hashtable st = FirstInstance("BatteryStaticData", "DesignedCapacity, Capabilities");
+        c["DesignedCapacity"] = st["DesignedCapacity"];
+        bool relative = false;
+        try { relative = st["Capabilities"] != null && (Convert.ToUInt32(st["Capabilities"]) & 0x40000000u) != 0; } catch { }
+        c["Relative"] = relative;
+        _caps = c;
+        _capsAt = DateTime.UtcNow;
+        return c;
     }
     static bool IsEmpty(object v) {
         if (v == null) return true;
@@ -445,6 +496,9 @@ public static class BatteryQuery {
     }
 }
 "@
+
+# Start the first battery reading now, so it runs while the forms are built
+try { $null = [BatteryQuery]::Poll() } catch {}
 
 # Declare DPI awareness before any forms are created
 [Win32Icon]::SetProcessDPIAware() | Out-Null

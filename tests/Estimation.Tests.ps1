@@ -174,6 +174,29 @@ Test-Case 'Get-CapacityDerivedRate reports nothing while capacity is rising' {
             -Now $t0.AddHours(1))
 }
 
+Test-Case 'a steady real drain with whole-percent readings gives a steady estimate' {
+    # The path that runs once real rates arrive (root\WMI BatteryStatus):
+    # an hour of 3s ticks at a steady 10 W on a 60 Wh pack, percent reported
+    # as WMI does - a whole number. The capacity cross-check used to read each
+    # 1% step over a 30s window as ~72 W, override the real rate after three
+    # of them, and drop the estimate (274 -> 183 min every few minutes).
+    Reset-EstimatorState
+    $full = 60000.0; $rate = 10000.0; $start = 0.80 * $full
+    $bad = 0; $worst = 0.0
+    for ($i = 0; $i -lt 1200; $i++) {
+        $now = $t0.AddSeconds(3 * $i)
+        $left = $start - $rate * (3 * $i / 3600.0)
+        $pct = [math]::Floor($left / $full * 100)
+        $est = Get-SmoothedTimeRemaining -RawRate ([int]$rate) -FullChargeCapacity ([int]$full) -PercentExact $pct `
+            -IsCharging $false -IsPluggedIn $false -Now $now
+        if ($i -lt 20) { continue }   # first minute: settling
+        $truth = $left / $rate * 60.0
+        $err = [math]::Abs($est - $truth)
+        if ($err -gt [math]::Max(0.10 * $truth, 5)) { $bad++ }
+        if ($err / $truth -gt $worst) { $worst = $err / $truth }
+    }
+    Assert-True ($bad -eq 0) ("{0} of 1180 ticks off by more than 10% (worst {1:P0})" -f $bad, $worst)
+}
 # ---- Get-SmoothedTimeRemaining ----
 
 Test-Case 'computes time remaining from the smoothed discharge rate' {
