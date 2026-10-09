@@ -123,8 +123,10 @@ function Get-AboutVersionText {
         [string]$State,
         [AllowNull()][hashtable]$Available
     )
-    # The About dialog's version line, saying what the last check found.
-    if ($State -eq 'available' -and $null -ne $Available) {
+    # The About dialog's version line. An offer on hand wins whatever the
+    # LAST check did: an offline check must not make About forget a release
+    # the menus are still offering.
+    if ($null -ne $Available) {
         return "Version $Version - $($Available.Version) is available"
     }
     if ($State -eq 'current') { return "Version $Version - up to date" }

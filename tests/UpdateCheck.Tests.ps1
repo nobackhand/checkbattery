@@ -163,6 +163,10 @@ Test-Case 'about: the version line says what the last check found' {
     Assert-Equal 'Version 1.4.0 - 1.5.0 is available' (Get-AboutVersionText -Version '1.4.0' -State 'available' -Available @{ Version = '1.5.0' })
 }
 
+Test-Case 'about: an offline check does not hide an offer the menus still show' {
+    Assert-Equal 'Version 1.4.0 - 1.5.0 is available' (Get-AboutVersionText -Version '1.4.0' -State 'failed' -Available @{ Version = '1.5.0' })
+}
+
 Test-Case 'restart: an announced release still newer than this build stays on offer' {
     $r = Restore-UpdateAvailability -CurrentVersion '1.4.0' -AnnouncedVersion '1.5.0'
     Assert-Equal '1.5.0' $r.Version
