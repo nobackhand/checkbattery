@@ -832,18 +832,22 @@ function Get-BatterySessionSummary {
     # short to say anything meaningful.
     if ($null -eq $script:batteryHistory -or $script:batteryHistory.Count -lt 2) { return "" }
     $last = $script:batteryHistory[$script:batteryHistory.Count - 1]
-    if ($last.IsCharging) { return "" }
+    # Plugged in counts too, not just charging: a full or charge-capped pack on
+    # the cable never charges, and the card used to call that stretch "On
+    # battery". (Samples older than the flag read as unplugged.)
+    if ($last.IsCharging -or $last.IsPluggedIn) { return "" }
     # Walk back to the start of the continuous discharge run. A run ends at a
-    # charge sample OR at a TIME GAP: samples are recorded every refresh tick
-    # (1-60s), so a gap of minutes means the app was not running - the machine
-    # slept, or this history was restored from config at startup. Without the
-    # gap check the walk-back ran straight through an overnight sleep and told
-    # the user they had been on battery for nine and a half hours.
+    # charge or plugged-in sample OR at a TIME GAP: samples are recorded every
+    # refresh tick (1-60s), so a gap of minutes means the app was not running
+    # - the machine slept, or this history was restored from config at
+    # startup. Without the gap check the walk-back ran straight through an
+    # overnight sleep and told the user they had been on battery for nine and
+    # a half hours.
     $maxGapMinutes = 15
     $startIdx = $script:batteryHistory.Count - 1
     while ($startIdx -gt 0) {
         $prev = $script:batteryHistory[$startIdx - 1]
-        if ($prev.IsCharging) { break }
+        if ($prev.IsCharging -or $prev.IsPluggedIn) { break }
         $gap = ($script:batteryHistory[$startIdx].Time - $prev.Time).TotalMinutes
         if ($gap -gt $maxGapMinutes) { break }
         $startIdx--
