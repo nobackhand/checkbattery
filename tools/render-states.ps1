@@ -72,7 +72,10 @@ if (-not $text.Contains($mutexToken)) {
     Remove-Item $stageDir -Recurse -Force
     exit 1
 }
-$text = $text.Replace($mutexToken, 'BatteryPillRenderHarness')
+# Unique per run, too: two renders at once (two worktrees, a reviewer agent
+# alongside an author) used to share one harness mutex, so the second sat on
+# that same modal until its timeout.
+$text = $text.Replace($mutexToken, ('BatteryPillRenderHarness' + [guid]::NewGuid().ToString('N')))
 
 $suffix = @'
 
