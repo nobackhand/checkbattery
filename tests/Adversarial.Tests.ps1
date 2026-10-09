@@ -677,5 +677,7 @@ Test-Case 'CheckBattery.ps1: a laptop holding at a charge cap (WMI status 2) say
 Test-Case 'CheckBattery.ps1: plugged in at 15% still says Low (Plugged In never hides the low bands)' {
     $out = Invoke-CliWithBattery -Percent 15 -Status 11
     Assert-True ($out -match 'Status:\s+Low') "the CLI said:`n$out"
-}Remove-Item $script:tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Remove-Item $script:tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 exit (Complete-Tests)
