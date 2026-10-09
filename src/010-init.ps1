@@ -316,8 +316,10 @@ public class PillMenuRenderer : ToolStripProfessionalRenderer {
 public static class PowerMeterProbe {
     private static System.Threading.Tasks.Task<System.Diagnostics.PerformanceCounter> _probe;
     private static System.Diagnostics.PerformanceCounter _counter;
+    private static bool _closed;
     // 0 = probe still running, 1 = meter ready, -1 = no usable meter here
     public static int State() {
+        if (_closed) return -1;
         if (_counter != null) return 1;
         if (_probe == null) {
             _probe = System.Threading.Tasks.Task.Run(new Func<System.Diagnostics.PerformanceCounter>(Open));
@@ -339,7 +341,10 @@ public static class PowerMeterProbe {
         if (_counter == null) return -1;
         return _counter.NextValue();
     }
+    // Gives up on the meter for good: State() reports -1 from now on, rather
+    // than handing back the counter the finished probe still holds.
     public static void Close() {
+        _closed = true;
         if (_counter != null) {
             try { _counter.Dispose(); } catch { }
             _counter = null;
