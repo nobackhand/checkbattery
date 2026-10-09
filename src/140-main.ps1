@@ -249,7 +249,6 @@ $pillContextMenu.Add_Opening({
         if ($script:hoverPopupVisible) {
             Close-HoverPopup
         }
-        Update-PowerPlanMenu -MenuItem $pillPowerItem
         $script:menuDismissTimer.Start()
     })
 $pillContextMenu.Add_Closed({ $script:menuDismissTimer.Stop() })
@@ -275,6 +274,11 @@ $pillSettingsItem = New-Object System.Windows.Forms.ToolStripMenuItem("Settings.
 $pillSettingsItem.Add_Click({ Show-SettingsPanel })
 
 $pillPowerItem = New-Object System.Windows.Forms.ToolStripMenuItem("Power Plan")
+# Plans are read when THIS submenu opens, not on every right-click: `powercfg
+# /list` spawns a process (0.8-5s measured on a busy machine) and used to run
+# before the menu could appear at all. The placeholder gives it its arrow.
+$null = $pillPowerItem.DropDownItems.Add("Loading...")
+$pillPowerItem.Add_DropDownOpening({ Update-PowerPlanMenu -MenuItem $pillPowerItem })
 
 $pillSeparator1 = New-Object System.Windows.Forms.ToolStripSeparator
 
@@ -340,6 +344,8 @@ $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem("Settings...")
 $settingsItem.Add_Click({ Show-SettingsPanel })
 
 $trayPowerItem = New-Object System.Windows.Forms.ToolStripMenuItem("Power Plan")
+$null = $trayPowerItem.DropDownItems.Add("Loading...")
+$trayPowerItem.Add_DropDownOpening({ Update-PowerPlanMenu -MenuItem $trayPowerItem })
 
 $refreshItem = New-Object System.Windows.Forms.ToolStripMenuItem("Refresh")
 $refreshItem.Add_Click({ Update-TrayIcon })
@@ -360,10 +366,6 @@ $exitItem.Add_Click({
         # left un-released, and the exe surfaced an unhandled-exception dialog
         # on the way out. One owner for teardown, not two.
         $script:mainForm.Close()
-    })
-
-$contextMenu.Add_Opening({
-        Update-PowerPlanMenu -MenuItem $trayPowerItem
     })
 
 $contextMenu.Items.Add($updateItem) | Out-Null
