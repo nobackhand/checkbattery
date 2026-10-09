@@ -65,6 +65,7 @@ Test-Case 'flow: a newer release shows ONE card, offers it, and is recorded as a
     Assert-Equal '1.5.0' $script:config.AnnouncedVersion
     Assert-True ($script:config.LastUpdateCheck -gt $earlier) 'today''s check was not stamped'
     Assert-Equal $null $script:updateTask
+    Assert-Equal 1 $script:saves
 }
 
 Test-Case 'flow: the same release on a later day is offered quietly - no second card' {
@@ -86,6 +87,8 @@ Test-Case 'flow: during a fullscreen game the card waits, and today stays unstam
     # Unstamped: a restart before the card is seen re-checks instead of
     # waiting a day with nothing on offer.
     Assert-Equal $earlier $script:config.LastUpdateCheck
+    # One save per check - an unwritable config shows a card per save
+    Assert-Equal 1 $script:saves
 }
 
 Test-Case 'flow: the held card shows once the game is gone, and only then counts as announced' {
@@ -98,6 +101,8 @@ Test-Case 'flow: the held card shows once the game is gone, and only then counts
     Assert-Equal 1 $script:cards.Count
     Assert-Equal '1.5.0' $script:config.AnnouncedVersion
     Assert-Equal $null $script:pendingUpdateCard
+    # Said now, so today's check is done - no extra request on this tick
+    Assert-True ($script:config.LastUpdateCheck -gt $earlier) 'shown card did not stamp the check'
     Show-PendingUpdateCard
     Assert-Equal 1 $script:cards.Count
 }
