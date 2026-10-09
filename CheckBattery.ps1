@@ -115,7 +115,9 @@ $isFullyCharged = $false
 if ($wmiBattery) {
     # A UInt16 code 1-11; anything else means "unknown", not a state.
     $batteryStatus = Read-DeviceNumber -Raw $wmiBattery.BatteryStatus -Min 1 -Max 11
-    $isCharging = $batteryStatus -in @(2, 6, 7, 8, 9)
+    # 2 is only "on AC" - not necessarily charging (a firmware charge cap
+    # holds there for hours); .NET's Charging flag below decides for it.
+    $isCharging = $batteryStatus -in @(6, 7, 8, 9)
     $isPluggedIn = $batteryStatus -in @(2, 3, 6, 7, 8, 9, 11)
     $isFullyCharged = ($null -ne $batteryStatus -and $batteryStatus -eq 3)
 }
@@ -124,7 +126,8 @@ if ($dotnetPower) {
     if ($dotnetPower.PowerLineStatus -eq 'Online') {
         $isPluggedIn = $true
     }
-    if ($null -ne $dnChargeStatus -and ([int]$dnChargeStatus -band 8) -eq 8) {
+    # 255 is "Unknown": every bit set, Charging included
+    if ($null -ne $dnChargeStatus -and [int]$dnChargeStatus -ne 255 -and ([int]$dnChargeStatus -band 8) -eq 8) {
         $isCharging = $true
     }
 }
@@ -192,6 +195,10 @@ if ($isFullyCharged) {
 } elseif ($isCharging) {
     $statusText = "Charging"
     $statusColor = "Yellow"
+} elseif ($isPluggedIn -and $timeMinutes -le 0) {
+    # Plugged in and holding (a charge cap): neither charging nor draining
+    $statusText = "Plugged In"
+    $statusColor = "Cyan"
 } elseif ($chargePercent -ge 0 -and $chargePercent -le 10) {
     $statusText = "Critical"
     $statusColor = "Red"
@@ -209,7 +216,7 @@ $timeLabel = if ($isCharging) { "Time to Full:     " }
 elseif ($isFullyCharged) { "Time Remaining:   " }
 else { "Time Remaining:   " }
 
-$timeDisplay = if ($isFullyCharged) { "N/A (plugged in)" } else { $timeString }
+$timeDisplay = if ($isFullyCharged -or ($isPluggedIn -and -not $isCharging -and $timeMinutes -le 0)) { "N/A (plugged in)" } else { $timeString }
 
 # --- Display output ---
 $separator = "=" * 39
