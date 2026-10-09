@@ -53,4 +53,30 @@ Test-Case 'tray icon: charging still shows a bolt (white pixels inside the body)
     Assert-True ($white -ge 3) "only $white white bolt pixels"
 }
 
+Test-Case 'tray icon: drawn at the size it is shown at (24px at 150% scaling)' {
+    # A 16px bitmap stretched to the tray's 24px looked soft beside crisp
+    # icons; the same design is now drawn at the real size.
+    foreach ($sz in 16, 20, 24, 32) {
+        $r = New-BatteryIcon -Percent 72 -Status 'Discharging' -Size $sz
+        $b = $r.Icon.ToBitmap()
+        Assert-Equal $sz $b.Width
+        Assert-Equal $sz $b.Height
+        $b.Dispose(); $r.Icon.Dispose()
+    }
+}
+
+Test-Case 'tray icon: at 24px the charging bolt still stays inside the battery' {
+    # Body rows 4-12 of the 16px grid scale to 6-18; allow the bolt tips'
+    # row and a row of anti-aliasing on each side.
+    $r = New-BatteryIcon -Percent 47 -Status 'Charging' -Size 24
+    $b = $r.Icon.ToBitmap()
+    $n = 0
+    for ($y = 0; $y -lt 24; $y++) {
+        if ($y -ge 4 -and $y -le 20) { continue }
+        for ($x = 0; $x -lt 24; $x++) { if ($b.GetPixel($x, $y).A -gt 40) { $n++ } }
+    }
+    $b.Dispose(); $r.Icon.Dispose()
+    Assert-Equal 0 $n
+}
+
 exit (Complete-Tests)

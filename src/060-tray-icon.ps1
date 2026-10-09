@@ -8,13 +8,26 @@ function New-BatteryIcon {
         [int]$Percent,
         [string]$Status,
         # Charging gloss animation step (0..3); -1 = no animation frame
-        [int]$AnimPhase = -1
+        [int]$AnimPhase = -1,
+        # Icon size in pixels; 0 = the size Windows shows tray icons at
+        [int]$Size = 0
     )
 
-    $bmp = New-Object System.Drawing.Bitmap(16, 16)
+    # Drawn at the tray's real size. The design below is laid out on a 16px
+    # grid, but at 125/150/200% scaling Windows shows tray icons at 20/24/32px
+    # and stretched a 16px bitmap to fit - a soft icon beside crisp ones. The
+    # same drawing is now scaled up instead (the process is DPI-aware, so
+    # SmallIconSize reports the real size).
+    $n = $Size
+    if ($n -le 0) {
+        try { $n = [System.Windows.Forms.SystemInformation]::SmallIconSize.Width } catch { $n = 16 }
+    }
+    $n = [math]::Max(16, $n)
+    $bmp = New-Object System.Drawing.Bitmap($n, $n)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $g.Clear([System.Drawing.Color]::Transparent)
+    $g.ScaleTransform(($n / 16.0), ($n / 16.0))
 
     # Pill dimensions (leave 1px margin for anti-aliasing)
     $pillX = 1
