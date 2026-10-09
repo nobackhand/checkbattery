@@ -427,18 +427,31 @@ public static class BatteryQuery {
         }
         return Poll();
     }
-    // The tray's Refresh: a fresh reading now, synchronously
+    // The tray's Refresh: a fresh reading now - but never more than 5s of a
+    // frozen UI, even if WMI hangs (then the latest reading stands)
     public static System.Collections.Hashtable ReadNow() {
-        _last = Read();
-        _lastAt = DateTime.UtcNow;
-        return _last;
+        System.Threading.Tasks.Task<System.Collections.Hashtable> t = System.Threading.Tasks.Task.Run(new Func<System.Collections.Hashtable>(Read));
+        try {
+            if (t.Wait(5000)) {
+                _last = t.Result;
+                _lastAt = DateTime.UtcNow;
+            }
+        } catch { }
+        return Poll();
+    }
+    // Every WMI enumeration gives up after 20s instead of blocking a pool
+    // thread for good on a hung provider
+    static System.Management.EnumerationOptions Opts() {
+        System.Management.EnumerationOptions o = new System.Management.EnumerationOptions();
+        o.Timeout = TimeSpan.FromSeconds(20);
+        return o;
     }
     // One complete reading (synchronous)
     public static System.Collections.Hashtable Read() {
         System.Collections.Hashtable h = new System.Collections.Hashtable();
         h["Found"] = false;
         try {
-            using (System.Management.ManagementObjectSearcher s = new System.Management.ManagementObjectSearcher("root\\CIMV2", "SELECT * FROM Win32_Battery"))
+            using (System.Management.ManagementObjectSearcher s = new System.Management.ManagementObjectSearcher("root\\CIMV2", "SELECT * FROM Win32_Battery", Opts()))
             using (System.Management.ManagementObjectCollection all = s.Get()) {
                 foreach (System.Management.ManagementBaseObject o in all) {
                     h["Found"] = true;
@@ -484,7 +497,7 @@ public static class BatteryQuery {
     static System.Collections.Hashtable FirstInstance(string cls, string props) {
         System.Collections.Hashtable r = new System.Collections.Hashtable();
         try {
-            using (System.Management.ManagementObjectSearcher s = new System.Management.ManagementObjectSearcher("root\\WMI", "SELECT " + props + " FROM " + cls))
+            using (System.Management.ManagementObjectSearcher s = new System.Management.ManagementObjectSearcher("root\\WMI", "SELECT " + props + " FROM " + cls, Opts()))
             using (System.Management.ManagementObjectCollection all = s.Get()) {
                 foreach (System.Management.ManagementBaseObject o in all) {
                     foreach (string p in props.Split(',')) { r[p.Trim()] = o[p.Trim()]; }
