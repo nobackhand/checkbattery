@@ -1860,6 +1860,11 @@ function Show-BatteryNotification {
 
     # NoActivateForm: a card must never steal focus - see the class comment
     $notif = New-Object NoActivateForm
+    # Manual, or Windows ignores the Location set below and drops the card
+    # at its default cascade spot: every card (low-battery warnings
+    # included) appeared near the LEFT edge, not bottom-right (measured
+    # X=228 vs 2390), and only Top is animated afterwards to correct it.
+    $notif.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $notif.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $notif.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
     $notif.Size = New-Object System.Drawing.Size($nW, $nH)
