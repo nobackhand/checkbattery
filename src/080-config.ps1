@@ -135,6 +135,12 @@ function Import-Config {
         FirstRunShown      = $false
         FunLines           = $true
         Animations         = $true
+        # Daily update check (075-update-check.ps1). LastUpdateCheck stamps
+        # the last SUCCESSFUL check; AnnouncedVersion is the release the
+        # "is out" card already announced, so it is said once, not daily.
+        CheckForUpdates    = $true
+        LastUpdateCheck    = $null
+        AnnouncedVersion   = $null
         BatteryHistory     = @()
         EmaRate            = -1
         LastValidRate      = -1
@@ -194,6 +200,13 @@ function Import-Config {
                 param($r) ConvertTo-ConfigBool -Raw $r }
             $default.Animations = Read-ConfigField -Raw $json.Animations -Fallback $default.Animations -Parse {
                 param($r) ConvertTo-ConfigBool -Raw $r }
+            $default.CheckForUpdates = Read-ConfigField -Raw $json.CheckForUpdates -Fallback $default.CheckForUpdates -Parse {
+                param($r) ConvertTo-ConfigBool -Raw $r }
+            # Round-trip format; anything unparseable just means "check soon"
+            $default.LastUpdateCheck = Read-ConfigField -Raw $json.LastUpdateCheck -Fallback $null -Parse {
+                param($r) [DateTime]::Parse([string]$r, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind) }
+            $default.AnnouncedVersion = Read-ConfigField -Raw $json.AnnouncedVersion -Fallback $null -Parse {
+                param($r) if ([string]$r -match '^\d{1,9}\.\d{1,9}\.\d{1,9}$') { [string]$r } else { $null } }
 
             # Battery history: per-entry validation, percent range-checked, and
             # capped at the same 2400 the recorder enforces - a corrupt or
@@ -366,6 +379,9 @@ function Save-Config {
             FirstRunShown      = $script:config.FirstRunShown
             FunLines           = $script:config.FunLines
             Animations         = $script:config.Animations
+            CheckForUpdates    = $script:config.CheckForUpdates
+            LastUpdateCheck    = if ($null -ne $script:config.LastUpdateCheck) { ([datetime]$script:config.LastUpdateCheck).ToString("o") } else { $null }
+            AnnouncedVersion   = $script:config.AnnouncedVersion
             BatteryHistory     = $historyToSave
             EmaRate            = $script:emaRate
             LastValidRate      = $script:lastValidRate
