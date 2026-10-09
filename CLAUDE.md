@@ -27,7 +27,7 @@
 ### Rounded Corners (two mechanisms)
 - **The pill** uses Region-based clipping with `GraphicsPath` (no `TransparencyKey` = no purple fringe) — it's a capsule, which DWM can't produce.
 - **Popups/cards/notifications/tips** use native Win11 DWM rounded corners (`Set-NativeRoundedCorners` → `Win32Icon.TryRoundCorners`, DWMWA 33 = DWMWCP_ROUND): antialiased edges + the system window shadow. On Win10 (DWM call fails) they fall back to CS_DROPSHADOW + the old Region clip inside the same helper.
-- All C# helper types (`Win32Icon`, `DarkMenuColorTable`, `DarkCheckBox`, `PillMenuRenderer`) compile in ONE `Add-Type` call in `010-init.ps1` — splitting them back into separate calls costs ~1s of launch time (measured).
+- All C# helper types (`Win32Icon`, `DarkMenuColorTable`, `DarkCheckBox`, `PillMenuRenderer`, `PowerMeterProbe`) compile in ONE `Add-Type` call in `010-init.ps1` — splitting them back into separate calls costs ~1s of launch time (measured).
 
 ### Floating Pill Bar
 - `AutoScaleMode = None` set **before** `Size`, plus `MinimumSize`/`MaximumSize` constraints (108x34) to prevent WinForms DPI auto-scaling.
@@ -46,7 +46,7 @@
 - Font: Segoe UI Semibold 10.2pt Bold.
 
 ### Power Draw (watts) — v1.4.0
-- `Get-PowerDraw` (020) is the source ladder: the platform power meter (`\Power Meter(_Total)\Power`, ACPI EMI — read via a cached `PerformanceCounter` in `Read-PowerMeterMilliwatts`, probed once and remembered as unavailable) wins when it reports; otherwise the pack: `DischargeRate` while draining IS the system draw. Plugged in and not charging there is no number, and every consumer treats that as "say nothing" — the popup omits the line, the pill's `power` mode reads `AC`.
+- `Get-PowerDraw` (020) is the source ladder: the platform power meter (`\Power Meter(_Total)\Power`, ACPI EMI — probed OFF the UI thread by the C# `PowerMeterProbe` and polled by `Read-PowerMeterMilliwatts`; a missing meter is remembered as unavailable) wins when it reports. **Never make a perf-counter category query on the UI thread**: a process's first one reads every perf provider on the machine — measured at 9–23s on a busy desktop — and v1.4.0's startup sat frozen with no pill for that long; otherwise the pack: `DischargeRate` while draining IS the system draw. Plugged in and not charging there is no number, and every consumer treats that as "say nothing" — the popup omits the line, the pill's `power` mode reads `AC`.
 - **A charge rate is never shown as consumption.** `PowerDrawKind` is `draw` or `charge`; charging renders as `+45 W` / "Charging at 45 W", and `Add-BatteryHistorySample` records `Watts = -1` for it so `Get-PowerDrawStats` (avg/peak over the current discharge run, same walk-back rules as `Get-BatterySessionSummary`) never averages inflow into draw.
 - Verified on a real laptop (ZBook Ultra G1A, plugged in at a charge cap): Power Meter instances exist but read 0, and both `Win32_Battery` rates are null — so 0 and null both mean "no reading". Firmware rates above 300 W are dropped as glitches.
 - `Get-PowerDrawStats` returns a `Samples` key, not `Count`: a hashtable's own `.Count` property shadows a key of that name (`@{Count=0}.Count` is 1).
