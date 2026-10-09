@@ -1015,6 +1015,64 @@ function New-FloatingBar {
     return $form
 }
 
+function Get-SparklinePoints {
+    [OutputType([System.Drawing.PointF[]])]
+    param(
+        # any-typed: the history buffer, an ArrayList of sample hashtables.
+        [AllowNull()][object]$History,
+        [int]$Width,
+        [int]$Height
+    )
+    # The sparkline's polyline: at most about one point per pixel column,
+    # always including the first and last sample. A full two-hour history is
+    # 2400 samples across a 380px graph; building a point for every one -
+    # with New-Object, on every paint - cost ~150-200ms per paint, and the
+    # graph repaints on every refresh tick, every frame of its draw-in, and
+    # every mouse move while scrubbing. Percent is an integer that moves a
+    # point at a time, so the stride is invisible.
+    $count = if ($null -eq $History) { 0 } else { $History.Count }
+    if ($count -lt 2) { return , ([System.Drawing.PointF[]]@()) }
+    $denom = [double]($count - 1)
+    $step = [math]::Max(1, [int][math]::Floor($count / [double][math]::Max(1, $Width)))
+    $idx = New-Object System.Collections.Generic.List[int]
+    for ($i = 0; $i -lt $count; $i += $step) { $idx.Add($i) }
+    if ($idx[$idx.Count - 1] -ne $count - 1) { $idx.Add($count - 1) }
+    $points = New-Object System.Drawing.PointF[] $idx.Count
+    for ($k = 0; $k -lt $idx.Count; $k++) {
+        $i = $idx[$k]
+        $points[$k] = [System.Drawing.PointF]::new(
+            [float](($i / $denom) * $Width),
+            [float]($Height - (($History[$i].Percent / 100.0) * ($Height - 4)) - 2))
+    }
+    return , $points
+}
+
+function Get-ChargingRuns {
+    [OutputType([object[]])]
+    param(
+        # any-typed: the history buffer, an ArrayList of sample hashtables.
+        [AllowNull()][object]$History
+    )
+    # Contiguous charging stretches as @(startIndex, endIndex) pairs, so the
+    # sparkline tints each with ONE rectangle. It used to fill one per
+    # charging sample - thousands of calls on a full history, and since each
+    # was translucent and they overlapped, the tint got darker the more
+    # samples the history held.
+    $runs = New-Object System.Collections.ArrayList
+    if ($null -eq $History) { return , $runs.ToArray() }
+    $start = -1
+    for ($i = 0; $i -lt $History.Count; $i++) {
+        if ($History[$i].IsCharging) {
+            if ($start -lt 0) { $start = $i }
+        } elseif ($start -ge 0) {
+            $null = $runs.Add(@($start, ($i - 1)))
+            $start = -1
+        }
+    }
+    if ($start -ge 0) { $null = $runs.Add(@($start, ($History.Count - 1))) }
+    return , $runs.ToArray()
+}
+
 function New-SparklinePanel {
     [OutputType([System.Windows.Forms.Panel])]
     param([int]$Y, [System.Drawing.Color]$AccentColor)
@@ -1070,36 +1128,49 @@ function New-SparklinePanel {
                 $count = $history.Count
                 $acColor = $sender.Tag.AccentColor
 
-                # Draw charging background bands (green tinted regions)
+                # Draw charging background bands (green tinted regions), one
+                # rectangle per contiguous charging run
                 $chargeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(15, 45, 212, 100))
-                for ($i = 0; $i -lt $count; $i++) {
-                    if ($history[$i].IsCharging) {
-                        $x1 = [int](($i / [math]::Max(1, $count - 1)) * $sw)
-                        $sg.FillRectangle($chargeBrush, $x1, 0, [math]::Max(2, [int]($sw / $count) + 1), $sh)
+                $denom = [double][math]::Max(1, $count - 1)
+                # Everything derived from the history, computed once per
+                # history change: recorded samples never change, so count +
+                # first/last timestamp identify the content. Scrub moves and
+                # draw-in frames repaint far more often than samples arrive.
+                $cacheKey = "{0}|{1}|{2}|{3}x{4}" -f $count, $history[0].Time.Ticks, $history[$count - 1].Time.Ticks, $sw, $sh
+                $cache = $sender.Tag.Cache
+                if ($null -eq $cache -or $cache.Key -ne $cacheKey) {
+                    $cache = @{
+                        Key    = $cacheKey
+                        Points = (Get-SparklinePoints -History $history -Width $sw -Height $sh)
+                        Runs   = (Get-ChargingRuns -History $history)
+                        Span   = (Get-HistorySpanMinutes -History $history)
                     }
+                    $sender.Tag.Cache = $cache
+                }
+                $sampleW = [math]::Max(2, [int]($sw / $count) + 1)
+                foreach ($run in $cache.Runs) {
+                    $x1 = [int](($run[0] / $denom) * $sw)
+                    $x2 = [int](($run[1] / $denom) * $sw) + $sampleW
+                    $sg.FillRectangle($chargeBrush, $x1, 0, [math]::Max(2, $x2 - $x1), $sh)
                 }
                 $chargeBrush.Dispose()
 
                 # Draw sparkline - only the revealed prefix, so the line draws
                 # itself left-to-right when the popup opens
+                $points = $cache.Points
+                $pc = $points.Length
                 $reveal = [double]$sender.Tag.Reveal
-                $drawCount = [int][math]::Ceiling($count * $reveal)
-                $drawCount = [math]::Max(0, [math]::Min($count, $drawCount))
+                $drawCount = [int][math]::Ceiling($pc * $reveal)
+                $drawCount = [math]::Max(0, [math]::Min($pc, $drawCount))
                 $linePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(200, $acColor.R, $acColor.G, $acColor.B), 1.5)
-                $points = New-Object System.Drawing.PointF[] $count
-                for ($i = 0; $i -lt $count; $i++) {
-                    $px = ($i / [math]::Max(1, $count - 1)) * $sw
-                    $py = $sh - (($history[$i].Percent / 100.0) * ($sh - 4)) - 2
-                    $points[$i] = New-Object System.Drawing.PointF($px, $py)
-                }
                 if ($drawCount -ge 2) {
                     # Gradient area fill under the line (accent fading to
                     # transparent toward the baseline) - the detail that turns
                     # a bare polyline into a real chart
                     $areaPts = New-Object System.Drawing.PointF[] ($drawCount + 2)
-                    for ($ai = 0; $ai -lt $drawCount; $ai++) { $areaPts[$ai] = $points[$ai] }
-                    $areaPts[$drawCount] = New-Object System.Drawing.PointF($points[$drawCount - 1].X, $sh)
-                    $areaPts[$drawCount + 1] = New-Object System.Drawing.PointF($points[0].X, $sh)
+                    [System.Array]::Copy($points, $areaPts, $drawCount)
+                    $areaPts[$drawCount] = [System.Drawing.PointF]::new($points[$drawCount - 1].X, $sh)
+                    $areaPts[$drawCount + 1] = [System.Drawing.PointF]::new($points[0].X, $sh)
                     $areaRect = New-Object System.Drawing.Rectangle(0, 0, $sw, $sh)
                     $areaBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
                         $areaRect,
@@ -1108,13 +1179,18 @@ function New-SparklinePanel {
                         [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
                     $sg.FillPolygon($areaBrush, $areaPts)
                     $areaBrush.Dispose()
-                    $sg.DrawLines($linePen, $points[0..($drawCount - 1)])
+                    $linePts = $points
+                    if ($drawCount -lt $pc) {
+                        $linePts = New-Object System.Drawing.PointF[] $drawCount
+                        [System.Array]::Copy($points, $linePts, $drawCount)
+                    }
+                    $sg.DrawLines($linePen, $linePts)
                 }
                 $linePen.Dispose()
 
                 # Current value dot at the end of the sparkline (once fully drawn)
-                if ($count -ge 2 -and $reveal -ge 1.0) {
-                    $lastPt = $points[$count - 1]
+                if ($pc -ge 2 -and $reveal -ge 1.0) {
+                    $lastPt = $points[$pc - 1]
                     $dotBrush = New-Object System.Drawing.SolidBrush(
                         [System.Drawing.Color]::FromArgb(255, $acColor.R, $acColor.G, $acColor.B))
                     $sg.FillEllipse($dotBrush, $lastPt.X - 3, $lastPt.Y - 3, 6, 6)
@@ -1135,7 +1211,7 @@ function New-SparklinePanel {
                 # Time range label (right edge)
                 if ($count -ge 2) {
                     # Recorded time, not wall-clock time - see Get-HistorySpanMinutes
-                    $spanMin = Get-HistorySpanMinutes -History $history
+                    $spanMin = $cache.Span
                     $spanText = if ($spanMin -ge 60) { "{0}h" -f [math]::Round($spanMin / 60.0, 1) } else { "{0} min" -f $spanMin }
                     $spanSize = $sg.MeasureString($spanText, $guideFont)
                     $spanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(120, $guide.R, $guide.G, $guide.B))
@@ -1149,7 +1225,11 @@ function New-SparklinePanel {
                 if ($hvX -ge 0 -and $count -ge 2) {
                     $hvIdx = [int][math]::Round(($hvX / [double]$sw) * ($count - 1))
                     $hvIdx = [math]::Max(0, [math]::Min($count - 1, $hvIdx))
-                    $hvPt = $points[$hvIdx]
+                    # From the full history, not the thinned polyline: the
+                    # readout names the exact sample under the cursor
+                    $hvPt = [System.Drawing.PointF]::new(
+                        [float](($hvIdx / $denom) * $sw),
+                        [float]($sh - (($history[$hvIdx].Percent / 100.0) * ($sh - 4)) - 2))
                     $hvPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(90, $guide.R, $guide.G, $guide.B), 1)
                     $hvPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
                     $sg.DrawLine($hvPen, $hvPt.X, 0, $hvPt.X, $sh)
