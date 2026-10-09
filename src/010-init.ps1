@@ -46,7 +46,7 @@ Add-Type -AssemblyName System.Drawing
 # All native/C# helper types in ONE Add-Type call. This used to be four
 # separate Add-Type invocations - four compiler runs at every launch; merging
 # them into a single compilation measurably cuts startup time.
-Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing @"
+Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing, System.Management @"
 using System;
 using System.Runtime.InteropServices;
 using System.Drawing;
@@ -368,6 +368,80 @@ public static class UpdateFetch {
                 return wc.DownloadString(uri);
             }
         }));
+    }
+}
+
+// Battery readings, taken OFF the UI thread. A WMI query costs 20-900ms
+// (measured, more under load) and used to run on the UI thread every refresh
+// tick, stalling the pill's animations and drags each time. Poll() hands back
+// the latest finished reading and keeps one fresh query in flight, so the UI
+// never waits; until the first reading lands it returns null and the widget
+// answers from .NET's PowerStatus instead.
+//
+// It also reads the right classes. Win32_Battery has NO charge/discharge rate
+// properties at all, and leaves the capacities empty on most modern laptops,
+// so the watts line and the rate-based estimate never had real input. The
+// battery class driver publishes those in root\WMI - each read separately, so
+// one missing class (desktops, odd firmware) cannot cost the others.
+public static class BatteryQuery {
+    private static System.Threading.Tasks.Task<System.Collections.Hashtable> _task;
+    private static System.Collections.Hashtable _last;
+    public static System.Collections.Hashtable Poll() {
+        if (_task != null && _task.IsCompleted) {
+            if (_task.Status == System.Threading.Tasks.TaskStatus.RanToCompletion) _last = _task.Result;
+            _task = null;
+        }
+        if (_task == null) {
+            _task = System.Threading.Tasks.Task.Run(new Func<System.Collections.Hashtable>(Read));
+        }
+        return _last;
+    }
+    // One complete reading (synchronous - pool thread only, or tests)
+    public static System.Collections.Hashtable Read() {
+        System.Collections.Hashtable h = new System.Collections.Hashtable();
+        h["Found"] = false;
+        try {
+            using (System.Management.ManagementObjectSearcher s = new System.Management.ManagementObjectSearcher("root\\CIMV2", "SELECT * FROM Win32_Battery"))
+            using (System.Management.ManagementObjectCollection all = s.Get()) {
+                foreach (System.Management.ManagementBaseObject o in all) {
+                    h["Found"] = true;
+                    foreach (string p in new string[] { "EstimatedChargeRemaining", "BatteryStatus", "DesignCapacity", "FullChargeCapacity", "EstimatedRunTime", "TimeToFullCharge" }) {
+                        h[p] = o[p];
+                    }
+                    break;   // first pack, as before (dual-battery laptops)
+                }
+            }
+        } catch {
+            return h;
+        }
+        if (!(bool)h["Found"]) return h;
+        System.Collections.Hashtable rates = FirstInstance("BatteryStatus", "DischargeRate, ChargeRate");
+        h["DischargeRate"] = rates["DischargeRate"];
+        h["ChargeRate"] = rates["ChargeRate"];
+        if (IsEmpty(h["FullChargeCapacity"])) {
+            h["FullChargeCapacity"] = FirstInstance("BatteryFullChargedCapacity", "FullChargedCapacity")["FullChargedCapacity"];
+        }
+        if (IsEmpty(h["DesignCapacity"])) {
+            h["DesignCapacity"] = FirstInstance("BatteryStaticData", "DesignedCapacity")["DesignedCapacity"];
+        }
+        return h;
+    }
+    static bool IsEmpty(object v) {
+        if (v == null) return true;
+        try { return Convert.ToDouble(v) <= 0; } catch { return true; }
+    }
+    static System.Collections.Hashtable FirstInstance(string cls, string props) {
+        System.Collections.Hashtable r = new System.Collections.Hashtable();
+        try {
+            using (System.Management.ManagementObjectSearcher s = new System.Management.ManagementObjectSearcher("root\\WMI", "SELECT " + props + " FROM " + cls))
+            using (System.Management.ManagementObjectCollection all = s.Get()) {
+                foreach (System.Management.ManagementBaseObject o in all) {
+                    foreach (string p in props.Split(',')) { r[p.Trim()] = o[p.Trim()]; }
+                    break;
+                }
+            }
+        } catch { }
+        return r;
     }
 }
 "@

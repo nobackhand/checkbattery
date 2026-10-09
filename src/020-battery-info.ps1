@@ -189,8 +189,14 @@ function Get-BatteryInfo {
     if ($PSBoundParameters.ContainsKey('WmiBattery')) {
         $wmiBattery = @($WmiBattery) | Select-Object -First 1
     } else {
+        # Off the UI thread (BatteryQuery, 010-init): the latest finished
+        # reading, with a fresh one already under way. $null until the first
+        # lands (the first moments after launch) - then the .NET PowerStatus
+        # source below answers on its own, exactly as when WMI fails.
+        $wmiBattery = $null
         try {
-            $wmiBattery = @(Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop) | Select-Object -First 1
+            $snap = [BatteryQuery]::Poll()
+            if ($null -ne $snap -and $snap['Found']) { $wmiBattery = New-Object PSObject -Property $snap }
         } catch {
             $wmiBattery = $null
         }
