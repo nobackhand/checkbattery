@@ -129,6 +129,15 @@ internal static class Native
         return GetMonitorInfo(mon, ref info) ? ToPx(info.rcWork) : new PxRect(0, 0, 1920, 1080);
     }
 
+    /// <summary>The effective DPI of the monitor nearest a point (96 when Windows will not say).</summary>
+    public static uint DpiAt(PxPoint p)
+    {
+        IntPtr mon = MonitorFromPoint(new POINT { X = p.X, Y = p.Y }, MONITOR_DEFAULTTONEAREST);
+        return GetDpiForMonitor(mon, 0 /* MDT_EFFECTIVE_DPI */, out uint dpi, out _) == 0 && dpi > 0 ? dpi : 96;
+    }
+
+    [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
+
     public static List<PxRect> AllWorkAreas()
     {
         var list = new List<PxRect>();

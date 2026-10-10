@@ -83,8 +83,11 @@ Each milestone is a PR, CI-green and checked by a fresh reviewer, with measured 
 
 **Verification:** `native/tools/ui-smoke.ps1` drives the published exe on the GitHub
 runner with real mouse input. It covers frames, focus, click-through, click,
-drag/fling/save, hover show/hide, both menus, tray, settings in both themes, the battery
-reader in the trimmed build, cold and warm launch time, and every battery state rendered from `BATTERYPILL_FAKE`.
+drag/fling/save, hover show/hide, both menus, the tray's real click sequence (one click
+opens the card, the next closes it), the upgrade from the PowerShell app (config import
+with its Startup shortcut present), Start with Windows on/off through UI Automation,
+settings in both themes, what each battery state's card says, Exit from the menu, no
+crash log, the battery reader in the trimmed build, cold and warm launch time, and every battery state rendered from `BATTERYPILL_FAKE`.
 
 ## Acceptance bar (every UI milestone)
 - No motion on UI-thread timers: compositor animations only.
@@ -107,7 +110,12 @@ reader in the trimmed build, cold and warm launch time, and every battery state 
    runs on the GitHub Windows runner, which has no SAC (`native/tools/ui-smoke.ps1`
    in `native.yml`; screenshots are uploaded as artifacts). Until the build is signed,
    neither CUBE04 nor any SAC-enabled PC can run the native app.
-5. **The battery reader has not met a real battery yet.** Its mapping into the
+5. **Mixed-DPI and second-monitor behaviour is coded, not verified.** The pill passes
+   WM_DPICHANGED on to WinUI and resizes itself; the card steps onto the target
+   monitor before sizing. The CI runner has one 96-DPI screen, so neither is proven.
+6. **WinUIEx** (the transparent backdrop) is the one assembly left with trim warnings
+   (IL2104). The smoke test's screenshots show the backdrop working in the trimmed exe.
+7. **The battery reader has not met a real battery yet.** Its mapping into the
    Win32_Battery shape is unit-tested (draining, charging, charge-cap hold, unknown
    sentinels, relative units), and it reads "no battery" correctly on CUBE04 and the
    CI runner, but no Windows laptop was online on 2026-10-10. First laptop check:

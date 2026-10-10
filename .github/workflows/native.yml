@@ -39,16 +39,14 @@ jobs:
       - name: Publish single exe
         shell: powershell
         run: |
-          dotnet publish native/BatteryPill -c Release -r win-x64 -p:Platform=x64 -nologo `
-            -p:PublishTrimmed=true -p:SatelliteResourceLanguages=en `
-            -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true `
-            -p:EnableCompressionInSingleFile=true -p:EnableMsixTooling=true `
-            -p:DebugType=none -p:DebugSymbols=false -o publish
+          dotnet publish native/BatteryPill -c Release -r win-x64 -p:Platform=x64 -p:SingleExe=true -nologo -o publish
           "{0:N1} MB" -f ((Get-Item publish/BatteryPill.exe).Length / 1MB)
 
       # That exe on a real (SAC-free) Windows desktop, driven with real mouse
-      # input: frames, focus, click-through, click, fling, hover card, menus,
-      # tray, settings, every battery state. Screenshots land in the artifacts.
+      # input and UI Automation: launch time, frames, focus, click-through,
+      # click, fling, hover card, menus, tray clicks, the upgrade from the
+      # PowerShell app, Start with Windows, settings, what every battery state
+      # says, and Exit. Screenshots land in the artifacts.
       - name: UI smoke test
         shell: powershell
         run: >

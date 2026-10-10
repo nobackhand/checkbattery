@@ -77,4 +77,23 @@ public class AlertTests
     [Fact]
     public void ADesktopNeverGetsBatteryAlerts() =>
         Assert.Empty(Run(new AlertPlanner(), (B(-1, plugged: true, noBattery: true), 0), (B(-1, plugged: true, noBattery: true), 3)));
+
+    // ---- parity pins ----
+
+    [Theory]
+    [InlineData(15)]
+    [InlineData(11)]
+    public void NoLowAlertAbove10Percent(int pct) => Assert.Empty(Run(new AlertPlanner(), (B(pct), 0)));
+
+    [Fact]
+    public void TheLowAlertFiresAtExactly10Percent() => Assert.Equal(new[] { AlertKind.Low }, Run(new AlertPlanner(), (B(10), 0)));
+
+    [Fact]
+    public void TheCriticalAlertFiresAtExactly5Percent() => Assert.Equal(new[] { AlertKind.Critical }, Run(new AlertPlanner(), (B(5), 0)));
+
+    [Fact]
+    public void APlugInThatHoldsAtAChargeCapIsNotAnnouncedAsCharging() =>
+        // On AC with an ETA-shaped reading but NOT charging: no "Charging" card
+        Assert.Empty(Run(new AlertPlanner(), (B(80), 0), (B(80, plugged: true, minutes: 30, eta: "1:00 PM"), 3),
+            (B(80, plugged: true, minutes: 30, eta: "1:00 PM"), 6)));
 }

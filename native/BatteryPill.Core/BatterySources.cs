@@ -90,17 +90,20 @@ public sealed class BatteryQuery
         return Poll(out fresh);
     }
 
-    /// <summary>The tray's Refresh: a fresh reading now, but never more than 5 s of waiting.</summary>
-    public BatterySnapshot? ReadNow(out bool fresh)
+    /// <summary>
+    /// The tray's Refresh: a fresh reading now, awaited (never blocking the
+    /// caller's thread) for at most 5 s.
+    /// </summary>
+    public async Task<BatterySnapshot?> ReadNowAsync()
     {
         var t = Task.Run(Read);
         try
         {
-            if (t.Wait(TimeSpan.FromSeconds(5)))
-                lock (_lock) { _last = t.Result; _hasReading = true; _lastAt = DateTime.UtcNow; }
+            var snap = await t.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            lock (_lock) { _last = snap; _hasReading = true; _lastAt = DateTime.UtcNow; }
         }
-        catch (AggregateException) { }
-        return Poll(out fresh);
+        catch (TimeoutException) { }
+        return Poll(out _);
     }
 
     /// <summary>One complete reading (synchronous). Null when this machine has no battery.</summary>

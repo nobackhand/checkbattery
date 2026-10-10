@@ -14,6 +14,11 @@ public sealed class Glide
     public const double StopSpeed = 0.05;
     /// <summary>A hitch (a busy frame) is capped so one late frame can't leap.</summary>
     public const double MaxStepMs = 40;
+    /// <summary>px/ms: a release slower than this just settles (Start-PillGlide's 0.35).</summary>
+    public const double MinFlingSpeed = 0.35;
+
+    /// <summary>Whether a release at this velocity glides on rather than settling.</summary>
+    public static bool IsFling(double vx, double vy) => Math.Sqrt(vx * vx + vy * vy) > MinFlingSpeed;
 
     public double X { get; private set; }
     public double Y { get; private set; }
@@ -83,12 +88,12 @@ public static class Easing
 
 /// <summary>
 /// The release velocity of a drag, from the last few move samples (px/ms).
-/// Samples older than <see cref="WindowMs"/> are ignored: a drag that paused
-/// before release has no momentum.
+/// Samples older than <see cref="WindowMs"/> (100 ms, as the PowerShell app) are
+/// ignored: a drag that paused before release has no momentum.
 /// </summary>
 public sealed class VelocityTracker
 {
-    public const double WindowMs = 80;
+    public const double WindowMs = 100;
     private readonly List<(double T, int X, int Y)> _samples = new();
 
     public void Reset() => _samples.Clear();

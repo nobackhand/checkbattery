@@ -177,4 +177,39 @@ public class GeometryTests
             last = v;
         }
     }
+
+    // ---- parity pins: the PowerShell app's feel, by value ----
+
+    [Fact]
+    public void AWildFlingIsCappedAtThreePxPerMs()
+    {
+        var g = new Glide(500, 500, 30, 0);
+        Assert.Equal(3.0, g.Vx, 6);
+    }
+
+    [Theory]
+    [InlineData(0.30, false)]
+    [InlineData(0.35, false)]
+    [InlineData(0.36, true)]
+    public void AReleaseFasterThan035PxPerMsFlings(double speed, bool flings) => Assert.Equal(flings, Glide.IsFling(speed, 0));
+
+    [Fact]
+    public void TheVelocityWindowIs100Ms()
+    {
+        var inside = new VelocityTracker();
+        inside.Add(0, 0, 0);
+        inside.Add(95, 95, 0);
+        Assert.Equal(1.0, inside.Velocity(95).Vx, 6);   // 95 ms apart: both in the window
+        var outside = new VelocityTracker();
+        outside.Add(0, 0, 0);
+        outside.Add(105, 105, 0);
+        Assert.Equal(0.0, outside.Velocity(105).Vx, 6);  // 105 ms apart: the first fell out
+    }
+
+    [Fact]
+    public void TheSettleOvershootIsAWhisper()
+    {
+        // c1 = 1.2: about 4% past the target three quarters of the way in
+        Assert.Equal(1.040625, Easing.OutBack(0.75), 6);
+    }
 }

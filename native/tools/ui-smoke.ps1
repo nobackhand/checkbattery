@@ -33,6 +33,8 @@ public static class U {
   [StructLayout(LayoutKind.Sequential)] public struct NID { public int cbSize; public IntPtr hWnd; public int uID; public Guid guid; }
   [DllImport("shell32.dll")] public static extern int Shell_NotifyIconGetRect(ref NID id, out RECT r);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
 }
 "@
 [void][U]::SetProcessDpiAwarenessContext([IntPtr](-4))
@@ -109,6 +111,32 @@ function Send-Click {
     Start-Sleep -Milliseconds 60
     [U]::mouse_event($Up, 0, 0, 0, [UIntPtr]::Zero)
 }
+# UI Automation: what the WinUI windows actually SAY, and their controls
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+function Get-WindowText {
+    [OutputType([string])]
+    param([IntPtr]$Hwnd)
+    $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)
+    $all = [System.Windows.Automation.AutomationElement]::FromHandle($Hwnd).FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    return (@($all | ForEach-Object { $_.Current.Name }) -join ' | ')
+}
+function Find-UiElement {
+    [OutputType([System.Windows.Automation.AutomationElement])]
+    param([IntPtr]$Hwnd, [string]$AutomationId = '', [string]$Name = '')
+    $prop = if ($AutomationId) { [System.Windows.Automation.AutomationElement]::AutomationIdProperty } else { [System.Windows.Automation.AutomationElement]::NameProperty }
+    $cond = New-Object System.Windows.Automation.PropertyCondition($prop, $(if ($AutomationId) { $AutomationId } else { $Name }))
+    return [System.Windows.Automation.AutomationElement]::FromHandle($Hwnd).FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+}
+function Get-ShortcutTarget {
+    [OutputType([string])]
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { return '' }
+    return (New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath
+}
+$crashPath = Join-Path $env:LOCALAPPDATA 'BatteryPill\crash.log'
+$exeFull = (Resolve-Path $Exe).Path
+$startupLnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'BatteryPill.lnk'
+Remove-Item $crashPath -ErrorAction SilentlyContinue
 
 # ---- 1. measured run: frames and a first look ----
 $measure = Join-Path $OutDir 'measure.txt'
@@ -123,8 +151,46 @@ Add-Check -Name 'frames delivered' -Ok ($m -match 'frames=(\d+)' -and [int]$Matc
 Remove-Item Env:BATTERYPILL_ICON_DUMP -ErrorAction SilentlyContinue
 $iconCount = @(Get-ChildItem (Join-Path $OutDir 'icons') -Filter '*.png' -ErrorAction SilentlyContinue).Count
 Add-Check -Name 'tray glyphs render' -Ok ($iconCount -eq 30) -Detail "$iconCount PNGs"
-Add-Check -Name 'battery read works in this build' -Ok ($m -match 'battery=ok') -Detail $(if ($m -match 'battery=(\S+)') { $Matches[1] } else { 'no probe' })
+Add-Check -Name 'battery read works in this build' -Ok ($m -match 'reader=ok') -Detail $(if ($m -match 'reader=(\S+)') { $Matches[1] } else { 'no probe' })
 Add-Check -Name 'live text shown' -Ok ($m -match 'pill_text=(\S+)' -and $Matches[1] -ne '') -Detail $(if ($m -match 'pill_text=(\S+)') { $Matches[1] })
+
+# ---- 1b. upgrading from the PowerShell app, and Start with Windows ----
+# A PowerShell user has the Startup shortcut and a config beside the old exe:
+# the first native launch must import that config (and not crash on the
+# shortcut - the trimmed build once did), and Settings must retarget it.
+Remove-Item $cfgPath -ErrorAction SilentlyContinue
+$psDir = Join-Path $env:TEMP 'bp-powershell-app'
+New-Item -ItemType Directory -Force -Path $psDir | Out-Null
+[IO.File]::WriteAllText((Join-Path $psDir 'BatteryWidget.config.json'), '{"X": 300, "Y": 220, "DisplayMode": "percent", "AccentColorIndex": 3, "Theme": "dark", "PillSize": "normal", "Opacity": 0.95}')
+$lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($startupLnk); $lnk.TargetPath = (Join-Path $psDir 'BatteryPill.exe'); $lnk.Save()
+$p = Start-Process $Exe -PassThru
+$w = Wait-Pill -ProcessId $p.Id
+$cfg = Get-Cfg
+Add-Check -Name 'imports the PowerShell app settings' -Ok ($null -ne $w -and $cfg -and $cfg.DisplayMode -eq 'percent' -and $cfg.AccentColorIndex -eq 3) -Detail $(if ($cfg) { "mode $($cfg.DisplayMode), accent $($cfg.AccentColorIndex)" } elseif ($p.HasExited) { "exited $($p.ExitCode)" } else { 'no native config' })
+if ($w) {
+    $mg = [int][math]::Round(18 * [U]::GetDpiForWindow($w.H) / 96.0)
+    Add-Check -Name 'the imported position is used' -Ok ($w.L + $mg -eq 300 -and $w.T + $mg -eq 220) -Detail "pill at $($w.L + $mg),$($w.T + $mg)"
+}
+Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500
+$sp = Start-Process $Exe -ArgumentList '--settings' -PassThru
+Start-Sleep -Milliseconds 3000
+$sw = Get-ProcessWindow -ProcessId $sp.Id | Where-Object { $_.Title -eq 'BatteryPill settings' } | Select-Object -First 1
+$toggle = if ($sw) { Find-UiElement -Hwnd $sw.H -AutomationId 'AutoStartToggle' } else { $null }
+if ($toggle) {
+    $tp = $toggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+    Add-Check -Name 'Start with Windows reads as off while it starts the old app' -Ok ($tp.Current.ToggleState -eq 'Off') -Detail "$($tp.Current.ToggleState)"
+    $tp.Toggle(); Start-Sleep -Milliseconds 800
+    $target = Get-ShortcutTarget -Path $startupLnk
+    Add-Check -Name 'turning it on retargets the Startup shortcut' -Ok ($target -ieq $exeFull) -Detail "target '$target'"
+    $tp.Toggle(); Start-Sleep -Milliseconds 800
+    Add-Check -Name 'turning it off removes the shortcut' -Ok (-not (Test-Path $startupLnk)) -Detail ''
+    Add-Check -Name 'settings survive the toggles' -Ok (-not $sp.HasExited) -Detail $(if ($sp.HasExited) { "exited $($sp.ExitCode)" })
+} else {
+    Add-Check -Name 'Start with Windows toggle found' -Ok $false -Detail $(if ($sw) { 'no AutoStartToggle element' } elseif ($sp.HasExited) { "settings run exited $($sp.ExitCode)" } else { 'no settings window' })
+}
+Stop-Process -Id $sp.Id -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500
+Remove-Item $startupLnk -ErrorAction SilentlyContinue
+Remove-Item $cfgPath -ErrorAction SilentlyContinue
 
 # ---- 2. a normal run: focus, click-through, click, fling, menu ----
 $fgBefore = [U]::GetForegroundWindow()
@@ -196,6 +262,25 @@ if ($popup) { Save-Shot -X ($popup.L - 10) -Y ($popup.T - 10) -W ($popup.W + 20)
 $traceText = if (Test-Path $env:BATTERYPILL_TRACE) { Get-Content $env:BATTERYPILL_TRACE -Raw } else { '' }
 Add-Check -Name 'tray icon added' -Ok ($traceText -match 'tray added=True') -Detail ''
 $trayHwnd = [U]::FindWindow('BatteryPillTray', 'BatteryPill tray')
+# What the shell sends for ONE left click on a version-4 icon: button down, button
+# up, then NIN_SELECT. The card must open once and stay; the next click closes it.
+function Send-TrayClick {
+    [OutputType([void])]
+    param([IntPtr]$Hwnd)
+    foreach ($ev in 0x0201, 0x0202, 0x0400) { [void][U]::PostMessage($Hwnd, 0x8001, [IntPtr]0, [IntPtr]((1 -shl 16) -bor $ev)) }
+}
+[void][U]::SetCursorPos(600, 400)
+Send-TrayClick -Hwnd $trayHwnd; Start-Sleep -Milliseconds 900
+$tc1 = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Title -eq 'BatteryPill details' } | Select-Object -First 1
+Add-Check -Name 'one tray click opens the card and it stays' -Ok ($null -ne $tc1) -Detail $(if ($tc1) { "card $($tc1.W)x$($tc1.Hgt)" } else { 'no card after the click sequence' })
+Send-TrayClick -Hwnd $trayHwnd; Start-Sleep -Milliseconds 700
+$tc2 = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Title -eq 'BatteryPill details' } | Select-Object -First 1
+Add-Check -Name 'the next tray click closes it' -Ok ($null -eq $tc2) -Detail ''
+# The real icon, when the shell will say where it is (promoted out of the overflow)
+Get-ChildItem 'HKCU:\Control Panel\NotifyIconSettings' -ErrorAction SilentlyContinue | ForEach-Object {
+    if ((Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).ExecutablePath -ieq $exeFull) { Set-ItemProperty $_.PSPath -Name IsPromoted -Value 1 -Type DWord }
+}
+Start-Sleep -Milliseconds 1000
 $nid = New-Object U+NID; $nid.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($nid); $nid.hWnd = $trayHwnd; $nid.uID = 1
 $tr = New-Object U+RECT
 $hr = [U]::Shell_NotifyIconGetRect([ref]$nid, [ref]$tr)
@@ -227,6 +312,9 @@ if ($hr -eq 0 -and ($tr.R - $tr.L) -gt 0) {
 # ---- 3. every battery state, rendered from fake firmware readings ----
 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 400
+$cfgBefore = if (Test-Path $cfgPath) { (Get-FileHash $cfgPath).Hash } else { '' }
+# What each card must say: its state and its percent
+$expect = @{ discharging = 'Discharging', '64'; charging = 'Charging', '47'; low = 'Discharging', '9'; full = 'Fully Charged', '100'; capped = 'Plugged In', '80' }
 foreach ($scenario in @('discharging', 'charging', 'low', 'full', 'capped')) {
     $env:BATTERYPILL_FAKE = $scenario
     $f = Start-Process $Exe -PassThru
@@ -237,12 +325,17 @@ foreach ($scenario in @('discharging', 'charging', 'low', 'full', 'capped')) {
     [void][U]::SetCursorPos(($fw.L + [int]($fw.W / 2)), ($fw.T + [int]($fw.Hgt / 2))); Start-Sleep -Milliseconds 1000
     $fc = Get-ProcessWindow -ProcessId $f.Id | Where-Object { $_.Title -eq 'BatteryPill details' } | Select-Object -First 1
     if ($fc) { Save-Shot -X ($fc.L - 12) -Y ($fc.T - 12) -W ($fc.W + 24) -H ($fc.Hgt + 24) -Name "card-$scenario.png" -Zoom 2 }
-    Add-Check -Name "render $scenario" -Ok ($null -ne $fc) -Detail $(if ($fc) { "card $($fc.W)x$($fc.Hgt)" } else { 'no card' })
+    $said = if ($fc) { Get-WindowText -Hwnd $fc.H } else { '' }
+    $title, $pct = $expect[$scenario]
+    $okText = $said -match [regex]::Escape($title) -and $said -match "(^|\D)$pct(\D|$)"
+    Add-Check -Name "render $scenario" -Ok ($null -ne $fc -and $okText) -Detail $(if ($fc) { "card $($fc.W)x$($fc.Hgt): $said" } else { 'no card' })
     [void][U]::SetCursorPos(5, 5); Start-Sleep -Milliseconds 300
     Stop-Process -Id $f.Id -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 400
 }
 Remove-Item Env:BATTERYPILL_FAKE -ErrorAction SilentlyContinue
+$cfgAfter = if (Test-Path $cfgPath) { (Get-FileHash $cfgPath).Hash } else { '' }
+Add-Check -Name 'fake readings never touch the real config' -Ok ($cfgBefore -eq $cfgAfter) -Detail ''
 
 # ---- settings window (both themes) ----
 foreach ($theme in @('dark', 'light')) {
@@ -267,7 +360,24 @@ Add-Type -AssemblyName System.Windows.Forms
 $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
 Save-Shot -X $vs.X -Y $vs.Y -W $vs.Width -H $vs.Height -Name 'desktop.png' -Zoom 1
 
+# ---- 4. Exit from the menu: the real shutdown path ----
+$p = Start-Process $Exe -PassThru
+$w = Wait-Pill -ProcessId $p.Id
+Start-Sleep -Milliseconds 1500
+if ($w) {
+    [void][U]::SetCursorPos(($w.L + [int]($w.W / 2)), ($w.T + [int]($w.Hgt / 2))); Start-Sleep -Milliseconds 250
+    Send-Click -Down $RIGHTDOWN -Up $RIGHTUP; Start-Sleep -Milliseconds 900
+    $popup = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -like '*Popup*' } | Select-Object -First 1
+    $exitItem = if ($popup) { Find-UiElement -Hwnd $popup.H -Name 'Exit' } else { $null }
+    if ($exitItem) { $exitItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+    $gone = $p.WaitForExit(6000)
+    Add-Check -Name 'Exit from the menu ends the app' -Ok ($null -ne $exitItem -and $gone) -Detail $(if (-not $exitItem) { 'no Exit item' } elseif (-not $gone) { 'still running' } else { "exit code $($p.ExitCode)" })
+    Add-Check -Name 'the tray icon goes with it' -Ok ([U]::FindWindow('BatteryPillTray', 'BatteryPill tray') -eq [IntPtr]::Zero) -Detail ''
+}
 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+$crash = if (Test-Path $crashPath) { (Get-Content $crashPath -TotalCount 3) -join ' / ' } else { '' }
+Add-Check -Name 'nothing crashed' -Ok (-not (Test-Path $crashPath)) -Detail $crash
+if (Test-Path $crashPath) { Copy-Item $crashPath (Join-Path $OutDir 'crash.log') }
 $results | ConvertTo-Json | Set-Content (Join-Path $OutDir 'results.json')
 $failed = @($results | Where-Object { -not $_.Ok }).Count
 Write-Host "UI smoke: $($results.Count - $failed) passed, $failed failed"

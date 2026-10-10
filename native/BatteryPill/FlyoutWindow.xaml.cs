@@ -174,6 +174,11 @@ public sealed partial class FlyoutWindow : Window
     /// <summary>Size to the content, place it beside the pill, and slide it in.</summary>
     public void ShowNear(PxRect pill)
     {
+        // On a monitor with another scale, step onto it FIRST: the DPI switch
+        // (and WinUI's own resize for it) happens during that move, so the size
+        // below is computed once, at the scale the card will actually show at
+        var pillCenter = new PxPoint((pill.Left + pill.Right) / 2, (pill.Top + pill.Bottom) / 2);
+        if (Native.DpiAt(pillCenter) != Native.GetDpiForWindow(_hwnd)) AppWindow.Move(new PointInt32(pillCenter.X, pillCenter.Y));
         double scale = Scale;
         // Lay the content out first: measuring before layout under-reported the
         // height and clipped the graph's labels

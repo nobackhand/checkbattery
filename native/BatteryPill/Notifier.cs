@@ -30,12 +30,18 @@ internal static class Notifier
         }
     }
 
-    public static void Show(string title, string body)
+    /// <param name="urgent">
+    /// The 5% warning: shown as Windows' "important" (urgent) notification where
+    /// supported, so Do Not Disturb does not swallow the last chance to plug in.
+    /// </param>
+    public static void Show(string title, string body, bool urgent = false)
     {
         if (!_ready) return;
         try
         {
-            AppNotificationManager.Default.Show(new AppNotificationBuilder().AddText(title).AddText(body).BuildNotification());
+            var builder = new AppNotificationBuilder().AddText(title).AddText(body);
+            if (urgent && AppNotificationBuilder.IsUrgentScenarioSupported()) builder.SetScenario(AppNotificationScenario.Urgent);
+            AppNotificationManager.Default.Show(builder.BuildNotification());
             Trace.Log($"notified: {title} / {body}");
         }
         catch (Exception e) when (e is COMException or InvalidOperationException)
