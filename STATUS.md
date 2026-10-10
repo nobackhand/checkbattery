@@ -2,8 +2,9 @@
 
 ## Now
 main = v1.4.0 (watts + funner pill) plus everything from the Oct 8-9
-overnight/morning loop: PRs #3-#6 and #8-#12 merged. Still NO v1.4.0 tag or
-release: the website download button serves v1.3.3.
+overnight/morning loop: PRs #3-#6 and #8-#12 merged. RELEASED as v1.4.0 on
+2026-10-10 (tag v1.4.0 at 285ca1a, unsigned); the website download button
+serves it.
 
 ## Just shipped (merged to main, Oct 9-10)
 - #3 11 bug fixes (startup freeze, card placement, sparkline cost, slider
@@ -25,8 +26,8 @@ release: the website download button serves v1.3.3.
 1. Laptop check (no Windows laptop online on Oct 10): on battery,
    root\WMI BatteryStatus DischargeRate > 0 and the pill's popup shows
    "Drawing NN W"; at a charge cap it reads "Plugged In".
-2. Cut the release: move OVERNIGHT_SUMMARY.md out of the repo root, then
-   `powershell -File release.ps1`; confirm `gh release view v1.4.0`.
+2. Code signing: Smart App Control blocks the unsigned exe outright;
+   needs Daniel's card for a cert (he rejected Azure Trusted Signing).
 3. Follow-up: persist EmaWasCharging so a relaunch at a cap doesn't
    reuse a saved charge rate (see #11's description).
 
@@ -40,5 +41,6 @@ release: the website download button serves v1.3.3.
   don't.
 
 ## Resume
-Read STATUS + CLAUDE.md; start at Next 1 if a Windows laptop is online,
-else Next 2 once Daniel says release.
+Read STATUS + CLAUDE.md; start at Next 1 if a Windows laptop is online.
+release.ps1 needs Git's bash on PATH, and its verify.sh time limits trip
+while CUBE04 is busy (e.g. gaming) - CI on the same commit is the gate.
