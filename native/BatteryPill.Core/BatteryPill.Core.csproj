@@ -9,10 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Management" Version="8.0.0" />
-  </ItemGroup>
-
-  <ItemGroup>
     <InternalsVisibleTo Include="BatteryPill.Tests" />
     <InternalsVisibleTo Include="BatteryPill" />
   </ItemGroup>

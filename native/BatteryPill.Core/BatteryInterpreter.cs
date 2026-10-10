@@ -21,7 +21,7 @@ public sealed class BatteryInterpreter
     public CultureInfo Culture { get; set; } = CultureInfo.CurrentCulture;
 
     /// <param name="now">LOCAL time: the ETA is shown as a wall-clock time.</param>
-    public BatteryInfo Interpret(WmiBatterySnapshot? wmi, SystemPowerSnapshot? power, double meterMilliwatts, DateTime now)
+    public BatteryInfo Interpret(BatterySnapshot? wmi, SystemPowerSnapshot? power, double meterMilliwatts, DateTime now)
     {
         var info = new BatteryInfo();
         double? chargeFlags = power is null ? null : DeviceNumber.Read(power.BatteryFlag, 0, 255);

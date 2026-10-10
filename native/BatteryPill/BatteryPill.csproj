@@ -33,13 +33,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- System.Management is not trim-safe: trimmed, its type initializer
-         throws and every WMI read fails (caught in CI by the measured run's
-         WMI probe). Keep it whole. -->
-    <TrimmerRootAssembly Include="System.Management" />
-  </ItemGroup>
-
-  <ItemGroup>
     <Content Include="Assets\BatteryPill.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

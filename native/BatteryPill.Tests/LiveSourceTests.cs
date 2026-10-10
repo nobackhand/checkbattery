@@ -15,12 +15,13 @@ public class LiveSourceTests
     public void TheOsPowerStatusAnswers() => Assert.NotNull(SystemPower.Read());
 
     [Fact]
-    public void AWmiReadFinishesAndAgreesWithTheOsAboutTheBattery()
+    public void ADriverReadIsFastAndAgreesWithTheOsAboutTheBattery()
     {
+        new BatteryQuery().Read();   // first call loads setupapi
         var sw = Stopwatch.StartNew();
         var snap = new BatteryQuery().Read();
         sw.Stop();
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(25), $"WMI read took {sw.Elapsed.TotalSeconds:F1}s");
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), $"battery read took {sw.Elapsed.TotalMilliseconds:F0} ms");
         var os = SystemPower.Read()!;
         Assert.Equal(OsSaysNoBattery(os), snap is null);
     }

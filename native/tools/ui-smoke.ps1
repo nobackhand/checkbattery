@@ -63,6 +63,19 @@ function Get-Pill {
     param([int]$ProcessId)
     return (Get-ProcessWindow -ProcessId $ProcessId | Where-Object { $_.Title -eq 'BatteryPill' } | Select-Object -First 1)
 }
+function Wait-Pill {
+    # Polls rather than sleeps: the single-file exe's FIRST launch unpacks itself
+    # (seconds on a cold disk), every later one starts in well under a second
+    [OutputType([pscustomobject])]
+    param([int]$ProcessId, [int]$TimeoutMs = 15000)
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($sw.ElapsedMilliseconds -lt $TimeoutMs) {
+        $w = Get-Pill -ProcessId $ProcessId
+        if ($w) { $w | Add-Member -NotePropertyName AfterMs -NotePropertyValue $sw.ElapsedMilliseconds; return $w }
+        Start-Sleep -Milliseconds 100
+    }
+    return $null
+}
 function Save-Shot {
     [OutputType([void])]
     param([int]$X, [int]$Y, [int]$W, [int]$H, [string]$Name, [int]$Zoom = 3)
@@ -101,9 +114,8 @@ function Send-Click {
 $measure = Join-Path $OutDir 'measure.txt'
 $env:BATTERYPILL_ICON_DUMP = Join-Path $OutDir 'icons'
 $p = Start-Process $Exe -ArgumentList '--measure', $measure -PassThru
-Start-Sleep -Milliseconds 2200
-$w = Get-Pill -ProcessId $p.Id
-Add-Check -Name 'window appears' -Ok ($null -ne $w) -Detail $(if ($w) { "at $($w.L),$($w.T) size $($w.W)x$($w.Hgt)" } else { 'no WinUI window for the process' })
+$w = Wait-Pill -ProcessId $p.Id
+Add-Check -Name 'window appears' -Ok ($null -ne $w) -Detail $(if ($w) { "after $($w.AfterMs) ms (first launch) at $($w.L),$($w.T) size $($w.W)x$($w.Hgt)" } else { 'no WinUI window for the process' })
 if ($w) { Save-Shot -X ($w.L - 30) -Y ($w.T - 30) -W ($w.W + 60) -H ($w.Hgt + 60) -Name 'pill-measured.png' }
 $null = $p.WaitForExit(15000)
 $m = if (Test-Path $measure) { Get-Content $measure -Raw } else { '' }
@@ -111,14 +123,19 @@ Add-Check -Name 'frames delivered' -Ok ($m -match 'frames=(\d+)' -and [int]$Matc
 Remove-Item Env:BATTERYPILL_ICON_DUMP -ErrorAction SilentlyContinue
 $iconCount = @(Get-ChildItem (Join-Path $OutDir 'icons') -Filter '*.png' -ErrorAction SilentlyContinue).Count
 Add-Check -Name 'tray glyphs render' -Ok ($iconCount -eq 30) -Detail "$iconCount PNGs"
-Add-Check -Name 'WMI works in this build' -Ok ($m -match 'wmi=ok') -Detail $(if ($m -match 'wmi=(\S+)') { $Matches[1] } else { 'no probe' })
+Add-Check -Name 'battery read works in this build' -Ok ($m -match 'battery=ok') -Detail $(if ($m -match 'battery=(\S+)') { $Matches[1] } else { 'no probe' })
 Add-Check -Name 'live text shown' -Ok ($m -match 'pill_text=(\S+)' -and $Matches[1] -ne '') -Detail $(if ($m -match 'pill_text=(\S+)') { $Matches[1] })
 
 # ---- 2. a normal run: focus, click-through, click, fling, menu ----
 $fgBefore = [U]::GetForegroundWindow()
 $p = Start-Process $Exe -PassThru
-Start-Sleep -Milliseconds 2800
-$w = Get-Pill -ProcessId $p.Id
+$w = Wait-Pill -ProcessId $p.Id
+if ($w) {
+    Add-Check -Name 'warm launch shows the pill fast' -Ok ($w.AfterMs -lt 3000) -Detail "after $($w.AfterMs) ms"
+    # Let the intro finish before reading geometry and clicking
+    Start-Sleep -Milliseconds ([math]::Max(0, 2800 - $w.AfterMs))
+    $w = Get-Pill -ProcessId $p.Id
+}
 if (-not $w) { Add-Check -Name 'normal launch' -Ok $false -Detail 'no window'; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; $results | ConvertTo-Json | Set-Content (Join-Path $OutDir 'results.json'); exit 1 }
 $fgAfter = [U]::GetForegroundWindow()
 $o = 0; [void][U]::GetWindowThreadProcessId($fgAfter, [ref]$o)

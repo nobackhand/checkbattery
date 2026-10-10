@@ -1,12 +1,12 @@
 namespace BatteryPill.Core;
 
 /// <summary>
-/// One raw WMI battery reading: Win32_Battery's first pack, with the rates and
-/// any missing capacities filled from root\WMI (BatteryStatus,
-/// BatteryFullChargedCapacity, BatteryStaticData). Values stay raw (object) on
-/// purpose: firmware sends sentinels and nulls, and DeviceNumber validates them.
+/// One raw battery reading, in the shape (and units) of WMI's Win32_Battery plus
+/// the root\WMI rates the PowerShell app reads; <see cref="BatteryDevice"/> fills
+/// it from the class driver. Values stay raw (object) on purpose: firmware sends
+/// sentinels and nulls, and DeviceNumber validates them.
 /// </summary>
-public sealed record WmiBatterySnapshot
+public sealed record BatterySnapshot
 {
     public object? EstimatedChargeRemaining { get; init; }
     public object? BatteryStatus { get; init; }

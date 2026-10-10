@@ -1,4 +1,4 @@
-using BatteryPill.Core;
+﻿using BatteryPill.Core;
 using Microsoft.Win32;
 
 namespace BatteryPill;
@@ -27,7 +27,7 @@ internal sealed class AppState
 
     public void Load()
     {
-        // Start the first WMI read now, so it runs while the window is built
+        // Start the first battery read now, so it runs while the window is built
         Query.Poll(out _);
         if (!FakeBattery.Active) ImportFromPowerShellApp();
         var result = ConfigStore.Load(ConfigPath, DateTime.Now);
@@ -78,10 +78,10 @@ internal sealed class AppState
         }
     }
 
-    /// <summary>One refresh. Never blocks for long: the WMI read runs on a pool thread.</summary>
+    /// <summary>One refresh. Never blocks for long: the battery read runs on a pool thread.</summary>
     public BatteryInfo Tick()
     {
-        WmiBatterySnapshot? snap;
+        BatterySnapshot? snap;
         if (FakeBattery.Active)
         {
             var (fakeWmi, fakePower) = FakeBattery.Reading();
@@ -111,7 +111,7 @@ internal sealed class AppState
 
     public void OnResume() => Interpreter.Estimator.OnResume(DateTime.Now);
 
-    /// <summary>The tray's Refresh: a fresh WMI reading (at most 5 s), then a tick.</summary>
+    /// <summary>The tray's Refresh: a fresh battery reading (at most 5 s), then a tick.</summary>
     public BatteryInfo RefreshNow()
     {
         if (!FakeBattery.Active) Query.ReadNow(out _);
