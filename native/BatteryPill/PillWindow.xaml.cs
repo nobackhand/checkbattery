@@ -103,7 +103,7 @@ public sealed partial class PillWindow : Window
         Pill.PointerReleased += OnPillReleased;
         Pill.PointerEntered += (_, _) => { AnimateScale(1.04f); _hoverSince = _clock.Elapsed.TotalMilliseconds; };
         Pill.PointerExited += (_, _) => { AnimateScale(1.0f); _hoverSince = -1; };
-        Pill.PointerCaptureLost += (_, _) => { if (_dragging) EndDrag(); _pressed = false; };
+        Pill.PointerCaptureLost += (_, _) => { Trace.Log($"capture lost dragging={_dragging}"); if (_dragging) EndDrag(); _pressed = false; };
         Pill.ContextRequested += (_, _) => _flyout?.HideCard();
         Pill.ContextFlyout = BuildMenu();
 
@@ -418,7 +418,8 @@ public sealed partial class PillWindow : Window
         _dragStart = PillPosition;
         _dragStartMs = _clock.Elapsed.TotalMilliseconds;
         _velocity.Reset();
-        Pill.CapturePointer(e.Pointer);
+        bool captured = Pill.CapturePointer(e.Pointer);
+        Trace.Log($"pressed at {_pressAt.X},{_pressAt.Y} captured={captured}");
         e.Handled = true;
     }
 
@@ -426,6 +427,7 @@ public sealed partial class PillWindow : Window
     {
         if (!_pressed) return;
         var c = Native.CursorPos();
+        Trace.Log($"moved to {c.X},{c.Y} dragging={_dragging}");
         if (!_dragging)
         {
             double dist = Math.Sqrt(Math.Pow(c.X - _pressAt.X, 2) + Math.Pow(c.Y - _pressAt.Y, 2));
@@ -441,6 +443,7 @@ public sealed partial class PillWindow : Window
 
     private void OnPillReleased(object sender, PointerRoutedEventArgs e)
     {
+        Trace.Log($"released pressed={_pressed} dragging={_dragging}");
         if (!_pressed) return;
         _pressed = false;
         bool wasDragging = _dragging;
