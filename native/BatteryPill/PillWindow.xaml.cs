@@ -57,6 +57,9 @@ public sealed partial class PillWindow : Window
     private PxPoint _pressAt;
     private bool _built;
     private FlyoutWindow? _flyout;
+    private bool _cardPinned;
+    private bool _pillVisible = true;
+    private readonly TrayIcon _tray;
     private double _hoverSince = -1;
     private double _outsideSince = -1;
     private Glide? _glide;
@@ -111,12 +114,7 @@ public sealed partial class PillWindow : Window
 
         _tick = DispatcherQueue.CreateTimer();
         _tick.Interval = TimeSpan.FromMilliseconds(_app.Config.RefreshInterval);
-        _tick.Tick += (_, _) =>
-        {
-            var info = _app.Tick();
-            ApplyInfo(info, animate: true);
-            if (_flyout?.IsShowing == true) _flyout.Update(info);
-        };
+        _tick.Tick += (_, _) => OnReading(_app.Tick());
         _tick.Start();
 
         // Cheap housekeeping: click-through of the shadow margin, fullscreen hide
@@ -125,8 +123,18 @@ public sealed partial class PillWindow : Window
         _watch.Tick += (_, _) => Watch();
         _watch.Start();
 
+        _tray = new TrayIcon
+        {
+            LeftClick = ToggleCardAt,
+            MenuState = () => (_pillVisible, _app.Config.DisplayMode, _dark),
+            Invoked = OnTrayCommand,
+        };
+        _tray.Update(_app.Latest, _app.Config.AccentColorIndex, _dark);
+
         Closed += (_, _) =>
         {
+            _tray.Dispose();
+            Notifier.Shutdown();
             _tick.Stop();
             _watch.Stop();
             UnhookFrames();
@@ -613,6 +621,13 @@ public sealed partial class PillWindow : Window
             _flyout.Update(_app.Latest);
             _flyout.ShowNear(pillRect);
         }
+        // A card opened from the tray stays until a click lands outside it
+        if (_flyout?.IsShowing == true && _cardPinned)
+        {
+            bool buttonDown = (Native.GetAsyncKeyState(0x01) & 0x8000) != 0 || (Native.GetAsyncKeyState(0x02) & 0x8000) != 0;
+            if (buttonDown && !_flyout.ScreenBounds.Contains(cursor.X, cursor.Y)) { _flyout.HideCard(); _cardPinned = false; }
+            return;
+        }
         // ...which stays while the cursor is on the pill or the card, and goes
         // 150 ms after it has left both
         if (_flyout?.IsShowing == true)
@@ -634,7 +649,7 @@ public sealed partial class PillWindow : Window
         {
             _hiddenForFullscreen = hide;
             if (hide) { AppWindow.Hide(); _flyout?.HideCard(); }
-            else AppWindow.Show(false);
+            else if (_pillVisible) AppWindow.Show(false);
         }
     }
 
@@ -654,6 +669,61 @@ public sealed partial class PillWindow : Window
         Native.SetClickThrough(_hwnd, through);
     }
 
+    // ---------------------------------------------------------------- readings, tray
+
+    private void OnReading(BatteryInfo info)
+    {
+        ApplyInfo(info, animate: true);
+        if (_flyout?.IsShowing == true) _flyout.Update(info);
+        _tray.Update(info, _app.Config.AccentColorIndex, _dark);
+        foreach (var alert in _app.Alerts.Next(info, DateTime.Now)) Notifier.Show(alert.Title, alert.Body);
+    }
+
+    private void ToggleCardAt(PxRect anchor)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _flyout ??= new FlyoutWindow(_app);
+            if (_flyout.IsShowing && _cardPinned)
+            {
+                _flyout.HideCard();
+                _cardPinned = false;
+                return;
+            }
+            _flyout.Update(_app.Latest);
+            _flyout.ShowNear(anchor);
+            _cardPinned = true;
+        });
+    }
+
+    private void OnTrayCommand(TrayIcon.Command command, string? arg)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            switch (command)
+            {
+                case TrayIcon.Command.TogglePill:
+                    _pillVisible = !_pillVisible;
+                    if (_pillVisible && !_hiddenForFullscreen) AppWindow.Show(false);
+                    else if (!_pillVisible) { AppWindow.Hide(); _flyout?.HideCard(); }
+                    break;
+                case TrayIcon.Command.ModeTime: _app.ChangeSettings(c => c.DisplayMode = "time"); break;
+                case TrayIcon.Command.ModePercent: _app.ChangeSettings(c => c.DisplayMode = "percent"); break;
+                case TrayIcon.Command.ModeBoth: _app.ChangeSettings(c => c.DisplayMode = "both"); break;
+                case TrayIcon.Command.ModePower: _app.ChangeSettings(c => c.DisplayMode = "power"); break;
+                case TrayIcon.Command.Refresh: OnReading(_app.RefreshNow()); break;
+                case TrayIcon.Command.Exit: Close(); break;
+                case TrayIcon.Command.PlanBase when arg is not null:
+                    _ = Task.Run(() =>
+                    {
+                        if (!PowerPlans.Activate(arg))
+                            DispatcherQueue.TryEnqueue(() => Notifier.Show("Admin rights needed", "Cannot switch power plan without elevation"));
+                    });
+                    break;
+            }
+        });
+    }
+
     // ---------------------------------------------------------------- settings
 
     private void CycleDisplayMode()
@@ -670,6 +740,7 @@ public sealed partial class PillWindow : Window
         ApplyTheme();
         _lastText = "";
         ApplyInfo(_app.Latest, animate: true);
+        _tray.Update(_app.Latest, _app.Config.AccentColorIndex, _dark);
         Pill.ContextFlyout = BuildMenu();
     }
 

@@ -30,6 +30,9 @@ public static class U {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential)] public struct NID { public int cbSize; public IntPtr hWnd; public int uID; public Guid guid; }
+  [DllImport("shell32.dll")] public static extern int Shell_NotifyIconGetRect(ref NID id, out RECT r);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
 }
 "@
 [void][U]::SetProcessDpiAwarenessContext([IntPtr](-4))
@@ -96,6 +99,7 @@ function Send-Click {
 
 # ---- 1. measured run: frames and a first look ----
 $measure = Join-Path $OutDir 'measure.txt'
+$env:BATTERYPILL_ICON_DUMP = Join-Path $OutDir 'icons'
 $p = Start-Process $Exe -ArgumentList '--measure', $measure -PassThru
 Start-Sleep -Milliseconds 2200
 $w = Get-Pill -ProcessId $p.Id
@@ -104,6 +108,9 @@ if ($w) { Save-Shot -X ($w.L - 30) -Y ($w.T - 30) -W ($w.W + 60) -H ($w.Hgt + 60
 $null = $p.WaitForExit(15000)
 $m = if (Test-Path $measure) { Get-Content $measure -Raw } else { '' }
 Add-Check -Name 'frames delivered' -Ok ($m -match 'frames=(\d+)' -and [int]$Matches[1] -gt 100) -Detail $m.Trim()
+Remove-Item Env:BATTERYPILL_ICON_DUMP -ErrorAction SilentlyContinue
+$iconCount = @(Get-ChildItem (Join-Path $OutDir 'icons') -Filter '*.png' -ErrorAction SilentlyContinue).Count
+Add-Check -Name 'tray glyphs render' -Ok ($iconCount -eq 30) -Detail "$iconCount PNGs"
 Add-Check -Name 'live text shown' -Ok ($m -match 'pill_text=(\S+)' -and $Matches[1] -ne '') -Detail $(if ($m -match 'pill_text=(\S+)') { $Matches[1] })
 
 # ---- 2. a normal run: focus, click-through, click, fling, menu ----
@@ -166,6 +173,38 @@ $popup = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -like '*Po
 Add-Check -Name 'right-click opens the menu' -Ok ($null -ne $popup) -Detail $(if ($popup) { "$($popup.Class) $($popup.W)x$($popup.Hgt)" })
 if ($popup) { Save-Shot -X ($popup.L - 10) -Y ($popup.T - 10) -W ($popup.W + 20) -H ($popup.Hgt + 20) -Name 'menu.png' -Zoom 2 }
 [U]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero); [U]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero); Start-Sleep -Milliseconds 300
+
+# ---- tray icon ----
+$traceText = if (Test-Path $env:BATTERYPILL_TRACE) { Get-Content $env:BATTERYPILL_TRACE -Raw } else { '' }
+Add-Check -Name 'tray icon added' -Ok ($traceText -match 'tray added=True') -Detail ''
+$trayHwnd = [U]::FindWindow('BatteryPillTray', 'BatteryPill tray')
+$nid = New-Object U+NID; $nid.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($nid); $nid.hWnd = $trayHwnd; $nid.uID = 1
+$tr = New-Object U+RECT
+$hr = [U]::Shell_NotifyIconGetRect([ref]$nid, [ref]$tr)
+if ($hr -eq 0 -and ($tr.R - $tr.L) -gt 0) {
+    $tx = [int](($tr.L + $tr.R) / 2); $ty = [int](($tr.T + $tr.B) / 2)
+    Write-Host "INFO  tray icon at $($tr.L),$($tr.T) $($tr.R - $tr.L)x$($tr.B - $tr.T)"
+    Send-MouseMove -X $tx -Y $ty; Start-Sleep -Milliseconds 300
+    Send-Click -Down $RIGHTDOWN -Up $RIGHTUP; Start-Sleep -Milliseconds 900
+    $menuWnd = [U]::FindWindow('#32768', $null)
+    if ($menuWnd -ne [IntPtr]::Zero) {
+        $mr = New-Object U+RECT; [void][U]::GetWindowRect($menuWnd, [ref]$mr)
+        Save-Shot -X ($mr.L - 8) -Y ($mr.T - 8) -W ($mr.R - $mr.L + 16) -H ($mr.B - $mr.T + 16) -Name 'tray-menu.png' -Zoom 2
+        Write-Host "INFO  tray menu shown $($mr.R - $mr.L)x$($mr.B - $mr.T)"
+    } else { Write-Host 'INFO  no tray menu window seen' }
+    [U]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero); [U]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero); Start-Sleep -Milliseconds 400
+    Send-MouseMove -X $tx -Y $ty; Start-Sleep -Milliseconds 200
+    Send-Click -Down $LEFTDOWN -Up $LEFTUP; Start-Sleep -Milliseconds 900
+    $tc = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Title -eq 'BatteryPill details' } | Select-Object -First 1
+    if ($tc) {
+        Save-Shot -X ($tc.L - 12) -Y ($tc.T - 12) -W ($tc.W + 24) -H ($tc.Hgt + 24) -Name 'tray-card.png' -Zoom 2
+        Write-Host "INFO  tray click opened the card $($tc.W)x$($tc.Hgt)"
+        Send-MouseMove -X 300 -Y 300; Start-Sleep -Milliseconds 200
+        Send-Click -Down $LEFTDOWN -Up $LEFTUP; Start-Sleep -Milliseconds 400
+    } else { Write-Host 'INFO  tray click: no card seen' }
+} else {
+    Write-Host "INFO  tray icon rect unavailable (hr=$hr; probably in the overflow area)"
+}
 
 # ---- 3. every battery state, rendered from fake firmware readings ----
 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue

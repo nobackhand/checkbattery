@@ -16,6 +16,7 @@ internal sealed class AppState
     public BatteryHistory History { get; } = new();
     public BatteryInterpreter Interpreter { get; } = new();
     public BatteryQuery Query { get; } = new();
+    public AlertPlanner Alerts { get; } = new();
     public BatteryInfo Latest { get; private set; } = new();
     public string? LastIoError { get; private set; }
 
@@ -81,6 +82,13 @@ internal sealed class AppState
     }
 
     public void OnResume() => Interpreter.Estimator.OnResume(DateTime.Now);
+
+    /// <summary>The tray's Refresh: a fresh WMI reading (at most 5 s), then a tick.</summary>
+    public BatteryInfo RefreshNow()
+    {
+        if (!FakeBattery.Active) Query.ReadNow(out _);
+        return Tick();
+    }
 
     public void ChangeSettings(Action<AppConfig> change)
     {

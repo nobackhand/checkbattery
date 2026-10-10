@@ -209,6 +209,28 @@ public class PresentationTests
     [Fact] public void PillPowerBeforeTheFirstReadingFallsBackToPercent() => Assert.Equal("72%", Presentation.PillText(Reading(watts: -1, kind: PowerDrawKind.None), "power").Primary);
     [Fact] public void PillPowerUnknownPercentShowsDashes() => Assert.Equal("--", Presentation.PillText(Reading(-1, watts: -1, kind: PowerDrawKind.None), "power").Primary);
 
+    // ---- elapsed ----
+
+    [Fact]
+    public void ElapsedPhraseReadsLikeASentence()
+    {
+        var i = Reading(); i.ElapsedMinutes = 84;
+        Assert.Equal("1h 24m on battery", Presentation.ElapsedPhrase(i));
+        var c = Reading(charging: true); c.ElapsedMinutes = 12;
+        Assert.Equal("12m charging", Presentation.ElapsedPhrase(c));
+        var h = Reading(holding: true); h.ElapsedMinutes = 30;
+        Assert.Equal("30m plugged in", Presentation.ElapsedPhrase(h));
+    }
+
+    [Fact]
+    public void ElapsedPhraseIsQuietUnderAMinuteAndOnADesktop()
+    {
+        var i = Reading(); i.ElapsedMinutes = 0;
+        Assert.Equal("", Presentation.ElapsedPhrase(i));
+        var d = Reading(noBattery: true); d.ElapsedMinutes = 90;
+        Assert.Equal("", Presentation.ElapsedPhrase(d));
+    }
+
     // ---- colors ----
 
     [Fact]

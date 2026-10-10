@@ -30,6 +30,7 @@ public sealed partial class FlyoutWindow : Window
     private readonly Compositor _compositor;
     private readonly CompositionEasingFunction _decelerate;
     private bool _visible;
+    private bool _above;
 
     internal FlyoutWindow(AppState app)
     {
@@ -51,6 +52,7 @@ public sealed partial class FlyoutWindow : Window
         }
         Native.SetNoActivate(_hwnd);
         ElementCompositionPreview.SetIsTranslationEnabled(Root, true);
+        Root.SizeChanged += (_, _) => RefitHeight();
     }
 
     public bool IsShowing => _visible;
@@ -74,7 +76,7 @@ public sealed partial class FlyoutWindow : Window
         BatteryPanel.Visibility = Visibility.Visible;
 
         TitleText.Text = Presentation.StateTitle(b).ToUpperInvariant();
-        ElapsedText.Text = b.ElapsedTime.Length > 0 ? $"{b.ElapsedTime} since {b.ElapsedSince}" : "";
+        ElapsedText.Text = Presentation.ElapsedPhrase(b);
         HeroText.Text = b.PercentExact >= 0 ? $"{BatteryInterpreter.RoundInt(b.PercentExact)}%" : "--";
         HeroText.Foreground = Brush(Presentation.HeroPercentColor(b.StatusText, lightCard: !dark));
         TimeText.Text = Presentation.TimeSentence(b);
@@ -173,14 +175,18 @@ public sealed partial class FlyoutWindow : Window
     public void ShowNear(PxRect pill)
     {
         double scale = Scale;
+        // Lay the content out first: measuring before layout under-reported the
+        // height and clipped the graph's labels
+        Root.UpdateLayout();
         Root.Measure(new Size(CardWidth, double.PositiveInfinity));
         int w = (int)Math.Round(CardWidth * scale);
-        int h = (int)Math.Round(Root.DesiredSize.Height * scale);
+        int h = (int)Math.Ceiling((Root.DesiredSize.Height + 6) * scale);
         var area = Native.WorkAreaFor(new PxPoint((pill.Left + pill.Right) / 2, (pill.Top + pill.Bottom) / 2));
         int gap = (int)(Gap * scale);
         bool above = pill.Top - gap - h >= area.Top;
         int y = above ? pill.Top - gap - h : pill.Bottom + gap;
         int x = pill.Right - w;
+        _above = above;
         var p = PillGeometry.Clamped(new PxPoint(x, y), w, h, area);
         AppWindow.MoveAndResize(new RectInt32(p.X, p.Y, w, h));
 
@@ -202,6 +208,22 @@ public sealed partial class FlyoutWindow : Window
                 root.StartAnimation("Translation", slide);
                 root.StartAnimation("Opacity", fade);
             }
+        }
+    }
+
+    /// <summary>Re-fit the height when the content changes size after showing.</summary>
+    private void RefitHeight()
+    {
+        if (!_visible) return;
+        double scale = Scale;
+        Root.Measure(new Size(CardWidth, double.PositiveInfinity));
+        int h = (int)Math.Ceiling((Root.DesiredSize.Height + 6) * scale);
+        if (Math.Abs(h - AppWindow.Size.Height) > 1)
+        {
+            // Keep the edge nearest the pill fixed: a card above the pill grows upward
+            int bottom = AppWindow.Position.Y + AppWindow.Size.Height;
+            bool above = _above;
+            AppWindow.MoveAndResize(new RectInt32(AppWindow.Position.X, above ? bottom - h : AppWindow.Position.Y, AppWindow.Size.Width, h));
         }
     }
 
