@@ -262,6 +262,9 @@ if ($popup) { Save-Shot -X ($popup.L - 10) -Y ($popup.T - 10) -W ($popup.W + 20)
 $traceText = if (Test-Path $env:BATTERYPILL_TRACE) { Get-Content $env:BATTERYPILL_TRACE -Raw } else { '' }
 Add-Check -Name 'tray icon added' -Ok ($traceText -match 'tray added=True') -Detail ''
 $trayHwnd = [U]::FindWindow('BatteryPillTray', 'BatteryPill tray')
+# By class AND title: the title once came out as "B" (an ANSI default window
+# proc on a Unicode window), and every tray check below then passed or failed blind
+Add-Check -Name 'tray window found by its title' -Ok ($trayHwnd -ne [IntPtr]::Zero) -Detail ''
 # What the shell sends for ONE left click on a version-4 icon: button down, button
 # up, then NIN_SELECT. The card must open once and stay; the next click closes it.
 function Send-TrayClick {
@@ -269,7 +272,10 @@ function Send-TrayClick {
     param([IntPtr]$Hwnd)
     foreach ($ev in 0x0201, 0x0202, 0x0400) { [void][U]::PostMessage($Hwnd, 0x8001, [IntPtr]0, [IntPtr]((1 -shl 16) -bor $ev)) }
 }
-[void][U]::SetCursorPos(600, 400)
+# Start from no card at all (the hover card from the menu step must be gone)
+[void][U]::SetCursorPos(600, 400); Start-Sleep -Milliseconds 700
+$stale = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Title -eq 'BatteryPill details' } | Select-Object -First 1
+Add-Check -Name 'no card before the tray click' -Ok ($null -eq $stale) -Detail ''
 Send-TrayClick -Hwnd $trayHwnd; Start-Sleep -Milliseconds 900
 $tc1 = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Title -eq 'BatteryPill details' } | Select-Object -First 1
 Add-Check -Name 'one tray click opens the card and it stays' -Ok ($null -ne $tc1) -Detail $(if ($tc1) { "card $($tc1.W)x$($tc1.Hgt)" } else { 'no card after the click sequence' })
@@ -370,9 +376,10 @@ if ($w) {
     $popup = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -like '*Popup*' } | Select-Object -First 1
     $exitItem = if ($popup) { Find-UiElement -Hwnd $popup.H -Name 'Exit' } else { $null }
     if ($exitItem) { $exitItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+    $trayBefore = [U]::FindWindow('BatteryPillTray', 'BatteryPill tray')
     $gone = $p.WaitForExit(6000)
     Add-Check -Name 'Exit from the menu ends the app' -Ok ($null -ne $exitItem -and $gone) -Detail $(if (-not $exitItem) { 'no Exit item' } elseif (-not $gone) { 'still running' } else { "exit code $($p.ExitCode)" })
-    Add-Check -Name 'the tray icon goes with it' -Ok ([U]::FindWindow('BatteryPillTray', 'BatteryPill tray') -eq [IntPtr]::Zero) -Detail ''
+    Add-Check -Name 'the tray icon goes with it' -Ok ($trayBefore -ne [IntPtr]::Zero -and [U]::FindWindow('BatteryPillTray', 'BatteryPill tray') -eq [IntPtr]::Zero) -Detail $(if ($trayBefore -eq [IntPtr]::Zero) { 'tray window never found' })
 }
 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
 $crash = if (Test-Path $crashPath) { (Get-Content $crashPath -TotalCount 3) -join ' / ' } else { '' }
