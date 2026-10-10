@@ -1,0 +1,33 @@
+name: native
+
+# The WinUI 3 rewrite (native/). Separate from verify.yml, which gates the
+# shipping PowerShell app; this one only runs when native/ changes.
+on:
+  push:
+    paths:
+      - 'native/**'
+      - '.github/workflows/native.yml'
+  pull_request:
+    paths:
+      - 'native/**'
+      - '.github/workflows/native.yml'
+
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Core logic: the ported PowerShell suite plus live reads of the runner's
+      # own (battery-less) power sources
+      - name: Test core
+        run: dotnet test native/BatteryPill.Tests -c Release -nologo
+
+      # The app must keep compiling (XAML, WinUI, self-contained x64)
+      - name: Build app
+        run: dotnet build native/BatteryPill -c Release -r win-x64 -p:Platform=x64 -nologo
