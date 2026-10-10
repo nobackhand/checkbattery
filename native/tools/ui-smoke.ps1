@@ -111,6 +111,7 @@ Add-Check -Name 'frames delivered' -Ok ($m -match 'frames=(\d+)' -and [int]$Matc
 Remove-Item Env:BATTERYPILL_ICON_DUMP -ErrorAction SilentlyContinue
 $iconCount = @(Get-ChildItem (Join-Path $OutDir 'icons') -Filter '*.png' -ErrorAction SilentlyContinue).Count
 Add-Check -Name 'tray glyphs render' -Ok ($iconCount -eq 30) -Detail "$iconCount PNGs"
+Add-Check -Name 'WMI works in this build' -Ok ($m -match 'wmi=ok') -Detail $(if ($m -match 'wmi=(\S+)') { $Matches[1] } else { 'no probe' })
 Add-Check -Name 'live text shown' -Ok ($m -match 'pill_text=(\S+)' -and $Matches[1] -ne '') -Detail $(if ($m -match 'pill_text=(\S+)') { $Matches[1] })
 
 # ---- 2. a normal run: focus, click-through, click, fling, menu ----

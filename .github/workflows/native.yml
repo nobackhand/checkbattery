@@ -35,14 +35,25 @@ jobs:
       - name: Build app
         run: dotnet build native/BatteryPill -c Release -r win-x64 -p:Platform=x64 -nologo
 
-      # The real app on a real (SAC-free) Windows desktop, driven with real
-      # mouse input: frames, focus, click-through, click, fling, menu.
-      # Screenshots land in the run's artifacts.
+      # What a user downloads: one trimmed, compressed, self-extracting exe
+      - name: Publish single exe
+        shell: powershell
+        run: |
+          dotnet publish native/BatteryPill -c Release -r win-x64 -p:Platform=x64 -nologo `
+            -p:PublishTrimmed=true -p:SatelliteResourceLanguages=en `
+            -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true -p:EnableMsixTooling=true `
+            -p:DebugType=none -p:DebugSymbols=false -o publish
+          "{0:N1} MB" -f ((Get-Item publish/BatteryPill.exe).Length / 1MB)
+
+      # That exe on a real (SAC-free) Windows desktop, driven with real mouse
+      # input: frames, focus, click-through, click, fling, hover card, menus,
+      # tray, settings, every battery state. Screenshots land in the artifacts.
       - name: UI smoke test
         shell: powershell
         run: >
           powershell -NoProfile -ExecutionPolicy Bypass -File native/tools/ui-smoke.ps1
-          -Exe native/BatteryPill/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/BatteryPill.exe
+          -Exe publish/BatteryPill.exe
           -OutDir ui-smoke
 
       - name: Upload UI screenshots
@@ -51,3 +62,9 @@ jobs:
         with:
           name: ui-smoke
           path: ui-smoke
+
+      - name: Upload the exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: BatteryPill-native
+          path: publish/BatteryPill.exe
