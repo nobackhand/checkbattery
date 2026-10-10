@@ -709,7 +709,12 @@ public sealed partial class PillWindow : Window
         if (_flyout?.IsShowing == true && _cardPinned)
         {
             bool buttonDown = (Native.GetAsyncKeyState(0x01) & 0x8000) != 0 || (Native.GetAsyncKeyState(0x02) & 0x8000) != 0;
-            if (buttonDown && !_flyout.ScreenBounds.Contains(cursor.X, cursor.Y)) { _flyout.HideCard(); _cardPinned = false; }
+            if (buttonDown && !_flyout.ScreenBounds.Contains(cursor.X, cursor.Y))
+            {
+                Trace.Log("pinned card: click outside");
+                _flyout.HideCard();
+                _cardPinned = false;
+            }
         }
         // A hover card stays while the cursor is on the pill or the card, and
         // goes 150 ms after it has left both
@@ -769,6 +774,7 @@ public sealed partial class PillWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             _flyout ??= new FlyoutWindow(_app);
+            Trace.Log($"toggle card showing={_flyout.IsShowing} pinned={_cardPinned}");
             if (_flyout.IsShowing && _cardPinned)
             {
                 _flyout.HideCard();
