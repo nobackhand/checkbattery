@@ -25,6 +25,8 @@ public sealed class BatteryInfo
     public string ETA { get; internal set; } = "";
     public int FullRuntimeMinutes { get; internal set; } = -1;
     public string ElapsedTime { get; internal set; } = "";
+    /// <summary>Whole minutes in the current state (0 at a state change).</summary>
+    public int ElapsedMinutes { get; internal set; }
     public string ElapsedSince { get; internal set; } = "";
     public PowerDrawReading PowerDraw { get; internal set; } = PowerDrawReading.None;
 }

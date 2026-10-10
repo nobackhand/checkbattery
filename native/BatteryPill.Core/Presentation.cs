@@ -102,6 +102,14 @@ public static class Presentation
         return "Estimating...";
     }
 
+    /// <summary>"1h 24m on battery", "12m charging"; empty under a minute.</summary>
+    public static string ElapsedPhrase(BatteryInfo b)
+    {
+        if (b.NoBattery || b.ElapsedMinutes < 1) return "";
+        string state = b.IsFullyCharged ? "full" : b.IsCharging ? "charging" : b.IsPluggedIn ? "plugged in" : "on battery";
+        return $"{Format.Duration(b.ElapsedMinutes)} {state}";
+    }
+
     public static string StateTitle(BatteryInfo b)
     {
         if (b.IsFullyCharged) return "Fully Charged";

@@ -149,6 +149,7 @@ public sealed class BatteryInterpreter
         TimeSpan elapsed = now - _lastStateChange.Value.Time;
         info.ElapsedTime = string.Format(CultureInfo.InvariantCulture, "{0}:{1:D2}", (int)Math.Floor(elapsed.TotalHours), elapsed.Minutes);
         info.ElapsedSince = _lastStateChange.Value.Percent.ToString(CultureInfo.InvariantCulture) + "%";
+        info.ElapsedMinutes = (int)Math.Floor(elapsed.TotalMinutes);
 
         return info;
     }
