@@ -29,11 +29,39 @@ internal sealed class AppState
     {
         // Start the first WMI read now, so it runs while the window is built
         Query.Poll(out _);
+        if (!FakeBattery.Active) ImportFromPowerShellApp();
         var result = ConfigStore.Load(ConfigPath, DateTime.Now);
         Config = result.Config;
         LastIoError = result.Error;
         History.Load(FakeBattery.Active ? FakeBattery.History(DateTime.Now) : Config.BatteryHistory);
         Interpreter.Estimator.Restore(Config.EmaRate, Config.LastValidRate, Config.EmaWasPluggedIn, DateTime.Now);
+    }
+
+    /// <summary>
+    /// First run of the native app on a machine that ran the PowerShell one:
+    /// that app keeps BatteryWidget.config.json next to its exe, which its
+    /// Startup shortcut points at. Same format, so the file is simply copied:
+    /// position, theme, accent, size and history carry over.
+    /// </summary>
+    private static void ImportFromPowerShellApp()
+    {
+        if (File.Exists(ConfigPath)) return;
+        string? target = AutoStart.Target();
+        if (target is null || string.Equals(target, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)) return;
+        string? dir = Path.GetDirectoryName(target);
+        if (dir is null) return;
+        string old = Path.Combine(dir, "BatteryWidget.config.json");
+        if (!File.Exists(old)) return;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+            File.Copy(old, ConfigPath);
+            Trace.Log("imported settings from " + old);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Trace.Log("import failed: " + e.Message);
+        }
     }
 
     public void Save()

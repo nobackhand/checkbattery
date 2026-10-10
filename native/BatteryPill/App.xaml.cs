@@ -31,8 +31,10 @@ public partial class App : Application
         if (Environment.GetEnvironmentVariable("BATTERYPILL_ICON_DUMP") is { Length: > 0 } iconDir) TrayIcon.DumpIcons(iconDir);
         State.Load();
         Notifier.Init();
-        _pill = new PillWindow(State, argv);
+        var updates = new UpdateService(State);
+        _pill = new PillWindow(State, updates, argv);
         // Shown without activation: launching must not take focus (Activate() would)
         _pill.ShowWithoutActivating();
+        if (Array.IndexOf(argv, "--settings") >= 0) _pill.OpenSettings();
     }
 }

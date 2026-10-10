@@ -60,6 +60,8 @@ public sealed partial class PillWindow : Window
     private bool _cardPinned;
     private bool _pillVisible = true;
     private readonly TrayIcon _tray;
+    private readonly UpdateService _updates;
+    private SettingsWindow? _settings;
     private double _hoverSince = -1;
     private double _outsideSince = -1;
     private Glide? _glide;
@@ -72,9 +74,10 @@ public sealed partial class PillWindow : Window
     private readonly DispatcherQueueTimer _tick;
     private readonly DispatcherQueueTimer _watch;
 
-    internal PillWindow(AppState app, string[] args)
+    internal PillWindow(AppState app, UpdateService updates, string[] args)
     {
         _app = app;
+        _updates = updates;
         InitializeComponent();
         _hwnd = WindowNative.GetWindowHandle(this);
         _compositor = ElementCompositionPreview.GetElementVisual(Root).Compositor;
@@ -126,13 +129,26 @@ public sealed partial class PillWindow : Window
         _tray = new TrayIcon
         {
             LeftClick = ToggleCardAt,
-            MenuState = () => (_pillVisible, _app.Config.DisplayMode, _dark),
+            MenuState = () => (_pillVisible, _app.Config.DisplayMode, _dark, _updates.Available?.Version),
             Invoked = OnTrayCommand,
         };
         _tray.Update(_app.Latest, _app.Config.AccentColorIndex, _dark);
 
+        // The daily update check: shortly after launch, then every 30 minutes
+        // (each attempt is a no-op until a day has passed since the last one)
+        var updateTimer = DispatcherQueue.CreateTimer();
+        updateTimer.Interval = TimeSpan.FromSeconds(10);
+        updateTimer.Tick += async (_, _) =>
+        {
+            updateTimer.Interval = TimeSpan.FromMinutes(30);
+            if (!FakeBattery.Active && _measurePath is null) await _updates.CheckAsync();
+        };
+        updateTimer.Start();
+
         Closed += (_, _) =>
         {
+            updateTimer.Stop();
+            _settings?.Close();
             _tray.Dispose();
             Notifier.Shutdown();
             _tick.Stop();
@@ -713,6 +729,8 @@ public sealed partial class PillWindow : Window
                 case TrayIcon.Command.ModePower: _app.ChangeSettings(c => c.DisplayMode = "power"); break;
                 case TrayIcon.Command.Refresh: OnReading(_app.RefreshNow()); break;
                 case TrayIcon.Command.Exit: Close(); break;
+                case TrayIcon.Command.Settings: OpenSettings(); break;
+                case TrayIcon.Command.GetUpdate: _updates.OpenAvailable(); break;
                 case TrayIcon.Command.PlanBase when arg is not null:
                     _ = Task.Run(() =>
                     {
@@ -742,6 +760,16 @@ public sealed partial class PillWindow : Window
         ApplyInfo(_app.Latest, animate: true);
         _tray.Update(_app.Latest, _app.Config.AccentColorIndex, _dark);
         Pill.ContextFlyout = BuildMenu();
+    }
+
+    internal void OpenSettings()
+    {
+        if (_settings is null)
+        {
+            _settings = new SettingsWindow(_app, _updates);
+            _settings.Closed += (_, _) => _settings = null;
+        }
+        _settings.Activate();
     }
 
     private MenuFlyout BuildMenu()
@@ -781,6 +809,9 @@ public sealed partial class PillWindow : Window
         animItem.Click += (_, _) => _app.ChangeSettings(x => x.Animations = animItem.IsChecked);
         menu.Items.Add(animItem);
         menu.Items.Add(new MenuFlyoutSeparator());
+        var settings = new MenuFlyoutItem { Text = "Settings...", Icon = new FontIcon { Glyph = "\uE713" } };
+        settings.Click += (_, _) => OpenSettings();
+        menu.Items.Add(settings);
         var exit = new MenuFlyoutItem { Text = "Exit" };
         exit.Click += (_, _) => Close();
         menu.Items.Add(exit);

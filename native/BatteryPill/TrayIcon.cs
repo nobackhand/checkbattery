@@ -13,7 +13,7 @@ namespace BatteryPill;
 /// </summary>
 internal sealed class TrayIcon : IDisposable
 {
-    public enum Command { None = 0, TogglePill = 1, ModeTime, ModePercent, ModeBoth, ModePower, Refresh, Exit, PlanBase = 1000 }
+    public enum Command { None = 0, TogglePill = 1, ModeTime, ModePercent, ModeBoth, ModePower, Refresh, Exit, Settings, GetUpdate, PlanBase = 1000 }
 
     private const int WM_APP_TRAY = 0x8000 + 1;
     private const int WM_CONTEXTMENU = 0x007B, WM_LBUTTONUP = 0x0202, WM_INITMENUPOPUP = 0x0117, NIN_SELECT = 0x0400, NIN_KEYSELECT = 0x0401;
@@ -32,7 +32,7 @@ internal sealed class TrayIcon : IDisposable
     private IReadOnlyList<PowerPlan> _plans = Array.Empty<PowerPlan>();
 
     public Action<PxRect>? LeftClick;
-    public Func<(bool PillVisible, string Mode, bool Dark)>? MenuState;
+    public Func<(bool PillVisible, string Mode, bool Dark, string? Update)>? MenuState;
     public Action<Command, string?>? Invoked;
 
     public TrayIcon()
@@ -179,7 +179,7 @@ internal sealed class TrayIcon : IDisposable
 
     private void ShowMenu()
     {
-        var (pillVisible, mode, dark) = MenuState?.Invoke() ?? (true, "time", true);
+        var (pillVisible, mode, dark, update) = MenuState?.Invoke() ?? (true, "time", true, null);
         SetMenuTheme(dark);
         IntPtr menu = CreatePopupMenu();
         IntPtr modes = CreatePopupMenu();
@@ -192,6 +192,8 @@ internal sealed class TrayIcon : IDisposable
         AppendMenu(_planMenu, MF_STRING | MF_GRAYED, 0, "Loading...");
         AppendMenu(menu, MF_POPUP, (UIntPtr)(ulong)_planMenu, "Power plan");
         AppendMenu(menu, MF_STRING, (UIntPtr)(int)Command.Refresh, "Refresh now");
+        AppendMenu(menu, MF_STRING, (UIntPtr)(int)Command.Settings, "Settings...");
+        if (update is not null) AppendMenu(menu, MF_STRING, (UIntPtr)(int)Command.GetUpdate, $"Get BatteryPill {update}");
         AppendMenu(menu, MF_SEPARATOR, 0, null);
         AppendMenu(menu, MF_STRING, (UIntPtr)(int)Command.Exit, "Exit");
 
