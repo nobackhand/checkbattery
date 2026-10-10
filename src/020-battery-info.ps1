@@ -189,8 +189,17 @@ function Get-BatteryInfo {
     if ($PSBoundParameters.ContainsKey('WmiBattery')) {
         $wmiBattery = @($WmiBattery) | Select-Object -First 1
     } else {
+        # Off the UI thread (BatteryQuery, 010-init): the latest finished
+        # reading, with a fresh one already under way. The very first call
+        # waits for the first reading (once), so launch sees complete data -
+        # a .NET-only first tick flipped the charging state a tick later.
+        # $null after that only when WMI fails or hangs; the .NET PowerStatus
+        # source below then answers on its own.
+        $wmiBattery = $null
         try {
-            $wmiBattery = @(Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop) | Select-Object -First 1
+            $snap = [BatteryQuery]::Poll()
+            if ($null -eq $snap) { $snap = [BatteryQuery]::WaitFirst(10000) }
+            if ($null -ne $snap -and $snap['Found']) { $wmiBattery = New-Object PSObject -Property $snap }
         } catch {
             $wmiBattery = $null
         }
