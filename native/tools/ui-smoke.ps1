@@ -226,6 +226,24 @@ foreach ($scenario in @('discharging', 'charging', 'low', 'full', 'capped')) {
 }
 Remove-Item Env:BATTERYPILL_FAKE -ErrorAction SilentlyContinue
 
+# ---- settings window (both themes) ----
+foreach ($theme in @('dark', 'light')) {
+    $t = [IO.File]::ReadAllText($cfgPath)
+    $t = [regex]::Replace($t, '"Theme":\s*"[a-z]+"', ('"Theme": "' + $theme + '"'))
+    [IO.File]::WriteAllText($cfgPath, $t)
+    $sp = Start-Process $Exe -ArgumentList '--settings' -PassThru
+    Start-Sleep -Milliseconds 3000
+    $sw = Get-ProcessWindow -ProcessId $sp.Id | Where-Object { $_.Title -eq 'BatteryPill settings' } | Select-Object -First 1
+    Add-Check -Name "settings window opens ($theme)" -Ok ($null -ne $sw) -Detail $(if ($sw) { "$($sw.W)x$($sw.Hgt)" } else { 'no settings window' })
+    if ($sw) {
+        $o = 0; [void][U]::GetWindowThreadProcessId([U]::GetForegroundWindow(), [ref]$o)
+        Add-Check -Name "settings takes focus ($theme)" -Ok ($o -eq $sp.Id) -Detail "foreground pid $o"
+        Save-Shot -X $sw.L -Y $sw.T -W $sw.W -H ([math]::Min($sw.Hgt, 760)) -Name "settings-$theme.png" -Zoom 1
+    }
+    Stop-Process -Id $sp.Id -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
+}
+
 # Full-screen context for the record
 Add-Type -AssemblyName System.Windows.Forms
 $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
