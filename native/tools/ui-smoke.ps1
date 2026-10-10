@@ -26,6 +26,7 @@ public static class U {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr(IntPtr h, int i);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
 }
 "@
@@ -47,14 +48,15 @@ function Get-ProcessWindow {
             if ($o -eq $ProcessId -and [U]::IsWindowVisible($h)) {
                 $r = New-Object U+RECT; [void][U]::GetWindowRect($h, [ref]$r)
                 $sb = New-Object Text.StringBuilder 128; [void][U]::GetClassName($h, $sb, 128)
-                [void]$list.Add([pscustomobject]@{ H = $h; Class = $sb.ToString(); L = $r.L; T = $r.T; W = $r.R - $r.L; Hgt = $r.B - $r.T })
+                $tb = New-Object Text.StringBuilder 128; [void][U]::GetWindowText($h, $tb, 128)
+                [void]$list.Add([pscustomobject]@{ H = $h; Class = $sb.ToString(); Title = $tb.ToString(); L = $r.L; T = $r.T; W = $r.R - $r.L; Hgt = $r.B - $r.T })
             }; $true }, [IntPtr]::Zero)
     return $list.ToArray()
 }
 function Get-Pill {
     [OutputType([pscustomobject])]
     param([int]$ProcessId)
-    return (Get-ProcessWindow -ProcessId $ProcessId | Where-Object { $_.Class -eq 'WinUIDesktopWin32WindowClass' } | Select-Object -First 1)
+    return (Get-ProcessWindow -ProcessId $ProcessId | Where-Object { $_.Title -eq 'BatteryPill' } | Select-Object -First 1)
 }
 function Save-Shot {
     [OutputType([void])]
@@ -121,6 +123,7 @@ $o = 0; [void][U]::GetWindowThreadProcessId([U]::GetForegroundWindow(), [ref]$o)
 Add-Check -Name 'clicking does not take focus' -Ok ($o -ne $p.Id) -Detail "foreground pid $o"
 Save-Shot -X ($w.L - 30) -Y ($w.T - 30) -W ($w.W + 60) -H ($w.Hgt + 60) -Name 'pill-after-click.png'
 
+[void][U]::SetCursorPos(5, 5); Start-Sleep -Milliseconds 500
 $w = Get-Pill -ProcessId $p.Id; $cx = $w.L + [int]($w.W / 2); $cy = $w.T + [int]($w.Hgt / 2)
 [void][U]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 150
 [U]::mouse_event($LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 120
@@ -137,17 +140,17 @@ Add-Check -Name 'landing position is saved' -Ok ($cfg.X -eq ($landed.L + $margin
 $cx = $landed.L + [int]($landed.W / 2); $cy = $landed.T + [int]($landed.Hgt / 2)
 # Hover: rest on the pill, the details card appears beside it; leave, it goes
 [void][U]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 900
-$card = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -eq 'WinUIDesktopWin32WindowClass' -and $_.H -ne $landed.H } | Select-Object -First 1
+$card = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Title -eq 'BatteryPill details' } | Select-Object -First 1
 Add-Check -Name 'hover shows the details card' -Ok ($null -ne $card) -Detail $(if ($card) { "card $($card.W)x$($card.Hgt) at $($card.L),$($card.T)" } else { 'no card window' })
 if ($card) { Save-Shot -X ($card.L - 12) -Y ($card.T - 12) -W ($card.W + 24) -H ($card.Hgt + 24) -Name 'flyout.png' -Zoom 2 }
 [void][U]::SetCursorPos(5, 5); Start-Sleep -Milliseconds 700
-$cardAfter = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -eq 'WinUIDesktopWin32WindowClass' -and $_.H -ne $landed.H } | Select-Object -First 1
+$cardAfter = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Title -eq 'BatteryPill details' } | Select-Object -First 1
 Add-Check -Name 'the card goes when the cursor leaves' -Ok ($null -eq $cardAfter) -Detail ''
 [void][U]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 200
 
 [void][U]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 250
 Send-Click -Down $RIGHTDOWN -Up $RIGHTUP; Start-Sleep -Milliseconds 900
-$popup = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -ne 'WinUIDesktopWin32WindowClass' } | Select-Object -First 1
+$popup = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -like '*Popup*' } | Select-Object -First 1
 Add-Check -Name 'right-click opens the menu' -Ok ($null -ne $popup) -Detail $(if ($popup) { "$($popup.Class) $($popup.W)x$($popup.Hgt)" })
 if ($popup) { Save-Shot -X ($popup.L - 10) -Y ($popup.T - 10) -W ($popup.W + 20) -H ($popup.Hgt + 20) -Name 'menu.png' -Zoom 2 }
 [U]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero); [U]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero); Start-Sleep -Milliseconds 300
