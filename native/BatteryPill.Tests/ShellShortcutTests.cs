@@ -65,4 +65,20 @@ public class ShellShortcutTests : IDisposable
         Assert.Null(error);
         Assert.Equal(@"C:\sta\BatteryPill.exe", read, ignoreCase: true);
     }
+
+    [Fact]
+    public void ReleasedWrappersFinalizeCleanly()
+    {
+        // The wrappers' finalizers run on the GC's thread, where an exception
+        // kills the process: force them now, after real use
+        string lnk = Path.Combine(_dir, "gc.lnk");
+        for (int i = 0; i < 20; i++)
+        {
+            ShellShortcut.Write(lnk, $@"C:\gc\{i}\BatteryPill.exe", @"C:\gc", "gc");
+            Assert.NotNull(ShellShortcut.ReadTarget(lnk));
+        }
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
 }
