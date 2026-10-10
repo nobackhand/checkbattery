@@ -1,51 +1,44 @@
-# STATUS — checkbattery (BatteryPill) — 2026-10-09T11:50:00-05:00
+# STATUS — checkbattery (BatteryPill) — 2026-10-10
 
 ## Now
-main at e286ace = v1.4.0 (watts + funner pill) + 11 overnight bug fixes
-(PR #3) + the daily update check (PR #4). Still NO v1.4.0 tag or
-release: the website download button serves v1.3.3. Seven PRs open.
+main = v1.4.0 (watts + funner pill) plus everything from the Oct 8-9
+overnight/morning loop: PRs #3-#6 and #8-#12 merged. Still NO v1.4.0 tag or
+release: the website download button serves v1.3.3.
 
-## Just shipped (verified against git)
-- PR #3 merged (337949d): startup freeze (perf-counter probe moved off
-  the UI thread), sparkline redraw cost, opacity slider drag, card and
-  first-run-tip placement, live Auto theme, tray icon sharpness, light
-  swatch ring, Health card plugged-in boundary, site CSS, CI test fix.
-- PR #4 merged (e286ace): once-a-day GitHub release check; card + menu
-  item + About status; off switch in Settings.
-
-## Open PRs (all CI green on verify; fresh-agent reviewed)
+## Just shipped (merged to main, Oct 9-10)
+- #3 11 bug fixes (startup freeze, card placement, sparkline cost, slider
+  drag, live Auto theme, tray icon, light swatch ring, Health card, site).
+- #4 once-a-day GitHub release check (card, menu item, About, off switch).
 - #6 real battery rates from root\WMI (Win32_Battery has no
-  DischargeRate/ChargeRate - the watts line never had laptop data) and
-  the battery query off the UI thread. KEEP x2. Needs a laptop check.
-- #5 warning cards stack above the pill. KEEP.
-- #8 light-theme Health ring track. KEEP.
-- #9 right-click menus no longer wait on powercfg. KEEP.
-- #10 WMI BatteryStatus 2 ("on AC") no longer counts as charging, so a
-  laptop at a charge cap reads Plugged In; .NET "Unknown" (255) is not
-  charging either. KEEP x2. Needs a laptop check.
+  DischargeRate/ChargeRate - the watts line never had laptop data); the
+  battery query runs off the UI thread (C# BatteryQuery).
+- #10 WMI BatteryStatus 2 ("on AC") and .NET 255 ("Unknown") no longer
+  count as charging - a laptop at a charge cap reads Plugged In (widget
+  and CheckBattery.ps1).
 - #11 estimator drops the held rate when charging stops/starts while
-  plugged in (was "1h 55m left" at a cap for up to 60s).
-- #7 DRAFT helper-DLL cache: Smart App Control (On on CUBE04) blocks
-  the freshly compiled DLL - recommend closing.
+  plugged in.
+- #9 power plans load when the Power Plan submenu opens, not per click.
+- #5 warning cards stack above the pill. #8 light-theme Health ring.
+- #7 (cache compiled helpers) CLOSED: Smart App Control blocks it.
 
 ## Next (max 3, priority order)
-1. Merge #6 and #10 (after a laptop check), #5, #8, #9, #11.
-2. Cut the release: delete OVERNIGHT_SUMMARY.md, then
+1. Laptop check (no Windows laptop online on Oct 10): on battery,
+   root\WMI BatteryStatus DischargeRate > 0 and the pill's popup shows
+   "Drawing NN W"; at a charge cap it reads "Plugged In".
+2. Cut the release: move OVERNIGHT_SUMMARY.md out of the repo root, then
    `powershell -File release.ps1`; confirm `gh release view v1.4.0`.
-3. On a Windows laptop: unplug, hover the pill - "Drawing NN W" and a
-   Health card with capacity/wear (no Windows laptop online now; Roger
-   is Ubuntu).
+3. Follow-up: persist EmaWasCharging so a relaunch at a cap doesn't
+   reuse a saved charge rate (see #11's description).
 
 ## Blockers / Open questions
 - Smart App Control blocks unsigned builds and unsigned DLLs outright
-  (DISTRIBUTION.md, PR #7); signing decision still open.
+  (DISTRIBUTION.md); signing decision still open.
 
 ## Failed approaches (do not retry)
-- Caching the compiled C# helpers as a DLL on disk (PR #7): SAC blocks
+- Caching the compiled C# helpers as a DLL on disk (#7): SAC blocks
   loading it. Loading it from bytes instead would sidestep the policy -
   don't.
 
 ## Resume
-Read STATUS + CLAUDE.md + OVERNIGHT_SUMMARY.md (untracked, root); act on
-Daniel's merge decisions for #5-#11, then Next 2.
-#10 also fixes CheckBattery.ps1 (the CLI) the same way.
+Read STATUS + CLAUDE.md; start at Next 1 if a Windows laptop is online,
+else Next 2 once Daniel says release.
