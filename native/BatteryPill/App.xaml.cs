@@ -30,6 +30,7 @@ public partial class App : Application
         }
         State.Load();
         _pill = new PillWindow(State, argv);
-        _pill.Activate();
+        // Shown without activation: launching must not take focus (Activate() would)
+        _pill.ShowWithoutActivating();
     }
 }

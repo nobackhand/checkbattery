@@ -20,6 +20,7 @@ public sealed class BatteryInterpreter
     /// <summary>Culture for the ETA clock time. Defaults to the user's.</summary>
     public CultureInfo Culture { get; set; } = CultureInfo.CurrentCulture;
 
+    /// <param name="now">LOCAL time: the ETA is shown as a wall-clock time.</param>
     public BatteryInfo Interpret(WmiBatterySnapshot? wmi, SystemPowerSnapshot? power, double meterMilliwatts, DateTime now)
     {
         var info = new BatteryInfo();

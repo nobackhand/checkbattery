@@ -270,6 +270,15 @@ public class AdversarialTests
         Assert.Equal("10:30 AM", i.ETA);
     }
 
+    [Theory]
+    [InlineData(720, "9:00 PM")]
+    [InlineData(721, "")]
+    public void TheEtaIsShownUpToTwelveHoursAndNotBeyond(int runTime, string eta)
+    {
+        var interp = new BatteryInterpreter { Culture = System.Globalization.CultureInfo.GetCultureInfo("en-US") };
+        Assert.Equal(eta, interp.Interpret(Battery(discharge: 0, full: 0, runTime: runTime), Power(), -1, T0).ETA);
+    }
+
     [Fact]
     public void ElapsedTimeResyncsWhenTheClockJumpsBackward()
     {

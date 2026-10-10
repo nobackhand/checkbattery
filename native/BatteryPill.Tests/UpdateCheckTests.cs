@@ -49,6 +49,14 @@ public class UpdateCheckTests
     }
 
     [Fact]
+    public void NonAsciiDigitsAreNotAVersionAndDoNotThrow()
+    {
+        Assert.Null(UpdateCheck.ParseVersion("\u0661.\u0662.\u0663"));
+        Assert.Null(UpdateCheck.ParseRelease(ReleaseJson(tag: "v\u0661.\u0662.\u0663")));
+        Assert.Null(UpdateCheck.RestoreAvailability("1.4.0", "\u0661.\u0662.\u0663"));
+    }
+
+    [Fact]
     public void ANormalResponseYieldsVersionAndPage()
     {
         var r = UpdateCheck.ParseRelease(ReleaseJson())!;

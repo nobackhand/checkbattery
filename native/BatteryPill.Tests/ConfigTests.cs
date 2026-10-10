@@ -124,6 +124,72 @@ public sealed class ConfigTests : IDisposable
         Assert.Equal(h[^1].Time, loaded[^1].Time);
     }
 
+    [Fact]
+    public void ThePluggedInFlagSurvivesIndependentlyOfCharging()
+    {
+        // The v1.4.1 field the draw stats and session summary depend on: a pack
+        // parked at a charge cap is plugged in but NOT charging
+        var t0 = new DateTime(2026, 10, 10, 11, 0, 0);
+        var h = new List<HistorySample>
+        {
+            new(t0, 80, false, true, -1),             // capped: plugged, not charging
+            new(t0.AddSeconds(3), 80, true, true, -1), // charging
+            new(t0.AddSeconds(6), 79, false, false, 8.2),
+        };
+        Save(FullConfig(), h: h);
+        var loaded = ConfigStore.Load(_path, Now).Config.BatteryHistory;
+        Assert.Equal(new[] { (false, true), (true, true), (false, false) }, loaded.Select(s => (s.IsCharging, s.IsPluggedIn)).ToArray());
+    }
+
+    [Fact]
+    public void UtcStampsLoadAsLocalTimeLikePowerShellReadsThem()
+    {
+        var r = LoadText("{\"LastUpdateCheck\":\"2026-10-10T16:01:20Z\",\"BatteryHistory\":[{\"Time\":\"2026-10-10T16:01:20Z\",\"Percent\":50,\"IsCharging\":false}]}");
+        var expected = new DateTime(2026, 10, 10, 16, 1, 20, DateTimeKind.Utc).ToLocalTime();
+        Assert.Equal(expected, r.Config.LastUpdateCheck);
+        Assert.Equal(DateTimeKind.Local, r.Config.LastUpdateCheck!.Value.Kind);
+        Assert.Equal(expected, r.Config.BatteryHistory[0].Time);
+    }
+
+    [Fact]
+    public void EstimatorStateSavedInUtcIsJudgedByRealAge()
+    {
+        var savedUtc = DateTime.Now.AddMinutes(-3).ToUniversalTime().ToString("o");
+        var c = ConfigStore.Load(WriteRaw("{\"EmaRate\":12000,\"LastValidRate\":12000,\"EmaWasPluggedIn\":false,\"ConfigSavedAt\":\"" + savedUtc + "\"}"), DateTime.Now).Config;
+        Assert.Equal(12000, c.EmaRate);
+    }
+
+    private string WriteRaw(string text)
+    {
+        File.WriteAllText(_path, text, new UTF8Encoding(false));
+        return _path;
+    }
+
+    [Fact]
+    public void ASaveOntoAReadOnlyFileThrowsAndKeepsTheOldFile()
+    {
+        Save(FullConfig());
+        string before = File.ReadAllText(_path);
+        File.SetAttributes(_path, FileAttributes.ReadOnly);
+        try
+        {
+            var changed = FullConfig();
+            changed.Theme = "dark";
+            var e = Record.Exception(() => Save(changed));
+            Assert.True(e is IOException or UnauthorizedAccessException, $"got {e?.GetType().Name ?? "no exception"}");
+            Assert.Equal(before, File.ReadAllText(_path));
+            Assert.Single(Directory.GetFiles(_dir));
+        }
+        finally
+        {
+            File.SetAttributes(_path, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
+    public void AnAnnouncedVersionInNonAsciiDigitsIsIgnoredNotACrash() =>
+        Assert.Null(LoadText("{\"AnnouncedVersion\":\"\u0661.\u0662.\u0663\"}").Config.AnnouncedVersion);
+
     // ---- compatibility ----
 
     [Fact]
