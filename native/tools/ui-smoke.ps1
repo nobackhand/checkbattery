@@ -9,6 +9,8 @@ param(
     [Parameter(Mandatory = $true)][string]$OutDir
 )
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+$env:BATTERYPILL_TRACE = Join-Path $OutDir 'trace.log'
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
@@ -68,6 +70,16 @@ function Save-Shot {
     $big.Save((Join-Path $OutDir $Name)); $big.Dispose(); $bmp.Dispose()
 }
 $cfgPath = Join-Path $env:LOCALAPPDATA 'BatteryPill\BatteryWidget.config.json'
+function Send-MouseMove {
+    # An absolute move through the input stack, as a physical mouse would send:
+    # SetCursorPos only relocates the cursor, which pointer capture may never see
+    [OutputType([void])]
+    param([int]$X, [int]$Y)
+    $sw = [System.Windows.Forms.SystemInformation]::PrimaryMonitorSize
+    $nx = [uint32][math]::Round($X * 65535.0 / ($sw.Width - 1))
+    $ny = [uint32][math]::Round($Y * 65535.0 / ($sw.Height - 1))
+    [U]::mouse_event(0x8001, $nx, $ny, 0, [UIntPtr]::Zero)
+}
 function Get-Cfg {
     [OutputType([pscustomobject])]
     param()
@@ -127,7 +139,7 @@ Save-Shot -X ($w.L - 30) -Y ($w.T - 30) -W ($w.W + 60) -H ($w.Hgt + 60) -Name 'p
 $w = Get-Pill -ProcessId $p.Id; $cx = $w.L + [int]($w.W / 2); $cy = $w.T + [int]($w.Hgt / 2)
 [void][U]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 150
 [U]::mouse_event($LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 120
-for ($i = 1; $i -le 12; $i++) { [void][U]::SetCursorPos($cx - 20 * $i, $cy - 6 * $i); Start-Sleep -Milliseconds 8 }
+for ($i = 1; $i -le 12; $i++) { Send-MouseMove -X ($cx - 20 * $i) -Y ($cy - 6 * $i); Start-Sleep -Milliseconds 8 }
 $atRelease = Get-Pill -ProcessId $p.Id
 [U]::mouse_event($LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
 Start-Sleep -Milliseconds 2000
