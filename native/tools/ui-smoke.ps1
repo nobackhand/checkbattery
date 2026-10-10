@@ -167,6 +167,26 @@ Add-Check -Name 'right-click opens the menu' -Ok ($null -ne $popup) -Detail $(if
 if ($popup) { Save-Shot -X ($popup.L - 10) -Y ($popup.T - 10) -W ($popup.W + 20) -H ($popup.Hgt + 20) -Name 'menu.png' -Zoom 2 }
 [U]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero); [U]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero); Start-Sleep -Milliseconds 300
 
+# ---- 3. every battery state, rendered from fake firmware readings ----
+Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 400
+foreach ($scenario in @('discharging', 'charging', 'low', 'full', 'capped')) {
+    $env:BATTERYPILL_FAKE = $scenario
+    $f = Start-Process $Exe -PassThru
+    Start-Sleep -Milliseconds 2600
+    $fw = Get-Pill -ProcessId $f.Id
+    if (-not $fw) { Add-Check -Name "render $scenario" -Ok $false -Detail 'no pill window'; continue }
+    Save-Shot -X ($fw.L - 30) -Y ($fw.T - 30) -W ($fw.W + 60) -H ($fw.Hgt + 60) -Name "pill-$scenario.png"
+    [void][U]::SetCursorPos(($fw.L + [int]($fw.W / 2)), ($fw.T + [int]($fw.Hgt / 2))); Start-Sleep -Milliseconds 1000
+    $fc = Get-ProcessWindow -ProcessId $f.Id | Where-Object { $_.Title -eq 'BatteryPill details' } | Select-Object -First 1
+    if ($fc) { Save-Shot -X ($fc.L - 12) -Y ($fc.T - 12) -W ($fc.W + 24) -H ($fc.Hgt + 24) -Name "card-$scenario.png" -Zoom 2 }
+    Add-Check -Name "render $scenario" -Ok ($null -ne $fc) -Detail $(if ($fc) { "card $($fc.W)x$($fc.Hgt)" } else { 'no card' })
+    [void][U]::SetCursorPos(5, 5); Start-Sleep -Milliseconds 300
+    Stop-Process -Id $f.Id -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 400
+}
+Remove-Item Env:BATTERYPILL_FAKE -ErrorAction SilentlyContinue
+
 # Full-screen context for the record
 Add-Type -AssemblyName System.Windows.Forms
 $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
