@@ -16,6 +16,7 @@ internal sealed class AppState
     public BatteryHistory History { get; } = new();
     public BatteryInterpreter Interpreter { get; } = new();
     public BatteryQuery Query { get; } = new();
+    public PowerMeter Meter { get; } = new();
     public AlertPlanner Alerts { get; } = new();
     public BatteryInfo Latest { get; private set; } = new();
     public string? LastIoError { get; private set; }
@@ -27,8 +28,10 @@ internal sealed class AppState
 
     public void Load()
     {
-        // Start the first battery read now, so it runs while the window is built
+        // Start the first battery read now, so it runs while the window is built;
+        // the power-meter probe can take far longer, so it starts now too
         Query.Poll(out _);
+        if (!FakeBattery.Active) Meter.Poll();
         if (!FakeBattery.Active) ImportFromPowerShellApp();
         var result = ConfigStore.Load(ConfigPath, DateTime.Now);
         Config = result.Config;
@@ -103,7 +106,7 @@ internal sealed class AppState
             snap = Query.Poll(out _);
         }
         var now = DateTime.Now;
-        Latest = Interpreter.Interpret(snap, SystemPower.Read(), -1, now);
+        Latest = Interpreter.Interpret(snap, SystemPower.Read(), Meter.Poll(), now);
         History.Add(Latest, now);
         Updated?.Invoke(Latest);
         return Latest;

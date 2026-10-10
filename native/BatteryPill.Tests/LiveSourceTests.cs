@@ -52,4 +52,24 @@ public class LiveSourceTests
         Assert.Equal(OsSaysNoBattery(os!), info.NoBattery);
         if (!info.NoBattery) Assert.InRange(info.Percent, 0, 100);
     }
+
+    [Fact]
+    public void ThePowerMeterNeverBlocksAndSettles()
+    {
+        using var meter = new PowerMeter();
+        var sw = Stopwatch.StartNew();
+        double first = meter.Poll();
+        Assert.True(sw.ElapsedMilliseconds < 200, $"Poll blocked for {sw.ElapsedMilliseconds} ms");
+        Assert.Equal(-1, first);
+        // A machine either has a meter that answers or is told it has none; the
+        // first perf query can be slow, so allow it a minute
+        double mw = -1;
+        while (sw.Elapsed < TimeSpan.FromSeconds(60) && !meter.Unavailable && mw < 0)
+        {
+            Thread.Sleep(100);
+            mw = meter.Poll();
+        }
+        Assert.True(meter.Unavailable || mw >= 0, $"meter undecided after {sw.Elapsed.TotalSeconds:F0}s");
+        if (meter.Unavailable) Assert.Equal(-1, meter.Poll());
+    }
 }

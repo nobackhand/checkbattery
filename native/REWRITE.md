@@ -54,7 +54,8 @@ Each milestone is a PR, CI-green and checked by a fresh reviewer, with measured 
   - Not ported: the cross-process `Concurrency` stress suite. It is covered by the same atomic MoveFileEx design, plus a read-only-file test.
   - **Mutation-checked:** re-introducing the status-2, 255, charge-flip and 1%-step bugs each fails the suite
   - CI: `.github/workflows/native.yml`
-  - The platform power meter (perf counter) moves to M2.
+  - The platform power meter (perf counter): `PowerMeter`, through PDH directly (trim-safe),
+    probed off the UI thread and given up on for good the first time it cannot answer.
 - **M2 Pill** ✅
   - live data; every display mode, size, theme and accent; gradient fill animated on the compositor
   - charging and critical pulses; drag, fling-glide and settle stepped per display frame

@@ -158,6 +158,7 @@ public sealed partial class PillWindow : Window
             _flyout?.Close();
             Native.RemoveWindowSubclass(_hwnd, _subclass, (UIntPtr)1);
             _app.Save();
+            _app.Meter.Dispose();
         };
 
         if (_measurePath != null) StartFrameMeter();
