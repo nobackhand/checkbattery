@@ -7,22 +7,31 @@
 
     <!-- The window is the pill plus a transparent margin the drop shadow falls into -->
     <Grid x:Name="Root" Background="Transparent">
-        <Grid x:Name="Pill" Width="108" Height="34" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Grid x:Name="Pill" HorizontalAlignment="Center" VerticalAlignment="Center">
             <Grid x:Name="ShadowHost" />
-            <Rectangle x:Name="PillShape" RadiusX="17" RadiusY="17" Fill="#F01C1E24" />
-            <Grid x:Name="FillHost">
-                <Rectangle x:Name="FillBar" HorizontalAlignment="Left" Width="108" Fill="#5230D158" />
-            </Grid>
-            <Rectangle RadiusX="17" RadiusY="17" Stroke="#22FFFFFF" StrokeThickness="1" />
-            <TextBlock
-                x:Name="Label"
-                Text="3h 8m"
-                FontFamily="Segoe UI Variable Display, Segoe UI"
-                FontWeight="SemiBold"
-                FontSize="13.5"
-                Foreground="#F5F5F7"
+            <Rectangle x:Name="PillShape" />
+            <Grid x:Name="FillHost" />
+            <Rectangle x:Name="PillStroke" StrokeThickness="1" />
+            <StackPanel
+                x:Name="TextStack"
                 HorizontalAlignment="Center"
-                VerticalAlignment="Center" />
+                VerticalAlignment="Center"
+                Spacing="-1">
+                <TextBlock
+                    x:Name="PrimaryText"
+                    FontFamily="Segoe UI Variable Display, Segoe UI"
+                    FontWeight="SemiBold"
+                    HorizontalAlignment="Center"
+                    TextLineBounds="Tight" />
+                <TextBlock
+                    x:Name="SecondaryText"
+                    FontFamily="Segoe UI Variable Text, Segoe UI"
+                    HorizontalAlignment="Center"
+                    TextLineBounds="Tight"
+                    Opacity="0.78"
+                    Margin="0,3,0,0"
+                    Visibility="Collapsed" />
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>

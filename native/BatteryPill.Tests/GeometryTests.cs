@@ -68,6 +68,13 @@ public class GeometryTests
         Assert.False(PillGeometry.IsOnScreen(new(-500, -500), 216, 68, new[] { Area, second }));
     }
 
+    // ---- fullscreen (Test-RectCoversScreen) ----
+
+    [Fact] public void AWindowExactlyCoveringTheMonitorIsFullscreen() => Assert.True(PillGeometry.CoversScreen(new(0, 0, 1920, 1080), new(0, 0, 1920, 1080)));
+    [Fact] public void ABorderlessWindowOverhangingTheMonitorIsFullscreen() => Assert.True(PillGeometry.CoversScreen(new(-8, -8, 1928, 1088), new(0, 0, 1920, 1080)));
+    [Fact] public void AMaximisedWindowLeavingTheTaskbarIsNot() => Assert.False(PillGeometry.CoversScreen(new(0, 0, 1920, 1040), new(0, 0, 1920, 1080)));
+    [Fact] public void AFullscreenWindowOnTheOtherMonitorIsNot() => Assert.False(PillGeometry.CoversScreen(new(1920, 0, 3840, 1080), new(0, 0, 1920, 1080)));
+
     // ---- glide ----
 
     [Fact]

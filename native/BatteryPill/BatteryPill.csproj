@@ -29,4 +29,8 @@
     <PackageReference Include="WinUIEx" Version="2.9.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\BatteryPill.Core\BatteryPill.Core.csproj" />
+  </ItemGroup>
+
 </Project>

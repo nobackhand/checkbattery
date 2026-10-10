@@ -5,6 +5,9 @@ namespace BatteryPill;
 public partial class App : Application
 {
     private PillWindow? _pill;
+    private Mutex? _singleInstance;
+
+    internal AppState State { get; } = new();
 
     public App()
     {
@@ -13,7 +16,20 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _pill = new PillWindow(Environment.GetCommandLineArgs());
+        string[] argv = Environment.GetCommandLineArgs();
+        bool measuring = Array.IndexOf(argv, "--measure") >= 0;
+        // One pill per signed-in user (a measurement run is allowed alongside)
+        if (!measuring)
+        {
+            _singleInstance = new Mutex(true, @"Local\BatteryPillNativeSingleInstance", out bool first);
+            if (!first)
+            {
+                Exit();
+                return;
+            }
+        }
+        State.Load();
+        _pill = new PillWindow(State, argv);
         _pill.Activate();
     }
 }

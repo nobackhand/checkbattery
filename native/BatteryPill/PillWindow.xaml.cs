@@ -1,50 +1,127 @@
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using BatteryPill.Core;
+using Microsoft.UI;
 using Microsoft.UI.Composition;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
 using WinRT.Interop;
+using Color = Windows.UI.Color;
 
 namespace BatteryPill;
 
+/// <summary>
+/// The floating pill. Every motion runs on the compositor (intro, fill level,
+/// pulses, hover) or is stepped once per display frame (glide, settle): nothing
+/// moves on a fixed timer.
+/// </summary>
 public sealed partial class PillWindow : Window
 {
-    private const float PillW = 108, PillH = 34, ShadowMargin = 18;
+    private const float ShadowMargin = 18;
+    private const double SettleMs = 180;
+    private const double FlingSpeed = 0.3;   // px/ms below which a release just settles
 
+    private readonly AppState _app;
     private readonly IntPtr _hwnd;
     private readonly Compositor _compositor;
     private readonly CompositionEasingFunction _decelerate;
+    private readonly CompositionEasingFunction _standard;
+    private readonly Native.SubclassProc _subclass;   // kept alive for the native callback
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private readonly VelocityTracker _velocity = new();
     private readonly string? _measurePath;
     private readonly List<double> _frameTimes = new();
 
-    public PillWindow(string[] args)
+    private SpriteVisual? _fill;
+    private CompositionColorGradientStop? _fillStart, _fillEnd;
+    private SpriteVisual? _shadowSprite;
+    private CompositionRoundedRectangleGeometry? _capsule;
+    private PillSize _size;
+    private double _scale = 1;
+    private bool _dark = true;
+    private string _pulse = "";
+    private string _lastText = "";
+    private float _level = -1;
+
+    private PxPoint _dragStart;
+    private double _dragStartMs;
+    private bool _inMoveLoop;
+    private bool _sawMoveLoop;
+    private Glide? _glide;
+    private (PxPoint From, PxPoint To, double StartMs)? _settle;
+    private double _lastFrameMs;
+    private bool _framesHooked;
+    private bool _hiddenForFullscreen;
+    private bool _clickThrough;
+
+    private readonly DispatcherQueueTimer _tick;
+    private readonly DispatcherQueueTimer _watch;
+
+    internal PillWindow(AppState app, string[] args)
     {
+        _app = app;
         InitializeComponent();
         _hwnd = WindowNative.GetWindowHandle(this);
         _compositor = ElementCompositionPreview.GetElementVisual(Root).Compositor;
-        // Fluent "decelerate" curve: fast out of the gate, gentle landing
         _decelerate = _compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f));
+        _standard = _compositor.CreateCubicBezierEasingFunction(new Vector2(0.8f, 0f), new Vector2(0.2f, 1f));
         _measurePath = ArgValue(args, "--measure");
 
         SystemBackdrop = new WinUIEx.TransparentTintBackdrop();
         ConfigureChrome();
-        PlaceBottomRight();
+        _subclass = WindowProc;
+        Native.SetWindowSubclass(_hwnd, _subclass, (UIntPtr)1, UIntPtr.Zero);
+
+        _scale = Native.GetDpiForWindow(_hwnd) / 96.0;
+        _dark = _app.IsDark;
+        ApplySize(keepPillAt: null);
+        PlaceAtSavedOrHome();
 
         Pill.Loaded += (_, _) =>
         {
-            AttachShadow();
-            ClipFillToCapsule();
+            BuildVisuals();
+            ApplyTheme();
+            ApplyInfo(_app.Tick(), animate: false);
             PlayIntro();
         };
         Pill.PointerPressed += OnPillPressed;
         Pill.PointerEntered += (_, _) => AnimateScale(1.04f);
         Pill.PointerExited += (_, _) => AnimateScale(1.0f);
+        Pill.ContextFlyout = BuildMenu();
+
+        _app.SettingsChanged += OnSettingsChanged;
+
+        _tick = DispatcherQueue.CreateTimer();
+        _tick.Interval = TimeSpan.FromMilliseconds(_app.Config.RefreshInterval);
+        _tick.Tick += (_, _) => ApplyInfo(_app.Tick(), animate: true);
+        _tick.Start();
+
+        // Cheap housekeeping: click-through of the shadow margin, fullscreen hide
+        _watch = DispatcherQueue.CreateTimer();
+        _watch.Interval = TimeSpan.FromMilliseconds(50);
+        _watch.Tick += (_, _) => Watch();
+        _watch.Start();
+
+        Closed += (_, _) =>
+        {
+            _tick.Stop();
+            _watch.Stop();
+            UnhookFrames();
+            Native.RemoveWindowSubclass(_hwnd, _subclass, (UIntPtr)1);
+            _app.Save();
+        };
 
         if (_measurePath != null) StartFrameMeter();
     }
+
+    // ---------------------------------------------------------------- window
 
     private void ConfigureChrome()
     {
@@ -58,49 +135,218 @@ public sealed partial class PillWindow : Window
             p.IsMinimizable = false;
             p.IsAlwaysOnTop = true;
         }
-        Native.RemoveDwmFrame(_hwnd);
+        Native.RemoveWindowFrame(_hwnd);
     }
 
-    private void PlaceBottomRight()
+    private int Margin => (int)Math.Round(ShadowMargin * _scale);
+    private int PillPxW => (int)Math.Round(_size.Width * _scale);
+    private int PillPxH => (int)Math.Round(_size.Height * _scale);
+
+    /// <summary>The pill's top-left on screen, in physical pixels (what the config stores).</summary>
+    private PxPoint PillPosition => new(AppWindow.Position.X + Margin, AppWindow.Position.Y + Margin);
+
+    private PxPoint PillCenter => new(PillPosition.X + PillPxW / 2, PillPosition.Y + PillPxH / 2);
+
+    private void MovePill(PxPoint topLeft) => AppWindow.Move(new PointInt32(topLeft.X - Margin, topLeft.Y - Margin));
+
+    private void ApplySize(PxPoint? keepPillAt)
     {
-        double scale = Native.GetDpiForWindow(_hwnd) / 96.0;
-        int w = (int)Math.Round((PillW + 2 * ShadowMargin) * scale);
-        int h = (int)Math.Round((PillH + 2 * ShadowMargin) * scale);
-        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-        AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(
-            area.X + area.Width - w - (int)(8 * scale),
-            area.Y + area.Height - h - (int)(8 * scale),
-            w, h));
+        PxPoint anchor = keepPillAt ?? PillPosition;
+        _size = PillGeometry.Dimensions(_app.Config.PillSize, _app.Config.DisplayMode);
+        Pill.Width = _size.Width;
+        Pill.Height = _size.Height;
+        PillShape.RadiusX = PillShape.RadiusY = _size.Height / 2;
+        PillStroke.RadiusX = PillStroke.RadiusY = _size.Height / 2;
+        PrimaryText.FontSize = _size.FontSize;
+        SecondaryText.FontSize = _size.FontSize2 > 0 ? _size.FontSize2 : 10;
+        SecondaryText.Visibility = _size.TwoLines ? Visibility.Visible : Visibility.Collapsed;
+        int w = (int)Math.Round((_size.Width + 2 * ShadowMargin) * _scale);
+        int h = (int)Math.Round((_size.Height + 2 * ShadowMargin) * _scale);
+        AppWindow.Resize(new SizeInt32(w, h));
+        if (keepPillAt is not null || AppWindow.Position.X != 0 || AppWindow.Position.Y != 0) MovePill(anchor);
+        ResizeVisuals();
     }
 
-    // A real composition drop shadow, shaped by the capsule's own alpha
-    private void AttachShadow()
+    private void PlaceAtSavedOrHome()
     {
+        var saved = new PxPoint(_app.Config.X, _app.Config.Y);
+        bool valid = _app.Config.X != -1 && PillGeometry.IsOnScreen(saved, PillPxW, PillPxH, Native.AllWorkAreas());
+        MovePill(valid ? saved : Home());
+    }
+
+    private PxPoint Home()
+    {
+        var area = Native.WorkAreaFor(Native.CursorPos());
+        var primary = DisplayArea.Primary?.WorkArea;
+        if (primary is RectInt32 r) area = new PxRect(r.X, r.Y, r.X + r.Width, r.Y + r.Height);
+        return PillGeometry.DefaultPosition(PillPxW, PillPxH, area);
+    }
+
+    // ---------------------------------------------------------------- visuals
+
+    private void BuildVisuals()
+    {
+        // A real composition drop shadow, shaped by the capsule's own alpha
         var shadow = _compositor.CreateDropShadow();
         shadow.Mask = PillShape.GetAlphaMask();
         shadow.BlurRadius = 14f;
-        shadow.Color = Windows.UI.Color.FromArgb(255, 0, 0, 0);
-        shadow.Opacity = 0.42f;
+        shadow.Color = Color.FromArgb(255, 0, 0, 0);
         shadow.Offset = new Vector3(0, 3, 0);
-        var sprite = _compositor.CreateSpriteVisual();
-        sprite.Size = new Vector2(PillW, PillH);
-        sprite.Shadow = shadow;
-        ElementCompositionPreview.SetElementChildVisual(ShadowHost, sprite);
+        _shadowSprite = _compositor.CreateSpriteVisual();
+        _shadowSprite.Shadow = shadow;
+        ElementCompositionPreview.SetElementChildVisual(ShadowHost, _shadowSprite);
+
+        // The charge fill: a gradient sprite clipped to the capsule, scaled from the left
+        _capsule = _compositor.CreateRoundedRectangleGeometry();
+        ElementCompositionPreview.GetElementVisual(FillHost).Clip = _compositor.CreateGeometricClip(_capsule);
+        var brush = _compositor.CreateLinearGradientBrush();
+        brush.StartPoint = new Vector2(0, 0);
+        brush.EndPoint = new Vector2(1, 0);
+        _fillStart = _compositor.CreateColorGradientStop(0f, Colors.Transparent);
+        _fillEnd = _compositor.CreateColorGradientStop(1f, Colors.Transparent);
+        brush.ColorStops.Add(_fillStart);
+        brush.ColorStops.Add(_fillEnd);
+        _fill = _compositor.CreateSpriteVisual();
+        _fill.Brush = brush;
+        _fill.Scale = new Vector3(0, 1, 1);
+        ElementCompositionPreview.SetElementChildVisual(FillHost, _fill);
+        ResizeVisuals();
     }
 
-    private void ClipFillToCapsule()
+    private void ResizeVisuals()
     {
-        var capsule = _compositor.CreateRoundedRectangleGeometry();
-        capsule.Size = new Vector2(PillW, PillH);
-        capsule.CornerRadius = new Vector2(PillH / 2);
-        ElementCompositionPreview.GetElementVisual(FillHost).Clip = _compositor.CreateGeometricClip(capsule);
-        ElementCompositionPreview.GetElementVisual(FillBar).Scale = new Vector3(0, 1, 1);
+        var size = new Vector2((float)_size.Width, (float)_size.Height);
+        if (_shadowSprite != null) _shadowSprite.Size = size;
+        if (_fill != null) _fill.Size = size;
+        if (_capsule != null)
+        {
+            _capsule.Size = size;
+            _capsule.CornerRadius = new Vector2(size.Y / 2);
+        }
     }
 
-    // Everything below runs on the compositor at the display's refresh rate,
-    // not on a UI-thread timer
+    private void ApplyTheme()
+    {
+        _dark = _app.IsDark;
+        PillShape.Fill = new SolidColorBrush(_dark ? Color.FromArgb(242, 24, 24, 28) : Color.FromArgb(246, 242, 242, 247));
+        PillStroke.Stroke = new SolidColorBrush(_dark ? Color.FromArgb(38, 255, 255, 255) : Color.FromArgb(26, 0, 0, 0));
+        var text = new SolidColorBrush(_dark ? Color.FromArgb(255, 245, 245, 250) : Color.FromArgb(255, 28, 28, 30));
+        PrimaryText.Foreground = text;
+        SecondaryText.Foreground = text;
+        if (_shadowSprite?.Shadow is DropShadow s) s.Opacity = _dark ? 0.45f : 0.22f;
+        ElementCompositionPreview.GetElementVisual(Root).Opacity = (float)_app.Config.Opacity;
+        _level = -1;   // recolor the fill on the next reading
+    }
+
+    private void ApplyInfo(BatteryInfo info, bool animate)
+    {
+        var text = Presentation.PillText(info, _app.Config.DisplayMode);
+        string joined = text.Primary + "|" + text.Secondary;
+        if (joined != _lastText)
+        {
+            PrimaryText.Text = text.Primary;
+            SecondaryText.Text = text.Secondary;
+            if (animate && _lastText.Length > 0 && _app.Config.Animations) FlashText();
+            _lastText = joined;
+        }
+
+        float level = info.NoBattery ? 0f : Math.Clamp(info.Percent, 0, 100) / 100f;
+        var accent = Presentation.AccentColor(info.Percent, info.IsCharging, _app.Config.AccentColorIndex, lightPill: !_dark);
+        if (_fill != null && level != _level)
+        {
+            SetFill(level, accent, animate && _level >= 0 && _app.Config.Animations);
+            _level = level;
+        }
+        else if (_fill != null)
+        {
+            SetFillColor(accent, animate);
+        }
+
+        string pulse = !_app.Config.Animations ? ""
+            : info.IsCharging ? "charging"
+            : !info.IsPluggedIn && info.Percent >= 0 && info.Percent <= 10 ? "critical"
+            : "";
+        if (pulse != _pulse) SetPulse(pulse);
+
+        ToolTipService.SetToolTip(Pill, $"{Presentation.StateTitle(info)} - {Presentation.TimeSentence(info)}");
+    }
+
+    private Color FillColor(Rgb c, bool end) =>
+        Color.FromArgb((byte)(_dark ? (end ? 120 : 52) : (end ? 105 : 40)), c.R, c.G, c.B);
+
+    private void SetFill(float level, Rgb accent, bool animate)
+    {
+        if (_fill == null) return;
+        if (!animate)
+        {
+            _fill.Scale = new Vector3(level, 1, 1);
+            SetFillColor(accent, false);
+            return;
+        }
+        var a = _compositor.CreateVector3KeyFrameAnimation();
+        a.InsertKeyFrame(1f, new Vector3(level, 1, 1), _decelerate);
+        a.Duration = TimeSpan.FromMilliseconds(600);
+        _fill.StartAnimation("Scale", a);
+        SetFillColor(accent, true);
+    }
+
+    private void SetFillColor(Rgb accent, bool animate)
+    {
+        if (_fillStart == null || _fillEnd == null) return;
+        Color start = FillColor(accent, false), end = FillColor(accent, true);
+        if (!animate || !_app.Config.Animations)
+        {
+            _fillStart.Color = start;
+            _fillEnd.Color = end;
+            return;
+        }
+        foreach (var (stop, target) in new[] { (_fillStart, start), (_fillEnd, end) })
+        {
+            var c = _compositor.CreateColorKeyFrameAnimation();
+            c.InsertKeyFrame(1f, target, _decelerate);
+            c.Duration = TimeSpan.FromMilliseconds(400);
+            stop.StartAnimation("Color", c);
+        }
+    }
+
+    /// <summary>A soft breathing fill while charging; a quicker one when critically low.</summary>
+    private void SetPulse(string pulse)
+    {
+        _pulse = pulse;
+        if (_fill == null) return;
+        _fill.StopAnimation("Opacity");
+        if (pulse.Length == 0)
+        {
+            _fill.Opacity = 1f;
+            return;
+        }
+        var easeInOut = _compositor.CreateCubicBezierEasingFunction(new Vector2(0.45f, 0f), new Vector2(0.55f, 1f));
+        var a = _compositor.CreateScalarKeyFrameAnimation();
+        a.InsertKeyFrame(0f, 1f);
+        a.InsertKeyFrame(0.5f, pulse == "charging" ? 0.55f : 0.35f, easeInOut);
+        a.InsertKeyFrame(1f, 1f, easeInOut);
+        a.Duration = TimeSpan.FromMilliseconds(pulse == "charging" ? 2400 : 1300);
+        a.IterationBehavior = AnimationIterationBehavior.Forever;
+        _fill.StartAnimation("Opacity", a);
+    }
+
+    private void FlashText()
+    {
+        var v = ElementCompositionPreview.GetElementVisual(TextStack);
+        var a = _compositor.CreateScalarKeyFrameAnimation();
+        a.InsertKeyFrame(0f, 0.35f);
+        a.InsertKeyFrame(1f, 1f, _decelerate);
+        a.Duration = TimeSpan.FromMilliseconds(260);
+        v.StartAnimation("Opacity", a);
+    }
+
     private void PlayIntro()
     {
+        if (!_app.Config.Animations)
+        {
+            if (_fill != null) _fill.Scale = new Vector3(Math.Max(0, _level), 1, 1);
+            return;
+        }
         ElementCompositionPreview.SetIsTranslationEnabled(Pill, true);
         var pill = ElementCompositionPreview.GetElementVisual(Pill);
 
@@ -108,58 +354,331 @@ public sealed partial class PillWindow : Window
         rise.InsertKeyFrame(0f, new Vector3(0, 14, 0));
         rise.InsertKeyFrame(1f, Vector3.Zero, _decelerate);
         rise.Duration = TimeSpan.FromMilliseconds(500);
-
         var fade = _compositor.CreateScalarKeyFrameAnimation();
         fade.InsertKeyFrame(0f, 0f);
         fade.InsertKeyFrame(1f, 1f, _decelerate);
         fade.Duration = TimeSpan.FromMilliseconds(400);
-
         pill.StartAnimation("Translation", rise);
         pill.StartAnimation("Opacity", fade);
 
-        var sweep = _compositor.CreateVector3KeyFrameAnimation();
-        sweep.InsertKeyFrame(0f, new Vector3(0, 1, 1));
-        sweep.InsertKeyFrame(1f, new Vector3(0.68f, 1, 1), _decelerate);
-        sweep.DelayTime = TimeSpan.FromMilliseconds(250);
-        sweep.Duration = TimeSpan.FromMilliseconds(900);
-        ElementCompositionPreview.GetElementVisual(FillBar).StartAnimation("Scale", sweep);
+        if (_fill != null && _level >= 0)
+        {
+            var sweep = _compositor.CreateVector3KeyFrameAnimation();
+            sweep.InsertKeyFrame(0f, new Vector3(0, 1, 1));
+            sweep.InsertKeyFrame(1f, new Vector3(_level, 1, 1), _decelerate);
+            sweep.DelayTime = TimeSpan.FromMilliseconds(250);
+            sweep.Duration = TimeSpan.FromMilliseconds(900);
+            _fill.StartAnimation("Scale", sweep);
+        }
     }
 
     private void AnimateScale(float to)
     {
+        if (!_app.Config.Animations) return;
         var pill = ElementCompositionPreview.GetElementVisual(Pill);
-        pill.CenterPoint = new Vector3(PillW / 2, PillH / 2, 0);
+        pill.CenterPoint = new Vector3((float)_size.Width / 2, (float)_size.Height / 2, 0);
         var a = _compositor.CreateVector3KeyFrameAnimation();
         a.InsertKeyFrame(1f, new Vector3(to, to, 1), _decelerate);
         a.Duration = TimeSpan.FromMilliseconds(167);
         pill.StartAnimation("Scale", a);
     }
 
+    // ---------------------------------------------------------------- drag, glide, settle
+
     // Hand the drag to Windows' own move loop: it tracks the cursor at full rate
     private void OnPillPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint(Pill).Properties.IsLeftButtonPressed) return;
+        StopMotion();
+        _dragStart = PillPosition;
+        _dragStartMs = _clock.Elapsed.TotalMilliseconds;
+        if (_app.Config.PositionLocked)
+        {
+            CycleDisplayMode();
+            return;
+        }
+        _sawMoveLoop = false;
         Native.ReleaseCapture();
+        // Returns once the button is released. Windows only enters its move loop
+        // after the cursor actually moves: a plain click never sends
+        // WM_ENTERSIZEMOVE, so it is recognised here instead.
         Native.SendMessage(_hwnd, Native.WM_NCLBUTTONDOWN, (IntPtr)Native.HTCAPTION, IntPtr.Zero);
+        if (!_sawMoveLoop && _clock.Elapsed.TotalMilliseconds - _dragStartMs < 500) CycleDisplayMode();
     }
 
-    // --measure <file>: record 4s of frame times, write a summary, exit
+    private IntPtr WindowProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr refData)
+    {
+        switch ((int)msg)
+        {
+            case Native.WM_ENTERSIZEMOVE:
+                _inMoveLoop = true;
+                _sawMoveLoop = true;
+                _velocity.Reset();
+                SetClickThrough(false);
+                break;
+            case Native.WM_MOVING:
+                var r = Marshal.PtrToStructure<Native.RECT>(lParam);
+                _velocity.Add(_clock.Elapsed.TotalMilliseconds, r.Left + Margin, r.Top + Margin);
+                break;
+            case Native.WM_EXITSIZEMOVE:
+                _inMoveLoop = false;
+                DispatcherQueue.TryEnqueue(OnDragEnded);
+                break;
+            case Native.WM_DPICHANGED:
+                double newScale = ((int)wParam & 0xFFFF) / 96.0;
+                var suggested = Marshal.PtrToStructure<Native.RECT>(lParam);
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    _scale = newScale;
+                    ApplySize(new PxPoint(suggested.Left + (int)Math.Round(ShadowMargin * newScale), suggested.Top + (int)Math.Round(ShadowMargin * newScale)));
+                });
+                return IntPtr.Zero;
+            case Native.WM_DISPLAYCHANGE:
+                DispatcherQueue.TryEnqueue(OnDisplayChanged);
+                break;
+            case Native.WM_POWERBROADCAST when (int)wParam == Native.PBT_APMRESUMEAUTOMATIC:
+                DispatcherQueue.TryEnqueue(_app.OnResume);
+                break;
+            case Native.WM_SETTINGCHANGE:
+                if (_app.Config.Theme == "auto") DispatcherQueue.TryEnqueue(() => { if (_app.IsDark != _dark) ApplyTheme(); });
+                break;
+        }
+        return Native.DefSubclassProc(hwnd, msg, wParam, lParam);
+    }
+
+    private void OnDragEnded()
+    {
+        var end = PillPosition;
+        double moved = Math.Sqrt(Math.Pow(end.X - _dragStart.X, 2) + Math.Pow(end.Y - _dragStart.Y, 2));
+        double heldMs = _clock.Elapsed.TotalMilliseconds - _dragStartMs;
+        if (moved < 4 * _scale && heldMs < 350)
+        {
+            CycleDisplayMode();   // a click, not a drag
+            return;
+        }
+        var (vx, vy) = _velocity.Velocity(_clock.Elapsed.TotalMilliseconds);
+        if (_app.Config.Animations && Math.Sqrt(vx * vx + vy * vy) > FlingSpeed)
+        {
+            _glide = new Glide(end.X, end.Y, vx, vy);
+            HookFrames();
+        }
+        else
+        {
+            StartSettle();
+        }
+    }
+
+    private void StartSettle()
+    {
+        var at = PillPosition;
+        var area = Native.WorkAreaFor(PillCenter);
+        var to = PillGeometry.Clamped(PillGeometry.Snapped(at, PillPxW, PillPxH, (int)(24 * _scale), area), PillPxW, PillPxH, area);
+        if (!_app.Config.Animations || to == at)
+        {
+            MovePill(to);
+            SavePosition();
+            return;
+        }
+        _settle = (at, to, _clock.Elapsed.TotalMilliseconds);
+        HookFrames();
+    }
+
+    private void HookFrames()
+    {
+        if (_framesHooked) return;
+        _lastFrameMs = _clock.Elapsed.TotalMilliseconds;
+        CompositionTarget.Rendering += OnFrame;
+        _framesHooked = true;
+    }
+
+    private void UnhookFrames()
+    {
+        if (!_framesHooked) return;
+        CompositionTarget.Rendering -= OnFrame;
+        _framesHooked = false;
+    }
+
+    private void StopMotion()
+    {
+        _glide = null;
+        _settle = null;
+        UnhookFrames();
+    }
+
+    // One step per display frame
+    private void OnFrame(object? sender, object e)
+    {
+        double now = _clock.Elapsed.TotalMilliseconds;
+        double dt = now - _lastFrameMs;
+        _lastFrameMs = now;
+        if (_glide != null)
+        {
+            MovePill(_glide.Step(dt, PillPxW, PillPxH, Native.WorkAreaFor(PillCenter)));
+            if (_glide.Done)
+            {
+                _glide = null;
+                UnhookFrames();
+                StartSettle();
+            }
+            return;
+        }
+        if (_settle is { } s)
+        {
+            double t = (now - s.StartMs) / SettleMs;
+            double k = Easing.OutBack(t);
+            MovePill(new PxPoint((int)(s.From.X + (s.To.X - s.From.X) * k), (int)(s.From.Y + (s.To.Y - s.From.Y) * k)));
+            if (t >= 1)
+            {
+                MovePill(s.To);
+                _settle = null;
+                UnhookFrames();
+                SavePosition();
+            }
+            return;
+        }
+        UnhookFrames();
+    }
+
+    private void SavePosition()
+    {
+        var p = PillPosition;
+        _app.Config.X = p.X;
+        _app.Config.Y = p.Y;
+        _app.Save();
+    }
+
+    private void OnDisplayChanged()
+    {
+        var areas = Native.AllWorkAreas();
+        var saved = new PxPoint(_app.Config.X, _app.Config.Y);
+        bool savedValid = _app.Config.X != -1 && PillGeometry.IsOnScreen(saved, PillPxW, PillPxH, areas);
+        bool currentValid = PillGeometry.IsOnScreen(PillPosition, PillPxW, PillPxH, areas);
+        switch (PillGeometry.OnDisplayChange(savedValid, currentValid, PillPosition == saved))
+        {
+            case DisplayChangeAction.Restore: MovePill(saved); break;
+            case DisplayChangeAction.Park: MovePill(Home()); break;
+        }
+    }
+
+    // ---------------------------------------------------------------- housekeeping
+
+    private void Watch()
+    {
+        if (_inMoveLoop || _glide != null || _settle != null) return;
+
+        // The transparent shadow margin must not eat clicks meant for what is underneath
+        var c = Native.CursorPos();
+        var p = PillPosition;
+        bool overCapsule = InCapsule(c.X - p.X, c.Y - p.Y, PillPxW, PillPxH);
+        SetClickThrough(!overCapsule);
+
+        // Fullscreen apps (a game, a video) hide the pill
+        bool hide = _app.Config.AutoHideFullscreen && Native.IsFullscreenAppOver(PillCenter);
+        if (hide != _hiddenForFullscreen)
+        {
+            _hiddenForFullscreen = hide;
+            if (hide) AppWindow.Hide();
+            else AppWindow.Show(false);
+        }
+    }
+
+    private static bool InCapsule(int x, int y, int w, int h)
+    {
+        if (x < 0 || y < 0 || x >= w || y >= h) return false;
+        double r = h / 2.0;
+        double cx = Math.Clamp(x, r, w - r);
+        double dx = x - cx, dy = y - r;
+        return dx * dx + dy * dy <= r * r;
+    }
+
+    private void SetClickThrough(bool through)
+    {
+        if (through == _clickThrough) return;
+        _clickThrough = through;
+        Native.SetClickThrough(_hwnd, through);
+    }
+
+    // ---------------------------------------------------------------- settings
+
+    private void CycleDisplayMode()
+    {
+        string[] order = { "time", "percent", "both", "power" };
+        int i = Array.IndexOf(order, _app.Config.DisplayMode);
+        _app.ChangeSettings(c => c.DisplayMode = order[(i + 1) % order.Length]);
+    }
+
+    private void OnSettingsChanged()
+    {
+        _tick.Interval = TimeSpan.FromMilliseconds(_app.Config.RefreshInterval);
+        ApplySize(PillPosition);
+        ApplyTheme();
+        _lastText = "";
+        ApplyInfo(_app.Latest, animate: true);
+        Pill.ContextFlyout = BuildMenu();
+    }
+
+    private MenuFlyout BuildMenu()
+    {
+        var c = _app.Config;
+        var menu = new MenuFlyout();
+
+        MenuFlyoutSubItem Radio(string title, string group, (string Label, string Value)[] options, string current, Action<string> set)
+        {
+            var sub = new MenuFlyoutSubItem { Text = title };
+            foreach (var (label, value) in options)
+            {
+                var item = new RadioMenuFlyoutItem { Text = label, GroupName = group, IsChecked = value == current };
+                item.Click += (_, _) => set(value);
+                sub.Items.Add(item);
+            }
+            return sub;
+        }
+
+        menu.Items.Add(Radio("Show", "mode", new[] { ("Time left", "time"), ("Percent", "percent"), ("Both", "both"), ("Power (watts)", "power") },
+            c.DisplayMode, v => _app.ChangeSettings(x => x.DisplayMode = v)));
+        menu.Items.Add(Radio("Size", "size", new[] { ("Compact", "compact"), ("Normal", "normal"), ("Expanded", "expanded") },
+            c.PillSize, v => _app.ChangeSettings(x => x.PillSize = v)));
+        menu.Items.Add(Radio("Theme", "theme", new[] { ("Dark", "dark"), ("Light", "light"), ("Match Windows", "auto") },
+            c.Theme, v => _app.ChangeSettings(x => x.Theme = v)));
+        string[] accents = { "Green", "Blue", "Purple", "Cyan", "Pink", "Teal", "Orange", "White" };
+        menu.Items.Add(Radio("Accent", "accent", accents.Select((n, i) => (n, i.ToString())).ToArray(),
+            c.AccentColorIndex.ToString(), v => _app.ChangeSettings(x => x.AccentColorIndex = int.Parse(v))));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var lockItem = new ToggleMenuFlyoutItem { Text = "Lock position", IsChecked = c.PositionLocked };
+        lockItem.Click += (_, _) => _app.ChangeSettings(x => x.PositionLocked = lockItem.IsChecked);
+        menu.Items.Add(lockItem);
+        var hideItem = new ToggleMenuFlyoutItem { Text = "Hide over fullscreen apps", IsChecked = c.AutoHideFullscreen };
+        hideItem.Click += (_, _) => _app.ChangeSettings(x => x.AutoHideFullscreen = hideItem.IsChecked);
+        menu.Items.Add(hideItem);
+        var animItem = new ToggleMenuFlyoutItem { Text = "Animations", IsChecked = c.Animations };
+        animItem.Click += (_, _) => _app.ChangeSettings(x => x.Animations = animItem.IsChecked);
+        menu.Items.Add(animItem);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var exit = new MenuFlyoutItem { Text = "Exit" };
+        exit.Click += (_, _) => Close();
+        menu.Items.Add(exit);
+        return menu;
+    }
+
+    // ---------------------------------------------------------------- measurement
+
+    // --measure <file>: record 4 s of frame times, write a summary, exit
     private void StartFrameMeter()
     {
-        CompositionTarget.Rendering += OnRendering;
+        CompositionTarget.Rendering += OnMeasureFrame;
         var stop = DispatcherQueue.CreateTimer();
         stop.Interval = TimeSpan.FromSeconds(4);
         stop.IsRepeating = false;
         stop.Tick += (_, _) =>
         {
-            CompositionTarget.Rendering -= OnRendering;
+            CompositionTarget.Rendering -= OnMeasureFrame;
             WriteFrameSummary();
-            Application.Current.Exit();
+            Close();
         };
         stop.Start();
     }
 
-    private void OnRendering(object? sender, object e)
+    private void OnMeasureFrame(object? sender, object e)
     {
         if (e is RenderingEventArgs r) _frameTimes.Add(r.RenderingTime.TotalMilliseconds);
     }
@@ -169,12 +688,13 @@ public sealed partial class PillWindow : Window
         var gaps = new List<double>();
         for (int i = 1; i < _frameTimes.Count; i++) gaps.Add(_frameTimes[i] - _frameTimes[i - 1]);
         gaps.Sort();
+        var info = _app.Latest;
         string text = gaps.Count == 0
             ? "no frames recorded"
             : string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "frames={0} median_ms={1:F2} p90_ms={2:F2} worst_ms={3:F2} fps={4:F0} display_hz={5}",
-                gaps.Count + 1, gaps[gaps.Count / 2], gaps[(int)(gaps.Count * 0.9)], gaps[^1],
-                1000.0 / gaps[gaps.Count / 2], Native.GetRefreshRate());
+                "frames={0} median_ms={1:F2} p90_ms={2:F2} worst_ms={3:F2} display_hz={4} pill_text={5} no_battery={6} pill_px={7}x{8} at={9},{10}",
+                gaps.Count + 1, gaps[gaps.Count / 2], gaps[(int)(gaps.Count * 0.9)], gaps[^1], Native.GetRefreshRate(),
+                PrimaryText.Text, info.NoBattery, PillPxW, PillPxH, PillPosition.X, PillPosition.Y);
         File.WriteAllText(_measurePath!, text);
     }
 
