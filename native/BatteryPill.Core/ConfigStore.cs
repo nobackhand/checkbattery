@@ -112,38 +112,51 @@ public static partial class ConfigStore
     /// </summary>
     public static void Save(string path, AppConfig c, IReadOnlyList<HistorySample> history, TimeEstimator estimator, DateTime now)
     {
-        var o = new Dictionary<string, object?>
+        // Written field by field (no reflection: safe to trim), same keys as the
+        // PowerShell app's ConvertTo-Json
+        using var buffer = new MemoryStream();
+        using (var w = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
         {
-            ["X"] = c.X,
-            ["Y"] = c.Y,
-            ["Opacity"] = c.Opacity,
-            ["RefreshInterval"] = c.RefreshInterval,
-            ["PositionLocked"] = c.PositionLocked,
-            ["DisplayMode"] = c.DisplayMode,
-            ["PillSize"] = c.PillSize,
-            ["Theme"] = c.Theme,
-            ["AccentColorIndex"] = c.AccentColorIndex,
-            ["AutoHideFullscreen"] = c.AutoHideFullscreen,
-            ["FirstRunShown"] = c.FirstRunShown,
-            ["FunLines"] = c.FunLines,
-            ["Animations"] = c.Animations,
-            ["CheckForUpdates"] = c.CheckForUpdates,
-            ["LastUpdateCheck"] = c.LastUpdateCheck?.ToString("o", CultureInfo.InvariantCulture),
-            ["AnnouncedVersion"] = c.AnnouncedVersion,
-            ["BatteryHistory"] = history.Skip(Math.Max(0, history.Count - SavedHistoryCount)).Select(h => new Dictionary<string, object?>
+            w.WriteStartObject();
+            w.WriteNumber("X", c.X);
+            w.WriteNumber("Y", c.Y);
+            w.WriteNumber("Opacity", c.Opacity);
+            w.WriteNumber("RefreshInterval", c.RefreshInterval);
+            w.WriteBoolean("PositionLocked", c.PositionLocked);
+            w.WriteString("DisplayMode", c.DisplayMode);
+            w.WriteString("PillSize", c.PillSize);
+            w.WriteString("Theme", c.Theme);
+            w.WriteNumber("AccentColorIndex", c.AccentColorIndex);
+            w.WriteBoolean("AutoHideFullscreen", c.AutoHideFullscreen);
+            w.WriteBoolean("FirstRunShown", c.FirstRunShown);
+            w.WriteBoolean("FunLines", c.FunLines);
+            w.WriteBoolean("Animations", c.Animations);
+            w.WriteBoolean("CheckForUpdates", c.CheckForUpdates);
+            if (c.LastUpdateCheck is DateTime last) w.WriteString("LastUpdateCheck", last.ToString("o", CultureInfo.InvariantCulture));
+            else w.WriteNull("LastUpdateCheck");
+            if (c.AnnouncedVersion is string announced) w.WriteString("AnnouncedVersion", announced);
+            else w.WriteNull("AnnouncedVersion");
+            w.WriteStartArray("BatteryHistory");
+            for (int i = Math.Max(0, history.Count - SavedHistoryCount); i < history.Count; i++)
             {
-                ["Time"] = h.Time.ToString("o", CultureInfo.InvariantCulture),
-                ["Percent"] = h.Percent,
-                ["IsCharging"] = h.IsCharging,
-                ["IsPluggedIn"] = h.IsPluggedIn,
-                ["Watts"] = h.Watts,
-            }).ToList(),
-            ["EmaRate"] = estimator.EmaRate,
-            ["LastValidRate"] = estimator.LastValidRate,
-            ["EmaWasPluggedIn"] = estimator.LastAcState,
-            ["ConfigSavedAt"] = now.ToString("o", CultureInfo.InvariantCulture),
-        };
-        WriteTextAtomic(path, JsonSerializer.Serialize(o, new JsonSerializerOptions { WriteIndented = true }));
+                var h = history[i];
+                w.WriteStartObject();
+                w.WriteString("Time", h.Time.ToString("o", CultureInfo.InvariantCulture));
+                w.WriteNumber("Percent", h.Percent);
+                w.WriteBoolean("IsCharging", h.IsCharging);
+                w.WriteBoolean("IsPluggedIn", h.IsPluggedIn);
+                w.WriteNumber("Watts", h.Watts);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            w.WriteNumber("EmaRate", estimator.EmaRate);
+            w.WriteNumber("LastValidRate", estimator.LastValidRate);
+            if (estimator.LastAcState is bool ac) w.WriteBoolean("EmaWasPluggedIn", ac);
+            else w.WriteNull("EmaWasPluggedIn");
+            w.WriteString("ConfigSavedAt", now.ToString("o", CultureInfo.InvariantCulture));
+            w.WriteEndObject();
+        }
+        WriteTextAtomic(path, Encoding.UTF8.GetString(buffer.ToArray()));
     }
 
     // ---- field parsing (PowerShell-compatible tolerance) ----

@@ -34,11 +34,13 @@ internal static class AutoStart
         if (!File.Exists(ShortcutPath)) return null;
         try
         {
-            dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
-            dynamic link = shell.CreateShortcut(ShortcutPath);
-            return (string)link.TargetPath;
+            var link = (IShellLinkW)new ShellLink();
+            ((IPersistFile)link).Load(ShortcutPath, 0);
+            var sb = new System.Text.StringBuilder(260);
+            link.GetPath(sb, sb.Capacity, IntPtr.Zero, 0);
+            return sb.ToString();
         }
-        catch (Exception e) when (e is System.Runtime.InteropServices.COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+        catch (Exception e) when (e is System.Runtime.InteropServices.COMException or UnauthorizedAccessException or IOException)
         {
             return null;
         }
@@ -63,20 +65,61 @@ internal static class AutoStart
                 if (File.Exists(ShortcutPath)) File.Delete(ShortcutPath);
                 return true;
             }
-            dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
-            dynamic link = shell.CreateShortcut(ShortcutPath);
-            link.TargetPath = ExePath;
-            link.WorkingDirectory = Path.GetDirectoryName(ExePath);
-            link.Description = "BatteryPill - Battery Widget";
-            link.Save();
+            var link = (IShellLinkW)new ShellLink();
+            link.SetPath(ExePath);
+            link.SetWorkingDirectory(Path.GetDirectoryName(ExePath) ?? "");
+            link.SetDescription("BatteryPill - Battery Widget");
+            ((IPersistFile)link).Save(ShortcutPath, true);
             return true;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
         {
             Trace.Log("autostart failed: " + e.Message);
             return false;
         }
     }
+}
+
+[System.Runtime.InteropServices.ComImport]
+[System.Runtime.InteropServices.Guid("00021401-0000-0000-C000-000000000046")]
+internal class ShellLink { }
+
+[System.Runtime.InteropServices.ComImport]
+[System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+[System.Runtime.InteropServices.Guid("000214F9-0000-0000-C000-000000000046")]
+internal interface IShellLinkW
+{
+    void GetPath([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder file, int max, IntPtr findData, int flags);
+    void GetIDList(out IntPtr pidl);
+    void SetIDList(IntPtr pidl);
+    void GetDescription([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder name, int max);
+    void SetDescription([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string name);
+    void GetWorkingDirectory([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder dir, int max);
+    void SetWorkingDirectory([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string dir);
+    void GetArguments([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder args, int max);
+    void SetArguments([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string args);
+    void GetHotkey(out short hotkey);
+    void SetHotkey(short hotkey);
+    void GetShowCmd(out int cmd);
+    void SetShowCmd(int cmd);
+    void GetIconLocation([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder path, int max, out int index);
+    void SetIconLocation([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string path, int index);
+    void SetRelativePath([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string path, int reserved);
+    void Resolve(IntPtr hwnd, int flags);
+    void SetPath([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string file);
+}
+
+[System.Runtime.InteropServices.ComImport]
+[System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+[System.Runtime.InteropServices.Guid("0000010b-0000-0000-C000-000000000046")]
+internal interface IPersistFile
+{
+    void GetClassID(out Guid clsid);
+    [System.Runtime.InteropServices.PreserveSig] int IsDirty();
+    void Load([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string file, int mode);
+    void Save([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string file, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool remember);
+    void SaveCompleted([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string file);
+    void GetCurFile([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] out string file);
 }
 
 /// <summary>
