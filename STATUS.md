@@ -1,38 +1,44 @@
-# STATUS — checkbattery (BatteryPill) — 2026-09-04T15:50:00-05:00
+# STATUS — checkbattery (BatteryPill) — 2026-10-10
 
 ## Now
-v1.4.0 (live system power draw in watts + the funner pill) is on
-origin/main with two follow-up fixes, but NO v1.4.0 tag or GitHub
-release exists yet: the website download button still serves v1.3.3.
+main = v1.4.0 (watts + funner pill) plus everything from the Oct 8-9
+overnight/morning loop: PRs #3-#6 and #8-#12 merged. Still NO v1.4.0 tag or
+release: the website download button serves v1.3.3.
 
-## Just shipped (this session — verified against git)
-- v1.4.0: live system power draw (watts) + a funner pill — cbabc37
-  (was local-only until today; now on origin/main via PR #2)
-- Popup power-meter bar drains when the reading stops being a discharge
-  (was frozen at the last draw after plugging in) — 8761167
-- A full pack parked on the cable no longer carries the previous run's
-  avg/peak into the next unplug: samples persist IsPluggedIn and a run
-  is a contiguous same-power-source stretch; 3 new cases in
-  tests/PowerDraw.Tests.ps1 — 5f7903a
-- PR #2 merged to main — c1fc77e
+## Just shipped (merged to main, Oct 9-10)
+- #3 11 bug fixes (startup freeze, card placement, sparkline cost, slider
+  drag, live Auto theme, tray icon, light swatch ring, Health card, site).
+- #4 once-a-day GitHub release check (card, menu item, About, off switch).
+- #6 real battery rates from root\WMI (Win32_Battery has no
+  DischargeRate/ChargeRate - the watts line never had laptop data); the
+  battery query runs off the UI thread (C# BatteryQuery).
+- #10 WMI BatteryStatus 2 ("on AC") and .NET 255 ("Unknown") no longer
+  count as charging - a laptop at a charge cap reads Plugged In (widget
+  and CheckBattery.ps1).
+- #11 estimator drops the held rate when charging stops/starts while
+  plugged in.
+- #9 power plans load when the Power Plan submenu opens, not per click.
+- #5 warning cards stack above the pill. #8 light-theme Health ring.
+- #7 (cache compiled helpers) CLOSED: Smart App Control blocks it.
 
 ## Next (max 3, priority order)
-1. Cut the release: `powershell -File release.ps1` (refuses a dirty
-   tree or an already-released version; runs scripts/verify.sh, builds,
-   tags v1.4.0, uploads the versioned exe + stable BatteryPill.exe).
-   Confirm `gh release view v1.4.0` lists both assets.
-2. Hover-test the meter on a machine WITH a battery (Roger) while
-   plugging in and unplugging: bar drains on plug-in, avg/peak reset on
-   the next unplug. Not yet verified visually (dev box has no battery).
-3. `Get-BatterySessionSummary` (src/, grep it) has the same missing
-   plugged-in boundary as the bug fixed in 5f7903a: same fix + tests.
+1. Laptop check (no Windows laptop online on Oct 10): on battery,
+   root\WMI BatteryStatus DischargeRate > 0 and the pill's popup shows
+   "Drawing NN W"; at a charge cap it reads "Plugged In".
+2. Cut the release: move OVERNIGHT_SUMMARY.md out of the repo root, then
+   `powershell -File release.ps1`; confirm `gh release view v1.4.0`.
+3. Follow-up: persist EmaWasCharging so a relaunch at a cap doesn't
+   reuse a saved charge rate (see #11's description).
 
 ## Blockers / Open questions
-- Smart App Control blocks unsigned builds outright (DISTRIBUTION.md);
-  signing decision still open.
+- Smart App Control blocks unsigned builds and unsigned DLLs outright
+  (DISTRIBUTION.md); signing decision still open.
 
 ## Failed approaches (do not retry)
+- Caching the compiled C# helpers as a DLL on disk (#7): SAC blocks
+  loading it. Loading it from bytes instead would sidestep the policy -
+  don't.
 
 ## Resume
-Read STATUS + CLAUDE.md; main at c1fc77e is v1.4.0 unreleased; start at
-Next 1 (cut the v1.4.0 release), then Next 2 on Roger.
+Read STATUS + CLAUDE.md; start at Next 1 if a Windows laptop is online,
+else Next 2 once Daniel says release.
