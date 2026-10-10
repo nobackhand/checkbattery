@@ -90,6 +90,10 @@ public static class PillGeometry
         : currentValid ? DisplayChangeAction.None
         : DisplayChangeAction.Park;
 
+    /// <summary>Does a window rectangle cover the whole monitor (fullscreen game, video)?</summary>
+    public static bool CoversScreen(PxRect window, PxRect monitor) =>
+        window.Left <= monitor.Left && window.Top <= monitor.Top && window.Right >= monitor.Right && window.Bottom >= monitor.Bottom;
+
     /// <summary>The default home: bottom-right of the work area, inset by the edge margin.</summary>
     public static PxPoint DefaultPosition(int width, int height, PxRect workArea) =>
         new(workArea.Right - width - EdgeMargin * 3, workArea.Bottom - height - EdgeMargin * 3);
