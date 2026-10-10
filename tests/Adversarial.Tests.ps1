@@ -294,6 +294,35 @@ Test-Case 'a FullChargeCapacity above DesignCapacity clamps wear at 0, never neg
     Assert-Equal 0.0 $i.BatteryWearPercent
 }
 
+# WMI BatteryStatus 2 is "on AC" - per Microsoft, "not necessarily charging".
+# A firmware charge cap parks there for hours; .NET's Charging flag (8) says
+# whether the pack is actually taking charge.
+Test-Case 'status 2 at a charge cap (no .NET Charging flag) is plugged in, not charging' {
+    $i = Invoke-Battery -Wmi (New-FakeBattery -EstimatedChargeRemaining 80 -BatteryStatus 2 -DischargeRate 0) `
+        -Power (New-FakePowerStatus -BatteryChargeStatus 1 -PowerLineStatus 'Online')
+    Assert-Equal $false $i.IsCharging
+    Assert-Equal $true $i.IsPluggedIn
+    Assert-Equal 'Plugged In' $i.StatusText
+}
+
+Test-Case 'status 2 while .NET says Charging is still charging' {
+    $i = Invoke-Battery -Wmi (New-FakeBattery -EstimatedChargeRemaining 55 -BatteryStatus 2 -DischargeRate 0) `
+        -Power (New-FakePowerStatus -BatteryChargeStatus 8 -PowerLineStatus 'Online')
+    Assert-Equal $true $i.IsCharging
+    Assert-Equal 'Charging' $i.StatusText
+}
+
+Test-Case 'status 6 (Charging) is charging without any help from .NET' {
+    $i = Invoke-Battery -Wmi (New-FakeBattery -EstimatedChargeRemaining 55 -BatteryStatus 6 -DischargeRate 0)
+    Assert-Equal $true $i.IsCharging
+}
+
+Test-Case '.NET "Unknown" (255) does not make a draining laptop read as charging' {
+    # 255 sets every bit, Charging (8) included
+    $i = Invoke-Battery -Wmi (New-FakeBattery -BatteryStatus 1) -Power (New-FakePowerStatus -BatteryChargeStatus 255)
+    Assert-Equal $false $i.IsCharging
+}
+
 Test-Case 'out-of-range BatteryStatus is treated as unknown, not as a state' {
     $i = Invoke-Battery -Wmi (New-FakeBattery -BatteryStatus 99)
     Assert-Equal $false $i.IsCharging
@@ -622,6 +651,32 @@ Test-Case 'CheckBattery.ps1 takes the first pack of a dual-battery array' {
     $src = Get-Content (Join-Path (Split-Path -Parent $PSScriptRoot) 'CheckBattery.ps1') -Raw
     Assert-True ($src -match 'Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop\)\s*\|\s*Select-Object -First 1') `
         'the WMI query must collapse the dual-battery array before any [int] cast'
+}
+
+# The real CLI in its own process, with Win32_Battery stubbed and .NET taken
+# out (Add-Type throws, so the CLI's PowerStatus is $null) - otherwise the
+# host's own live power state (a laptop on battery, or charging) decides.
+function Invoke-CliWithBattery {
+    [OutputType([string])]
+    param([int]$Percent, [int]$Status)
+    $cli = Join-Path (Split-Path -Parent $PSScriptRoot) 'CheckBattery.ps1'
+    $probe = Join-Path $script:tmpDir ('cli-probe-' + [guid]::NewGuid().ToString('N') + '.ps1')
+    $body = "function Add-Type { throw 'stubbed' }`r`n" +
+    "function Get-CimInstance { [pscustomobject]@{ EstimatedChargeRemaining = $Percent; BatteryStatus = $Status; EstimatedRunTime = 71582788; TimeToFullCharge = `$null } }`r`n" +
+    "& '$cli'`r`n"
+    [System.IO.File]::WriteAllText($probe, $body)
+    return (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe 2>&1 | Out-String)
+}
+
+Test-Case 'CheckBattery.ps1: a laptop holding at a charge cap (WMI status 2) says Plugged In, not Charging' {
+    $out = Invoke-CliWithBattery -Percent 80 -Status 2
+    Assert-True ($out -match 'Status:\s+Plugged In') "the CLI said:`n$out"
+    Assert-True ($out -match 'N/A \(plugged in\)') "the CLI said:`n$out"
+}
+
+Test-Case 'CheckBattery.ps1: plugged in at 15% still says Low (Plugged In never hides the low bands)' {
+    $out = Invoke-CliWithBattery -Percent 15 -Status 11
+    Assert-True ($out -match 'Status:\s+Low') "the CLI said:`n$out"
 }
 
 Remove-Item $script:tmpDir -Recurse -Force -ErrorAction SilentlyContinue

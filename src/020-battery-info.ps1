@@ -260,7 +260,12 @@ function Get-BatteryInfo {
         # BatteryStatus is a UInt16 code 1-11; anything else (a string, an
         # array, an out-of-range code) means "unknown", not a state.
         $batteryStatus = Read-DeviceNumber -Raw $wmiBattery.BatteryStatus -Min 1 -Max 11
-        $info.IsCharging = $batteryStatus -in @(2, 6, 7, 8, 9)
+        # 2 is only "on AC" - Microsoft: "the battery is not necessarily
+        # charging". A firmware charge cap (ZBook, ThinkPad conservation, Dell
+        # Primary AC Use) holds there for hours, and counting it as charging
+        # showed "Charging" forever on a pack that was not taking any charge.
+        # Whether it is really charging comes from .NET's Charging flag below.
+        $info.IsCharging = $batteryStatus -in @(6, 7, 8, 9)
         $info.IsPluggedIn = $batteryStatus -in @(2, 3, 6, 7, 8, 9, 11)
         $info.IsFullyCharged = ($null -ne $batteryStatus -and $batteryStatus -eq 3)
     }
@@ -270,7 +275,9 @@ function Get-BatteryInfo {
         if ($dotnetPower.PowerLineStatus -eq 'Online') {
             $info.IsPluggedIn = $true
         }
-        if ($null -ne $dnChargeStatus -and ([int]$dnChargeStatus -band 8) -eq 8) {
+        # 255 is BatteryFlag "Unknown" - every bit set, Charging (8) included -
+        # so it said "Charging" for a laptop draining on battery.
+        if ($null -ne $dnChargeStatus -and [int]$dnChargeStatus -ne 255 -and ([int]$dnChargeStatus -band 8) -eq 8) {
             $info.IsCharging = $true
         }
     }
