@@ -53,27 +53,35 @@ Each milestone is a PR, CI-green and checked by a fresh reviewer, with measured 
   - **Mutation-checked:** re-introducing the status-2, 255, charge-flip and 1%-step bugs each fails the suite
   - CI: `.github/workflows/native.yml`
   - The platform power meter (perf counter) moves to M2.
-- **M2 Pill** (+ platform power meter, presentation text and its tests):
-  - real data; display modes and sizes; accent presets; dark/light/auto
-  - native drag with edge snap and momentum glide
-  - position memory across monitors and DPI changes; fullscreen auto-hide
-  - charging pulse and intro; a click-through shadow margin
-- **M3 Flyout:** hover flyout on Mica/Acrylic, plus:
-  - hero %, time sentence and ETA; power meter
-  - sparkline; Health card; session summary
-- **M4 Tray:**
-  - live battery tray icon and Fluent context menus
-  - power plans, loaded lazily
-  - notification cards: low, critical, charging, full, update available
-  - first-run tips
-- **M5 Settings:** settings window (NavigationView, Mica), About, update check, start
-  with Windows, single instance, config migration.
-- **M6 Ship:**
-  - trim / NativeAOT and English-only resources: target ≤ 40 MB download
-  - a single download; `release.ps1` + CI publish; website download button
-  - code signing (needs Daniel's card)
+- **M2 Pill** ✅
+  - live data; every display mode, size, theme and accent; gradient fill animated on the compositor
+  - charging and critical pulses; drag, fling-glide and settle stepped per display frame
+  - click-through shadow margin; fullscreen hide that ignores the desktop
+  - DPI/display-change/resume handling; never takes focus; click cycles the mode; right-click menu
+  - Core: presentation text, colors, geometry, glide physics (ported tests)
+  - *Still to do:* the platform power meter (perf counter).
+- **M3 Flyout** ✅ hover card on Fluent acrylic, slides in, never takes focus:
+  - state, elapsed, hero %, time sentence; power line with a live meter (avg/peak); fun line
+  - sparkline with charging stretches; the no-battery card
+- **M4 Tray** ✅
+  - live glyph at the real small-icon size (dark/light)
+  - Windows 11 menu: show/hide, mode, power plans read on open, refresh, settings, update, exit
+  - left-click pins the card; alerts are real Windows notifications (DND/game mode respected)
+  - *Still to do:* first-run tips.
+- **M5 Settings** ✅
+  - Windows 11 Settings-style window on Mica, every setting
+  - start with Windows via the same Startup shortcut; daily update check; version and update in About
+  - first-run import of the PowerShell app's config; app icon
+- **M6 Ship** (in progress) ✅ one 33 MB exe: trimmed, compressed, self-extracting; CI smoke-tests that exe.
+  - *Still to do:* `release.ps1` and website wiring.
+  - Code signing is deferred: Daniel's 2026-10-10 decision.
 - **M7 Cutover:** parity checklist signed off, then the native build becomes the
   download and `src/` moves to maintenance.
+
+**Verification:** `native/tools/ui-smoke.ps1` drives the published exe on the GitHub
+runner with real mouse input. It covers frames, focus, click-through, click,
+drag/fling/save, hover show/hide, both menus, tray, settings in both themes, WMI in
+the trimmed build, and every battery state rendered from `BATTERYPILL_FAKE`.
 
 ## Acceptance bar (every UI milestone)
 - No motion on UI-thread timers: compositor animations only.
