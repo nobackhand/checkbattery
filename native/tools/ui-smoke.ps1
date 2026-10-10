@@ -375,8 +375,8 @@ if ($w) {
     Send-Click -Down $RIGHTDOWN -Up $RIGHTUP; Start-Sleep -Milliseconds 900
     $popup = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -like '*Popup*' } | Select-Object -First 1
     $exitItem = if ($popup) { Find-UiElement -Hwnd $popup.H -Name 'Exit' } else { $null }
-    if ($exitItem) { $exitItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
     $trayBefore = [U]::FindWindow('BatteryPillTray', 'BatteryPill tray')
+    if ($exitItem) { $exitItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
     $gone = $p.WaitForExit(6000)
     Add-Check -Name 'Exit from the menu ends the app' -Ok ($null -ne $exitItem -and $gone) -Detail $(if (-not $exitItem) { 'no Exit item' } elseif (-not $gone) { 'still running' } else { "exit code $($p.ExitCode)" })
     Add-Check -Name 'the tray icon goes with it' -Ok ($trayBefore -ne [IntPtr]::Zero -and [U]::FindWindow('BatteryPillTray', 'BatteryPill tray') -eq [IntPtr]::Zero) -Detail $(if ($trayBefore -eq [IntPtr]::Zero) { 'tray window never found' })
