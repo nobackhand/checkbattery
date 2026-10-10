@@ -862,6 +862,15 @@ function Show-SettingsPanel {
     $settings.Dispose()
 }
 
+function Get-HealthRingTrackColor {
+    [OutputType([System.Drawing.Color])]
+    param([bool]$IsDark)
+    # The Battery Health ring's unfilled track. It was one dark grey for both
+    # themes, so on the light card the missing part of the ring was a
+    # near-black slash across a white card.
+    if ($IsDark) { return [System.Drawing.Color]::FromArgb(52, 52, 60) }
+    return [System.Drawing.Color]::FromArgb(222, 222, 230)
+}
 function Get-BatterySessionSummary {
     [OutputType([string])]
     param()
@@ -973,7 +982,7 @@ function Show-BatteryHealthCard {
             $ringX = [int](($sender.Width - $ringD) / 2); $ringY = [int](58 * $dds)
             $inset = [int]($thick / 2) + 1
             $rect = New-Object System.Drawing.Rectangle(($ringX + $inset), ($ringY + $inset), ($ringD - $inset * 2), ($ringD - $inset * 2))
-            $tpen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(52, 52, 60), $thick)
+            $tpen = New-Object System.Drawing.Pen((Get-HealthRingTrackColor -IsDark $script:theme.IsDark), $thick)
             $tpen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round; $tpen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
             $g.DrawArc($tpen, $rect, -90, 359.9); $tpen.Dispose()
             # Sweep + center number follow the eased animation value
