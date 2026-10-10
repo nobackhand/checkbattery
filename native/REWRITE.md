@@ -41,14 +41,18 @@ native/
 ## Milestones
 Each milestone is a PR, CI-green and checked by a fresh reviewer, with measured proof.
 - **M0 Spike** ✅ transparent pill, compositor animation, startup and size measured.
-- **M1 Core + tests:**
-  - root\WMI rates and capacities, Win32_Battery, PowerStatus, power meter
-  - EMA estimator and capacity cross-check; charge-cap and status-2/255 rules
-  - power draw and stats; history and session summary
-  - config read/write (the existing `BatteryWidget.config.json` stays compatible)
-  - update-check version logic
-  - port the PowerShell test cases; add a CI job for `dotnet test`
-- **M2 Pill:**
+- **M1 Core + tests** ✅ `BatteryPill.Core`, a C# port of the PowerShell battery logic:
+  - live WMI reader, off the UI thread, filling rates and capacities from root\WMI; OS power status
+  - battery interpretation, including the status-2/255 and charge-cap rules
+  - EMA estimator with capacity cross-check and charge-flip reset; power-draw ladder
+  - history, draw stats and session summary
+  - config read/write, compatible with the PowerShell app's file (verified against a PS 5.1-shaped file)
+  - update-check decisions
+  - **213 tests:** the PowerShell suites ported case for case, plus live reads of the host's real sources
+  - **Mutation-checked:** re-introducing the status-2, 255, charge-flip and 1%-step bugs each fails the suite
+  - CI: `.github/workflows/native.yml`
+  - The platform power meter (perf counter) moves to M2.
+- **M2 Pill** (+ platform power meter, presentation text and its tests):
   - real data; display modes and sizes; accent presets; dark/light/auto
   - native drag with edge snap and momentum glide
   - position memory across monitors and DPI changes; fullscreen auto-hide
