@@ -31,7 +31,8 @@ public sealed class TimeEstimator
     /// </summary>
     public bool Restore(double emaRate, int lastValidRate, bool? wasPluggedIn, DateTime now)
     {
-        if (emaRate <= 0) return false;
+        // NaN/Infinity can only come from a damaged config, and would poison every estimate (and the next save)
+        if (!double.IsFinite(emaRate) || emaRate <= 0) return false;
         // Unknown power state (a config written by an older build): refuse rather
         // than guess. One tick of "Estimating..." beats a confident wrong number.
         if (wasPluggedIn is null) return false;

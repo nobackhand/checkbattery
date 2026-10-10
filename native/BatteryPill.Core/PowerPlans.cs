@@ -1,73 +1,72 @@
-using System.Diagnostics;
-using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 
 namespace BatteryPill.Core;
 
 public sealed record PowerPlan(string Name, string Guid, bool IsActive);
 
 /// <summary>
-/// Windows power plans via powercfg. Port of src\040-power-plans.ps1. powercfg's
-/// output is localized and version-dependent, so a row is only trusted when its
-/// id is a real GUID (it goes back to powercfg) and it has a name (a menu row).
+/// Windows power plans, through the power-management API powercfg itself uses
+/// (powrprof). Port of src\040-power-plans.ps1, minus its child process and its
+/// localized-text parsing: a read takes about a millisecond, so the tray menu
+/// can build the list as it opens.
 /// </summary>
-public static partial class PowerPlans
+public static class PowerPlans
 {
-    [GeneratedRegex(@"GUID:\s+(\S+)\s+\((.+?)\)(\s+\*)?")]
-    private static partial Regex Row();
+    public static bool IsValidId(string? id) => id is not null && System.Guid.TryParseExact(id, "D", out _);
 
-    [GeneratedRegex(@"^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$")]
-    private static partial Regex GuidPattern();
-
-    public static IReadOnlyList<PowerPlan> Parse(IEnumerable<string?> lines)
+    /// <summary>Every plan, the active one marked. Empty when Windows will not say.</summary>
+    public static IReadOnlyList<PowerPlan> Read()
     {
         var plans = new List<PowerPlan>();
-        foreach (var line in lines)
+        Guid? active = null;
+        if (PowerGetActiveScheme(IntPtr.Zero, out IntPtr activePtr) == 0 && activePtr != IntPtr.Zero)
         {
-            if (line is null) continue;
-            var m = Row().Match(line);
-            if (!m.Success) continue;
-            string guid = m.Groups[1].Value, name = m.Groups[2].Value.Trim();
-            if (!GuidPattern().IsMatch(guid) || name.Length == 0) continue;
-            plans.Add(new PowerPlan(name, guid, m.Groups[3].Success));
+            active = Marshal.PtrToStructure<Guid>(activePtr);
+            LocalFree(activePtr);
+        }
+
+        var buffer = new byte[16];
+        for (uint i = 0; i < 64; i++)
+        {
+            uint size = 16;
+            if (PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, ACCESS_SCHEME, i, buffer, ref size) != 0) break;
+            var id = new Guid(buffer);
+            string? name = FriendlyName(id);
+            if (string.IsNullOrWhiteSpace(name)) continue;   // a plan with no name is no menu row
+            plans.Add(new PowerPlan(name.Trim(), id.ToString("D"), id == active));
         }
         return plans;
     }
 
-    public static bool IsValidId(string? id) => id is not null && GuidPattern().IsMatch(id);
-
-    /// <summary>Reads the plans (a child process: call it off the UI thread, or only on demand).</summary>
-    public static IReadOnlyList<PowerPlan> Read()
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("powercfg", "/list") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
-            using var p = Process.Start(psi);
-            if (p is null) return Array.Empty<PowerPlan>();
-            string output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(5000);
-            return p.ExitCode == 0 ? Parse(output.Split('\n')) : Array.Empty<PowerPlan>();
-        }
-        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            return Array.Empty<PowerPlan>();
-        }
-    }
-
-    /// <summary>Activates a plan. The id is validated BEFORE anything runs.</summary>
+    /// <summary>Activates a plan. The id is validated BEFORE anything is called.</summary>
     public static bool Activate(string? id)
     {
         if (!IsValidId(id)) return false;
-        try
-        {
-            var psi = new ProcessStartInfo("powercfg", $"/setactive {id}") { UseShellExecute = false, CreateNoWindow = true };
-            using var p = Process.Start(psi);
-            if (p is null) return false;
-            p.WaitForExit(5000);
-            return p.ExitCode == 0;
-        }
-        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            return false;
-        }
+        var g = System.Guid.ParseExact(id!, "D");
+        return PowerSetActiveScheme(IntPtr.Zero, ref g) == 0;
     }
+
+    private static string? FriendlyName(Guid id)
+    {
+        uint size = 0;
+        if (PowerReadFriendlyName(IntPtr.Zero, ref id, IntPtr.Zero, IntPtr.Zero, null, ref size) != 0 || size == 0) return null;
+        var bytes = new byte[size];
+        if (PowerReadFriendlyName(IntPtr.Zero, ref id, IntPtr.Zero, IntPtr.Zero, bytes, ref size) != 0) return null;
+        return System.Text.Encoding.Unicode.GetString(bytes, 0, (int)size).TrimEnd('\0');
+    }
+
+    // ---- interop ----
+
+    private const uint ACCESS_SCHEME = 16;
+
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerGetActiveScheme(IntPtr rootKey, out IntPtr activeScheme);
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerSetActiveScheme(IntPtr rootKey, ref Guid scheme);
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerEnumerate(IntPtr rootKey, IntPtr scheme, IntPtr subGroup, uint accessFlags, uint index, byte[] buffer, ref uint bufferSize);
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerReadFriendlyName(IntPtr rootKey, ref Guid scheme, IntPtr subGroup, IntPtr setting, byte[]? buffer, ref uint bufferSize);
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LocalFree(IntPtr mem);
 }

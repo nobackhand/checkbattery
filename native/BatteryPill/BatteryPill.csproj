@@ -19,6 +19,20 @@
     <SelfContained>true</SelfContained>
     <Version>2.0.0</Version>
     <ApplicationIcon>Assets\BatteryPill.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- What a user downloads: dotnet publish -c Release -r win-x64 -p:Platform=x64
+       -p:SingleExe=true. One trimmed, compressed, self-extracting exe (the
+       Windows App SDK requires EnableMsixTooling for single-file). -->
+  <PropertyGroup Condition="'$(SingleExe)' == 'true'">
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>

@@ -332,4 +332,14 @@ public class EstimationTests
         Assert.Equal(-1, Est(e, 10000, 49, false, false, T0.AddMinutes(30).AddSeconds(1)));
         Assert.Equal(147, Est(e, 10000, 49, false, false, T0.AddMinutes(30).AddSeconds(3)));
     }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void ADamagedSavedRateIsNotRestored(double rate)
+    {
+        var e = new TimeEstimator();
+        Assert.False(e.Restore(rate, 15000, wasPluggedIn: false, T0));
+        Assert.True(e.EmaRate <= 0);
+    }
 }

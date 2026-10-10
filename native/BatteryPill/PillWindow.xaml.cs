@@ -26,7 +26,6 @@ public sealed partial class PillWindow : Window
 {
     private const float ShadowMargin = 18;
     private const double SettleMs = 180;
-    private const double FlingSpeed = 0.3;   // px/ms below which a release just settles
 
     private readonly AppState _app;
     private readonly IntPtr _hwnd;
@@ -52,9 +51,10 @@ public sealed partial class PillWindow : Window
     private float _level = -1;
 
     private PxPoint _dragStart;
-    private double _dragStartMs;
     private bool _pressed;
     private bool _dragging;
+    private bool _pressStoppedMotion;
+    private string _warning = "";
     private PxPoint _pressAt;
     private bool _built;
     private FlyoutWindow? _flyout;
@@ -110,7 +110,13 @@ public sealed partial class PillWindow : Window
         Pill.PointerReleased += OnPillReleased;
         Pill.PointerEntered += (_, _) => AnimateScale(1.04f);
         Pill.PointerExited += (_, _) => AnimateScale(1.0f);
-        Pill.PointerCaptureLost += (_, _) => { Trace.Log($"capture lost dragging={_dragging}"); if (_dragging) EndDrag(); _pressed = false; };
+        Pill.PointerCaptureLost += (_, _) =>
+        {
+            Trace.Log($"capture lost dragging={_dragging}");
+            if (_dragging) EndDrag();
+            else if (_pressed) KeepStoppedLanding();
+            _pressed = false;
+        };
         Pill.ContextRequested += (_, _) => _flyout?.HideCard();
         Pill.ContextFlyout = BuildMenu();
 
@@ -275,7 +281,7 @@ public sealed partial class PillWindow : Window
     {
         _dark = _app.IsDark;
         PillShape.Fill = new SolidColorBrush(_dark ? Color.FromArgb(242, 24, 24, 28) : Color.FromArgb(246, 242, 242, 247));
-        PillStroke.Stroke = new SolidColorBrush(_dark ? Color.FromArgb(38, 255, 255, 255) : Color.FromArgb(26, 0, 0, 0));
+        if (_warning.Length == 0) ApplyStrokeColor();
         var text = new SolidColorBrush(_dark ? Color.FromArgb(255, 245, 245, 250) : Color.FromArgb(255, 28, 28, 30));
         PrimaryText.Foreground = text;
         SecondaryText.Foreground = text;
@@ -313,6 +319,12 @@ public sealed partial class PillWindow : Window
             : !info.IsPluggedIn && info.Percent >= 0 && info.Percent <= 10 ? "critical"
             : "";
         if (pulse != _pulse) SetPulse(pulse);
+
+        // The 15% band: a red rim, breathing with animations on and solid with
+        // them off - it is a warning, not decoration (as in the PowerShell app)
+        string warning = !info.IsPluggedIn && !info.IsCharging && info.Percent >= 0 && info.Percent <= 15
+            ? (_app.Config.Animations ? "pulse" : "solid") : "";
+        if (warning != _warning) SetWarning(warning);
 
         ToolTipService.SetToolTip(Pill, $"{Presentation.StateTitle(info)} - {Presentation.TimeSentence(info)}");
     }
@@ -376,6 +388,34 @@ public sealed partial class PillWindow : Window
         _fill.StartAnimation("Opacity", a);
     }
 
+    private void SetWarning(string warning)
+    {
+        _warning = warning;
+        var rim = ElementCompositionPreview.GetElementVisual(PillStroke);
+        rim.StopAnimation("Opacity");
+        rim.Opacity = 1f;
+        if (warning.Length == 0)
+        {
+            PillStroke.StrokeThickness = 1;
+            ApplyStrokeColor();
+            return;
+        }
+        PillStroke.StrokeThickness = 2;
+        PillStroke.Stroke = new SolidColorBrush(Color.FromArgb(225, 235, 85, 75));
+        if (warning != "pulse") return;
+        var easeInOut = _compositor.CreateCubicBezierEasingFunction(new Vector2(0.45f, 0f), new Vector2(0.55f, 1f));
+        var a = _compositor.CreateScalarKeyFrameAnimation();
+        a.InsertKeyFrame(0f, 1f);
+        a.InsertKeyFrame(0.5f, 0.25f, easeInOut);
+        a.InsertKeyFrame(1f, 1f, easeInOut);
+        a.Duration = TimeSpan.FromMilliseconds(1600);
+        a.IterationBehavior = AnimationIterationBehavior.Forever;
+        rim.StartAnimation("Opacity", a);
+    }
+
+    private void ApplyStrokeColor() =>
+        PillStroke.Stroke = new SolidColorBrush(_dark ? Color.FromArgb(38, 255, 255, 255) : Color.FromArgb(26, 0, 0, 0));
+
     private void FlashText()
     {
         var v = ElementCompositionPreview.GetElementVisual(TextStack);
@@ -437,12 +477,12 @@ public sealed partial class PillWindow : Window
     private void OnPillPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint(Pill).Properties.IsLeftButtonPressed) return;
-        StopMotion();
+        // A press is also how you stop a glide mid-flight
+        _pressStoppedMotion = StopMotion();
         _pressed = true;
         _dragging = false;
         _pressAt = Native.CursorPos();
         _dragStart = PillPosition;
-        _dragStartMs = _clock.Elapsed.TotalMilliseconds;
         _velocity.Reset();
         bool captured = Pill.CapturePointer(e.Pointer);
         Trace.Log($"pressed at {_pressAt.X},{_pressAt.Y} captured={captured}");
@@ -475,7 +515,27 @@ public sealed partial class PillWindow : Window
         bool wasDragging = _dragging;
         Pill.ReleasePointerCaptures();
         if (wasDragging) EndDrag();
-        else if (_clock.Elapsed.TotalMilliseconds - _dragStartMs < 500) CycleDisplayMode();
+        else
+        {
+            KeepStoppedLanding();
+            CycleDisplayMode();
+        }
+    }
+
+    /// <summary>
+    /// A click that stopped a glide leaves the pill somewhere new: keep that
+    /// spot (without snapping - a click should not move the pill), or the next
+    /// launch or display change puts it back where the fling began.
+    /// </summary>
+    private void KeepStoppedLanding()
+    {
+        if (!_pressStoppedMotion) return;
+        _pressStoppedMotion = false;
+        var at = PillPosition;
+        // A stopped settle may sit in its overshoot, past the edge
+        var inside = PillGeometry.Clamped(at, PillPxW, PillPxH, Native.WorkAreaFor(PillCenter));
+        if (inside != at) MovePill(inside);
+        SavePosition();
     }
 
     private void EndDrag()
@@ -490,14 +550,17 @@ public sealed partial class PillWindow : Window
         switch ((int)msg)
         {
             case Native.WM_DPICHANGED:
+                // WinUI must see it too (its content scale follows this message);
+                // the pill's own size and spot are then set from the new scale
                 double newScale = ((int)wParam & 0xFFFF) / 96.0;
                 var suggested = Marshal.PtrToStructure<Native.RECT>(lParam);
+                IntPtr handled = Native.DefSubclassProc(hwnd, msg, wParam, lParam);
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     _scale = newScale;
                     ApplySize(new PxPoint(suggested.Left + (int)Math.Round(ShadowMargin * newScale), suggested.Top + (int)Math.Round(ShadowMargin * newScale)));
                 });
-                return IntPtr.Zero;
+                return handled;
             case Native.WM_DISPLAYCHANGE:
                 DispatcherQueue.TryEnqueue(OnDisplayChanged);
                 break;
@@ -515,7 +578,7 @@ public sealed partial class PillWindow : Window
     {
         var end = PillPosition;
         var (vx, vy) = _velocity.Velocity(_clock.Elapsed.TotalMilliseconds);
-        if (_app.Config.Animations && Math.Sqrt(vx * vx + vy * vy) > FlingSpeed)
+        if (_app.Config.Animations && Glide.IsFling(vx, vy))
         {
             _glide = new Glide(end.X, end.Y, vx, vy);
             HookFrames();
@@ -556,11 +619,14 @@ public sealed partial class PillWindow : Window
         _framesHooked = false;
     }
 
-    private void StopMotion()
+    /// <returns>Whether a glide or settle was in flight.</returns>
+    private bool StopMotion()
     {
+        bool moving = _glide != null || _settle != null;
         _glide = null;
         _settle = null;
         UnhookFrames();
+        return moving;
     }
 
     // One step per display frame
@@ -633,7 +699,7 @@ public sealed partial class PillWindow : Window
         // the details card after a 350 ms rest on the pill
         if (!InCapsule(cursor.X - pillRect.Left, cursor.Y - pillRect.Top, PillPxW, PillPxH)) _hoverSince = -1;
         else if (_hoverSince < 0) _hoverSince = now;
-        if (_hoverSince >= 0 && !_pressed && now - _hoverSince >= 350 && _flyout?.IsShowing != true && !_hiddenForFullscreen)
+        if (_hoverSince >= 0 && !_pressed && now - _hoverSince >= 350 && _flyout?.IsShowing != true && _pillVisible && !_hiddenForFullscreen)
         {
             _flyout ??= new FlyoutWindow(_app);
             _flyout.Update(_app.Latest);
@@ -644,11 +710,10 @@ public sealed partial class PillWindow : Window
         {
             bool buttonDown = (Native.GetAsyncKeyState(0x01) & 0x8000) != 0 || (Native.GetAsyncKeyState(0x02) & 0x8000) != 0;
             if (buttonDown && !_flyout.ScreenBounds.Contains(cursor.X, cursor.Y)) { _flyout.HideCard(); _cardPinned = false; }
-            return;
         }
-        // ...which stays while the cursor is on the pill or the card, and goes
-        // 150 ms after it has left both
-        if (_flyout?.IsShowing == true)
+        // A hover card stays while the cursor is on the pill or the card, and
+        // goes 150 ms after it has left both
+        else if (_flyout?.IsShowing == true)
         {
             bool inside = pillRect.Contains(cursor.X, cursor.Y) || _flyout.ScreenBounds.Contains(cursor.X, cursor.Y);
             if (inside) _outsideSince = -1;
@@ -694,8 +759,10 @@ public sealed partial class PillWindow : Window
         ApplyInfo(info, animate: true);
         if (_flyout?.IsShowing == true) _flyout.Update(info);
         _tray.Update(info, _app.Config.AccentColorIndex, _dark);
-        foreach (var alert in _app.Alerts.Next(info, DateTime.Now)) Notifier.Show(alert.Title, alert.Body);
+        foreach (var alert in _app.Alerts.Next(info, DateTime.Now)) Notifier.Show(alert.Title, alert.Body, urgent: alert.Kind == AlertKind.Critical);
     }
+
+    private async Task RefreshAsync() => OnReading(await _app.RefreshNowAsync());
 
     private void ToggleCardAt(PxRect anchor)
     {
@@ -729,7 +796,7 @@ public sealed partial class PillWindow : Window
                 case TrayIcon.Command.ModePercent: _app.ChangeSettings(c => c.DisplayMode = "percent"); break;
                 case TrayIcon.Command.ModeBoth: _app.ChangeSettings(c => c.DisplayMode = "both"); break;
                 case TrayIcon.Command.ModePower: _app.ChangeSettings(c => c.DisplayMode = "power"); break;
-                case TrayIcon.Command.Refresh: OnReading(_app.RefreshNow()); break;
+                case TrayIcon.Command.Refresh: _ = RefreshAsync(); break;
                 case TrayIcon.Command.Exit: Close(); break;
                 case TrayIcon.Command.Settings: OpenSettings(); break;
                 case TrayIcon.Command.GetUpdate: _updates.OpenAvailable(); break;
@@ -757,6 +824,14 @@ public sealed partial class PillWindow : Window
     {
         _tick.Interval = TimeSpan.FromMilliseconds(_app.Config.RefreshInterval);
         ApplySize(PillPosition);
+        // A pill made bigger near an edge must not hang off the screen
+        var at = PillPosition;
+        var inside = PillGeometry.Clamped(at, PillPxW, PillPxH, Native.WorkAreaFor(PillCenter));
+        if (inside != at && _glide == null && _settle == null && !_dragging)
+        {
+            MovePill(inside);
+            SavePosition();
+        }
         ApplyTheme();
         _lastText = "";
         ApplyInfo(_app.Latest, animate: true);
@@ -859,7 +934,7 @@ public sealed partial class PillWindow : Window
         string text = gaps.Count == 0
             ? "no frames recorded"
             : string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "frames={0} median_ms={1:F2} p90_ms={2:F2} worst_ms={3:F2} display_hz={4} pill_text={5} no_battery={6} pill_px={7}x{8} at={9},{10} battery={11}",
+                "frames={0} median_ms={1:F2} p90_ms={2:F2} worst_ms={3:F2} display_hz={4} pill_text={5} no_battery={6} pill_px={7}x{8} at={9},{10} reader={11}",
                 gaps.Count + 1, gaps[gaps.Count / 2], gaps[(int)(gaps.Count * 0.9)], gaps[^1], Native.GetRefreshRate(),
                 PrimaryText.Text, info.NoBattery, PillPxW, PillPxH, PillPosition.X, PillPosition.Y,
                 _batteryProbe is { IsCompleted: true } probe ? probe.Result : "pending");

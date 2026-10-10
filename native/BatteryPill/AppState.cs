@@ -114,10 +114,10 @@ internal sealed class AppState
 
     public void OnResume() => Interpreter.Estimator.OnResume(DateTime.Now);
 
-    /// <summary>The tray's Refresh: a fresh battery reading (at most 5 s), then a tick.</summary>
-    public BatteryInfo RefreshNow()
+    /// <summary>The tray's Refresh: a fresh battery reading (at most 5 s, awaited), then a tick.</summary>
+    public async Task<BatteryInfo> RefreshNowAsync()
     {
-        if (!FakeBattery.Active) Query.ReadNow(out _);
+        if (!FakeBattery.Active) await Query.ReadNowAsync();
         return Tick();
     }
 

@@ -176,7 +176,7 @@
                             <TextBlock Text="Start with Windows" Style="{StaticResource CardTitle}" />
                             <TextBlock x:Name="AutoStartText" Text="Open BatteryPill when you sign in" Style="{StaticResource CardText}" />
                         </StackPanel>
-                        <ToggleSwitch x:Name="AutoStartToggle" Grid.Column="1" OnContent="" OffContent="" MinWidth="0" VerticalAlignment="Center" />
+                        <ToggleSwitch x:Name="AutoStartToggle" AutomationProperties.AutomationId="AutoStartToggle" Grid.Column="1" OnContent="" OffContent="" MinWidth="0" VerticalAlignment="Center" />
                     </Grid>
                 </Border>
 

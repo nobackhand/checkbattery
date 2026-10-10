@@ -16,7 +16,7 @@ internal sealed class TrayIcon : IDisposable
     public enum Command { None = 0, TogglePill = 1, ModeTime, ModePercent, ModeBoth, ModePower, Refresh, Exit, Settings, GetUpdate, PlanBase = 1000 }
 
     private const int WM_APP_TRAY = 0x8000 + 1;
-    private const int WM_CONTEXTMENU = 0x007B, WM_LBUTTONUP = 0x0202, WM_INITMENUPOPUP = 0x0117, NIN_SELECT = 0x0400, NIN_KEYSELECT = 0x0401;
+    private const int WM_CONTEXTMENU = 0x007B, WM_INITMENUPOPUP = 0x0117, NIN_SELECT = 0x0400, NIN_KEYSELECT = 0x0401;
     private const int NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
     private const int NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4, NIF_SHOWTIP = 0x80;
     private const uint MF_STRING = 0, MF_SEPARATOR = 0x800, MF_POPUP = 0x10, MF_CHECKED = 8, MF_GRAYED = 1;
@@ -30,6 +30,7 @@ internal sealed class TrayIcon : IDisposable
     private string _tip = "BatteryPill";
     private IntPtr _planMenu;
     private IReadOnlyList<PowerPlan> _plans = Array.Empty<PowerPlan>();
+    private long _lastSelectTicks;
 
     public Action<PxRect>? LeftClick;
     public Func<(bool PillVisible, string Mode, bool Dark, string? Update)>? MenuState;
@@ -72,7 +73,8 @@ internal sealed class TrayIcon : IDisposable
         if (b.TimeMinutes > 0 && !b.IsFullyCharged) tip += $" - {Format.Duration(b.TimeMinutes)}{(b.IsCharging ? " to full" : " left")}";
         _tip = tip.Length > 120 ? tip[..120] : tip;
 
-        int size = Math.Max(16, GetSystemMetricsForDpi(49 /* SM_CXSMICON */, GetDpiForSystem()));
+        // The taskbar's (primary monitor's) DPI now, not the system DPI the process started with
+        int size = Math.Max(16, GetSystemMetricsForDpi(49 /* SM_CXSMICON */, PrimaryDpi()));
         string key = $"{b.Percent}|{b.IsCharging}|{b.NoBattery}|{accentIndex}|{dark}|{size}";
         if (key != _iconKey)
         {
@@ -161,12 +163,19 @@ internal sealed class TrayIcon : IDisposable
         {
             int ev = (int)lParam & 0xFFFF;
             if (ev == WM_CONTEXTMENU) ShowMenu();
-            else if (ev is NIN_SELECT or NIN_KEYSELECT or WM_LBUTTONUP) LeftClick?.Invoke(IconRect());
+            // Version 4 sends WM_LBUTTONUP AND NIN_SELECT for one click, and
+            // NIN_KEYSELECT twice for one Enter: act on the select alone, once
+            else if (ev is NIN_SELECT or NIN_KEYSELECT)
+            {
+                long now = Environment.TickCount64;
+                if (now - _lastSelectTicks >= GetDoubleClickTime()) LeftClick?.Invoke(IconRect());
+                _lastSelectTicks = now;
+            }
             return IntPtr.Zero;
         }
         if (msg == WM_INITMENUPOPUP && wParam == _planMenu && _planMenu != IntPtr.Zero)
         {
-            // Read the plans only when that submenu opens: powercfg is a child process
+            // Read the plans only when that submenu opens (the power API answers in ~1 ms)
             while (GetMenuItemCount(_planMenu) > 0) RemoveMenu(_planMenu, 0, 0x400 /* MF_BYPOSITION */);
             _plans = PowerPlans.Read();
             if (_plans.Count == 0) AppendMenu(_planMenu, MF_STRING | MF_GRAYED, 0, "Not available");
@@ -200,6 +209,7 @@ internal sealed class TrayIcon : IDisposable
         GetCursorPos(out var pt);
         SetForegroundWindow(_hwnd);   // so the menu closes when the user clicks elsewhere
         int chosen = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN, pt.X, pt.Y, _hwnd, IntPtr.Zero);
+        PostMessage(_hwnd, 0 /* WM_NULL */, IntPtr.Zero, IntPtr.Zero);   // the documented fix for a menu that reopens or won't close
         DestroyMenu(menu);   // destroys the submenus too
         _planMenu = IntPtr.Zero;
         if (chosen >= (int)Command.PlanBase && chosen - (int)Command.PlanBase < _plans.Count)
@@ -280,6 +290,14 @@ internal sealed class TrayIcon : IDisposable
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr icon);
     [DllImport("user32.dll")] private static extern int GetSystemMetricsForDpi(int index, uint dpi);
     [DllImport("user32.dll")] private static extern uint GetDpiForSystem();
+    [DllImport("user32.dll")] private static extern uint GetDoubleClickTime();
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(Native.POINT pt, uint flags);
+    [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
+
+    private static uint PrimaryDpi() =>
+        GetDpiForMonitor(MonitorFromPoint(default, 1 /* MONITOR_DEFAULTTOPRIMARY */), 0 /* MDT_EFFECTIVE_DPI */, out uint dpi, out _) == 0 && dpi > 0
+            ? dpi : GetDpiForSystem();
     [DllImport("uxtheme.dll", EntryPoint = "#135")] private static extern int SetPreferredAppMode(int mode);
     [DllImport("uxtheme.dll", EntryPoint = "#136")] private static extern void FlushMenuThemes();
 }
