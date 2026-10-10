@@ -36,6 +36,7 @@ function Set-WidgetState {
     $script:emaRate = -1
     $script:lastValidRate = -1
     $script:lastAcState = $null
+    $script:lastChargingState = $null
 }
 
 function New-FullConfig {

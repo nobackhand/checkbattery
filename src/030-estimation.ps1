@@ -137,6 +137,18 @@ function Get-SmoothedTimeRemaining {
     }
     $script:lastAcState = $IsPluggedIn
 
+    # Charging can also stop while the cable stays in - a firmware charge cap,
+    # a full pack - and the AC check above never sees that. The held CHARGE
+    # rate then fed the hold path below as if it were the drain, and a pack
+    # parked at its cap read "1h 55m left" for up to a minute. Same reset,
+    # no hysteresis: there is no rate spike to wait out.
+    if ($null -ne $script:lastChargingState -and $script:lastChargingState -ne $IsCharging) {
+        $script:emaRate = -1
+        $script:lastValidRate = -1
+        $script:lastValidRateTime = $null
+    }
+    $script:lastChargingState = $IsCharging
+
     # During hysteresis window, return -1 to show "Calculating..."
     if ($null -ne $script:stateChangeTime) {
         $elapsed = ($Now - $script:stateChangeTime).TotalSeconds

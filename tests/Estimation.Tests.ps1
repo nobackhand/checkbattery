@@ -37,12 +37,31 @@ function Reset-EstimatorState {
     $script:lastCapacityCheck = $null
     $script:capacityRateMismatchCount = 0
     $script:lastAcState = $null
+    $script:lastChargingState = $null
     $script:stateChangeTime = $null
     $script:hysteresisSeconds = 2
 }
 
 $t0 = [datetime]'2026-07-29T09:00:00'
 
+# ---- Charging stops while plugged in ----
+
+Test-Case 'charging stopping at a charge cap drops the charge rate instead of reading it as drain' {
+    Reset-EstimatorState
+    for ($k = 0; $k -lt 5; $k++) {
+        [void](Get-SmoothedTimeRemaining -RawRate 25000 -FullChargeCapacity 60000 -PercentExact 79 -IsCharging $true -IsPluggedIn $true -Now $t0.AddSeconds(3 * $k))
+    }
+    # The cap: still plugged in, no longer charging, and no rate reported
+    $r = Get-SmoothedTimeRemaining -RawRate 0 -FullChargeCapacity 60000 -PercentExact 80 -IsCharging $false -IsPluggedIn $true -Now $t0.AddSeconds(15)
+    Assert-Equal (-1) $r
+}
+
+Test-Case 'charging resuming at the cap does not compute time-to-full from an old drain rate' {
+    Reset-EstimatorState
+    [void](Get-SmoothedTimeRemaining -RawRate 9000 -FullChargeCapacity 60000 -PercentExact 78 -IsCharging $false -IsPluggedIn $true -Now $t0)
+    $r = Get-SmoothedTimeRemaining -RawRate 0 -FullChargeCapacity 60000 -PercentExact 78 -IsCharging $true -IsPluggedIn $true -Now $t0.AddSeconds(3)
+    Assert-Equal (-1) $r
+}
 # ---- Update-EMARate ----
 
 Test-Case 'Update-EMARate seeds from the first reading instead of easing up from zero' {
