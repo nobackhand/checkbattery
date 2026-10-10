@@ -93,6 +93,14 @@ function Get-CapacityDerivedRate {
     if ($elapsed -lt 0.0083) { return -1 }  # need at least 30 seconds
 
     $capDelta = $script:lastCapacityCheck.Capacity - $currentCapacity  # mWh consumed
+    # Measure across at least 5% of the pack. WMI reports a WHOLE percent, so
+    # over a short window a single 1% step reads as a huge rate (1% of a 60Wh
+    # pack in 30s = 72 W against a real 10 W) - and after three of those the
+    # cross-check in Get-SmoothedTimeRemaining replaced the real rate with
+    # the fake one, jerking the estimate down. Across >= 5% the whole-percent
+    # error is at most 20%, under the 40% divergence the cross-check acts on.
+    # Below that, keep the reference sample and wait.
+    if ($capDelta -gt 0 -and $capDelta -lt ($FullChargeCapacity * 0.05)) { return -1 }
     $derivedRate = [int]($capDelta / $elapsed)  # mW
 
     $script:lastCapacityCheck.Time = $Now

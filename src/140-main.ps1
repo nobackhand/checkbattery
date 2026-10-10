@@ -283,7 +283,7 @@ $pillPowerItem.Add_DropDownOpening({ Update-PowerPlanMenu -MenuItem $pillPowerIt
 $pillSeparator1 = New-Object System.Windows.Forms.ToolStripSeparator
 
 $pillRefreshItem = New-Object System.Windows.Forms.ToolStripMenuItem("Refresh")
-$pillRefreshItem.Add_Click({ Update-TrayIcon })
+$pillRefreshItem.Add_Click({ try { $null = [BatteryQuery]::ReadNow() } catch {}; Update-TrayIcon })
 
 $pillAboutItem = New-Object System.Windows.Forms.ToolStripMenuItem("About")
 $pillAboutItem.Add_Click({ Show-AboutDialog })
@@ -348,7 +348,7 @@ $null = $trayPowerItem.DropDownItems.Add("Loading...")
 $trayPowerItem.Add_DropDownOpening({ Update-PowerPlanMenu -MenuItem $trayPowerItem })
 
 $refreshItem = New-Object System.Windows.Forms.ToolStripMenuItem("Refresh")
-$refreshItem.Add_Click({ Update-TrayIcon })
+$refreshItem.Add_Click({ try { $null = [BatteryQuery]::ReadNow() } catch {}; Update-TrayIcon })
 
 $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem("About")
 $aboutItem.Add_Click({ Show-AboutDialog })

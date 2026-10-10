@@ -31,8 +31,9 @@ Test-Case 'native: the single Add-Type helper block is found' {
 }
 
 Test-Case 'native: the helper block compiles under Windows PowerShell 5.1' {
-    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-    Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition $csharp
+    # Same references as the widget's own Add-Type (System.Management: BatteryQuery)
+    Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Management
+    Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing, System.Management -TypeDefinition $csharp
     Assert-True ($null -ne ('PowerMeterProbe' -as [type])) 'PowerMeterProbe missing after compile'
     Assert-True ($null -ne ('Win32Icon' -as [type])) 'Win32Icon missing after compile'
 }
