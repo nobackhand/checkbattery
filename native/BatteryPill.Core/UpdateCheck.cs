@@ -22,7 +22,7 @@ public static partial class UpdateCheck
     public const string LatestReleasePage = "https://github.com/nobackhand/checkbattery/releases/latest";
     public const string Website = "https://batterypill.com";
 
-    [GeneratedRegex(@"^\d{1,9}(\.\d{1,9}){0,2}$")]
+    [GeneratedRegex(@"^[0-9]{1,9}(\.[0-9]{1,9}){0,2}$")]
     private static partial Regex DottedVersion();
 
     [GeneratedRegex(@"^https://github\.com/nobackhand/checkbattery/releases/")]

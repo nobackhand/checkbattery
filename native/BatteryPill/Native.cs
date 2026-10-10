@@ -27,7 +27,7 @@ internal static class Native
     private const long WS_CAPTION = 0x00C00000, WS_THICKFRAME = 0x00040000, WS_SYSMENU = 0x00080000,
         WS_BORDER = 0x00800000, WS_DLGFRAME = 0x00400000, WS_POPUP = 0x80000000;
     private const long WS_EX_DLGMODALFRAME = 0x1, WS_EX_TRANSPARENT = 0x20, WS_EX_WINDOWEDGE = 0x100,
-        WS_EX_CLIENTEDGE = 0x200, WS_EX_STATICEDGE = 0x20000, WS_EX_LAYERED = 0x80000;
+        WS_EX_CLIENTEDGE = 0x200, WS_EX_STATICEDGE = 0x20000, WS_EX_LAYERED = 0x80000, WS_EX_NOACTIVATE = 0x08000000;
     private const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10,
         SWP_FRAMECHANGED = 0x20;
     private const uint LWA_ALPHA = 0x2;
@@ -93,6 +93,16 @@ internal static class Native
         DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref round, sizeof(int));
         int border = DWMWA_COLOR_NONE;
         DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref border, sizeof(int));
+    }
+
+    /// <summary>
+    /// The pill never takes focus: clicking or launching it must not pull the
+    /// keyboard away from what the user is doing (a fullscreen game above all).
+    /// </summary>
+    public static void SetNoActivate(IntPtr hwnd)
+    {
+        long ex = (long)GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtr(hwnd, GWL_EXSTYLE, (IntPtr)(ex | WS_EX_NOACTIVATE));
     }
 
     /// <summary>

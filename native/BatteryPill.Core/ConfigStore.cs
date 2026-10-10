@@ -21,9 +21,10 @@ public static partial class ConfigStore
     public const int SavedHistoryCount = 200;
     private static readonly TimeSpan EstimatorStateMaxAge = TimeSpan.FromMinutes(10);
 
-    [GeneratedRegex(@"^\d{1,9}\.\d{1,9}\.\d{1,9}$")]
+    [GeneratedRegex(@"^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}$")]
     private static partial Regex VersionPattern();
 
+    /// <param name="now">Local time.</param>
     public static ConfigLoadResult Load(string path, DateTime now)
     {
         var config = new AppConfig();
@@ -83,7 +84,7 @@ public static partial class ConfigStore
                 if (entry.ValueKind != JsonValueKind.Object) continue;
                 object? E(string name) => entry.TryGetProperty(name, out var v) ? ToRaw(v) : null;
                 if (ParseInt(E("Percent")) is not int pct || pct < 0 || pct > 100) continue;
-                if (E("Time") is not string ts || !DateTime.TryParse(ts, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var time)) continue;
+                if (ParseRoundTripDate(E("Time")) is not DateTime time) continue;
                 // Watts arrived with v1.4.0: a missing or bad value costs the number, not the entry
                 double watts = ParseDouble(E("Watts")) is double w && !double.IsNaN(w) && w > 0 ? w : -1;
                 loaded.Add(new HistorySample(time, pct, Truthy(E("IsCharging")), Truthy(E("IsPluggedIn")), watts));
@@ -95,9 +96,7 @@ public static partial class ConfigStore
         // Estimator state: only from a file saved in the last 10 minutes
         if (ParseDouble(Field("EmaRate")) is double ema && ParseRoundTripDate(Field("ConfigSavedAt")) is DateTime savedAt)
         {
-            // A stamp with no offset is local time (never shifted as if it were UTC)
-            DateTime savedLocal = savedAt.Kind == DateTimeKind.Utc ? savedAt.ToLocalTime() : savedAt;
-            if (now - savedLocal < EstimatorStateMaxAge)
+            if (now - savedAt < EstimatorStateMaxAge)
             {
                 c.EmaRate = ema;
                 c.LastValidRate = ParseInt(Field("LastValidRate")) ?? -1;
@@ -107,7 +106,8 @@ public static partial class ConfigStore
     }
 
     /// <summary>
-    /// Write the config atomically: readers only ever see the complete old file or
+    /// Write the config atomically (throws IOException/UnauthorizedAccessException
+    /// when it cannot; the old file is then left intact): readers only ever see the complete old file or
     /// the complete new one (a launching instance reads while the running one saves).
     /// </summary>
     public static void Save(string path, AppConfig c, IReadOnlyList<HistorySample> history, TimeEstimator estimator, DateTime now)
@@ -197,8 +197,17 @@ public static partial class ConfigStore
         return Array.IndexOf(allowed, v) >= 0 ? v : null;
     }
 
-    private static DateTime? ParseRoundTripDate(object? raw) =>
-        raw is string s && DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var d) ? d : null;
+    /// <summary>
+    /// Every stamp comes back as LOCAL time, as PowerShell's [DateTime]::Parse
+    /// returns it. A "Z" stamp kept as Kind=Utc would be subtracted from local
+    /// times as if it were local (DateTime arithmetic ignores Kind), skewing
+    /// spans and schedules by the UTC offset. A stamp with no offset is local.
+    /// </summary>
+    internal static DateTime? ParseRoundTripDate(object? raw)
+    {
+        if (raw is not string s || !DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var d)) return null;
+        return d.Kind == DateTimeKind.Utc ? d.ToLocalTime() : d;
+    }
 
     // ---- file I/O ----
 

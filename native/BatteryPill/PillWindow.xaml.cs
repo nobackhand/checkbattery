@@ -53,7 +53,9 @@ public sealed partial class PillWindow : Window
     private PxPoint _dragStart;
     private double _dragStartMs;
     private bool _inMoveLoop;
-    private bool _sawMoveLoop;
+    private bool _pressed;
+    private PxPoint _pressAt;
+    private bool _built;
     private Glide? _glide;
     private (PxPoint From, PxPoint To, double StartMs)? _settle;
     private double _lastFrameMs;
@@ -86,12 +88,17 @@ public sealed partial class PillWindow : Window
 
         Pill.Loaded += (_, _) =>
         {
+            if (_built) return;   // Loaded can fire again; visuals attach once
+            _built = true;
             BuildVisuals();
             ApplyTheme();
             ApplyInfo(_app.Tick(), animate: false);
             PlayIntro();
         };
         Pill.PointerPressed += OnPillPressed;
+        Pill.PointerMoved += OnPillMoved;
+        Pill.PointerReleased += OnPillReleased;
+        Pill.PointerCaptureLost += (_, _) => _pressed = false;
         Pill.PointerEntered += (_, _) => AnimateScale(1.04f);
         Pill.PointerExited += (_, _) => AnimateScale(1.0f);
         Pill.ContextFlyout = BuildMenu();
@@ -136,7 +143,10 @@ public sealed partial class PillWindow : Window
             p.IsAlwaysOnTop = true;
         }
         Native.RemoveWindowFrame(_hwnd);
+        Native.SetNoActivate(_hwnd);
     }
+
+    internal void ShowWithoutActivating() => AppWindow.Show(false);
 
     private int Margin => (int)Math.Round(ShadowMargin * _scale);
     private int PillPxW => (int)Math.Round(_size.Width * _scale);
@@ -385,25 +395,41 @@ public sealed partial class PillWindow : Window
 
     // ---------------------------------------------------------------- drag, glide, settle
 
-    // Hand the drag to Windows' own move loop: it tracks the cursor at full rate
+    // A press is a click until the pointer moves 4 px; then the drag is handed
+    // to Windows' own move loop, which tracks the cursor at full rate. (Handing
+    // over on press would swallow the release, and a click could never be
+    // told from a drag.)
     private void OnPillPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint(Pill).Properties.IsLeftButtonPressed) return;
         StopMotion();
+        _pressed = true;
+        _pressAt = Native.CursorPos();
         _dragStart = PillPosition;
         _dragStartMs = _clock.Elapsed.TotalMilliseconds;
-        if (_app.Config.PositionLocked)
-        {
-            CycleDisplayMode();
-            return;
-        }
-        _sawMoveLoop = false;
+        Pill.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void OnPillMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_pressed) return;
+        var c = Native.CursorPos();
+        double dist = Math.Sqrt(Math.Pow(c.X - _pressAt.X, 2) + Math.Pow(c.Y - _pressAt.Y, 2));
+        if (dist < 4 * _scale) return;
+        _pressed = false;
+        Pill.ReleasePointerCaptures();
+        if (_app.Config.PositionLocked) return;
         Native.ReleaseCapture();
-        // Returns once the button is released. Windows only enters its move loop
-        // after the cursor actually moves: a plain click never sends
-        // WM_ENTERSIZEMOVE, so it is recognised here instead.
         Native.SendMessage(_hwnd, Native.WM_NCLBUTTONDOWN, (IntPtr)Native.HTCAPTION, IntPtr.Zero);
-        if (!_sawMoveLoop && _clock.Elapsed.TotalMilliseconds - _dragStartMs < 500) CycleDisplayMode();
+    }
+
+    private void OnPillReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_pressed) return;
+        _pressed = false;
+        Pill.ReleasePointerCaptures();
+        if (_clock.Elapsed.TotalMilliseconds - _dragStartMs < 500) CycleDisplayMode();
     }
 
     private IntPtr WindowProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr refData)
@@ -412,7 +438,6 @@ public sealed partial class PillWindow : Window
         {
             case Native.WM_ENTERSIZEMOVE:
                 _inMoveLoop = true;
-                _sawMoveLoop = true;
                 _velocity.Reset();
                 SetClickThrough(false);
                 break;
@@ -449,13 +474,6 @@ public sealed partial class PillWindow : Window
     private void OnDragEnded()
     {
         var end = PillPosition;
-        double moved = Math.Sqrt(Math.Pow(end.X - _dragStart.X, 2) + Math.Pow(end.Y - _dragStart.Y, 2));
-        double heldMs = _clock.Elapsed.TotalMilliseconds - _dragStartMs;
-        if (moved < 4 * _scale && heldMs < 350)
-        {
-            CycleDisplayMode();   // a click, not a drag
-            return;
-        }
         var (vx, vy) = _velocity.Velocity(_clock.Elapsed.TotalMilliseconds);
         if (_app.Config.Animations && Math.Sqrt(vx * vx + vy * vy) > FlingSpeed)
         {

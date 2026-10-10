@@ -48,7 +48,8 @@ Each milestone is a PR, CI-green and checked by a fresh reviewer, with measured 
   - history, draw stats and session summary
   - config read/write, compatible with the PowerShell app's file (verified against a PS 5.1-shaped file)
   - update-check decisions
-  - **213 tests:** the PowerShell suites ported case for case, plus live reads of the host's real sources
+  - **213 tests:** the PowerShell suites ported, plus live reads of the host's real sources
+  - Not ported: the cross-process `Concurrency` stress suite. It is covered by the same atomic MoveFileEx design, plus a read-only-file test.
   - **Mutation-checked:** re-introducing the status-2, 255, charge-flip and 1%-step bugs each fails the suite
   - CI: `.github/workflows/native.yml`
   - The platform power meter (perf counter) moves to M2.
@@ -89,4 +90,6 @@ Each milestone is a PR, CI-green and checked by a fresh reviewer, with measured 
 3. **Clicks in the transparent shadow margin** are caught by the pill window. Retire
    in M2: toggle `WS_EX_TRANSPARENT` outside the capsule, or a tighter margin.
 4. **Smart App Control** blocks an unsigned exe exactly as it does today. Only a
-   signed build fixes it (M6).
+   signed build fixes it (M6). Since 2026-10-10 it also blocks fresh dev builds on
+   CUBE04 (Code Integrity 3077), so on-screen checks there need signing, or the CI
+   runner, which has no SAC.
