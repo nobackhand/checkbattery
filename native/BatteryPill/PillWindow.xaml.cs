@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using BatteryPill.Core;
@@ -38,7 +38,7 @@ public sealed partial class PillWindow : Window
     private readonly VelocityTracker _velocity = new();
     private readonly string? _measurePath;
     private readonly List<double> _frameTimes = new();
-    private Task<string>? _wmiProbe;
+    private Task<string>? _batteryProbe;
 
     private SpriteVisual? _fill;
     private CompositionColorGradientStop? _fillStart, _fillEnd;
@@ -824,9 +824,9 @@ public sealed partial class PillWindow : Window
     // --measure <file>: record 4 s of frame times, write a summary, exit
     private void StartFrameMeter()
     {
-        // The trimmed single-file build must still be able to run a WMI query:
-        // a trimmer that broke System.Management would fail silently on a laptop
-        _wmiProbe = Task.Run(() =>
+        // The trimmed single-file build must still be able to read the battery:
+        // a trimmer that broke the reader would fail silently on a laptop
+        _batteryProbe = Task.Run(() =>
         {
             try { return _app.Query.Read() is null ? "ok-no-battery" : "ok-battery"; }
             catch (Exception e) { return "error-" + e.GetType().Name; }
@@ -858,10 +858,10 @@ public sealed partial class PillWindow : Window
         string text = gaps.Count == 0
             ? "no frames recorded"
             : string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "frames={0} median_ms={1:F2} p90_ms={2:F2} worst_ms={3:F2} display_hz={4} pill_text={5} no_battery={6} pill_px={7}x{8} at={9},{10} wmi={11}",
+                "frames={0} median_ms={1:F2} p90_ms={2:F2} worst_ms={3:F2} display_hz={4} pill_text={5} no_battery={6} pill_px={7}x{8} at={9},{10} battery={11}",
                 gaps.Count + 1, gaps[gaps.Count / 2], gaps[(int)(gaps.Count * 0.9)], gaps[^1], Native.GetRefreshRate(),
                 PrimaryText.Text, info.NoBattery, PillPxW, PillPxH, PillPosition.X, PillPosition.Y,
-                _wmiProbe is { IsCompleted: true } probe ? probe.Result : "pending");
+                _batteryProbe is { IsCompleted: true } probe ? probe.Result : "pending");
         File.WriteAllText(_measurePath!, text);
     }
 

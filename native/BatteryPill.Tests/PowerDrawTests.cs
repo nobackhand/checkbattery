@@ -196,7 +196,7 @@ public class PowerDrawTests
 
     // ---- end to end ----
 
-    private static WmiBatterySnapshot Wmi(int status = 1, int? discharge = null, int? charge = null) => new()
+    private static BatterySnapshot Wmi(int status = 1, int? discharge = null, int? charge = null) => new()
     {
         EstimatedChargeRemaining = 72,
         BatteryStatus = status,

@@ -17,7 +17,7 @@ internal static class FakeBattery
     // Laptop-like pack: 60 Wh design, 56 Wh now
     private const int Design = 60000, Full = 56000;
 
-    public static (WmiBatterySnapshot Wmi, SystemPowerSnapshot Power) Reading() => Scenario switch
+    public static (BatterySnapshot Wmi, SystemPowerSnapshot Power) Reading() => Scenario switch
     {
         "charging" => (Wmi(47, status: 2, charge: 38000), Power(online: true, flags: 9)),
         "low" => (Wmi(9, status: 1, discharge: 9400), Power(online: false, flags: 2)),
@@ -26,7 +26,7 @@ internal static class FakeBattery
         _ => (Wmi(64, status: 1, discharge: 11200), Power(online: false, flags: 1)),
     };
 
-    private static WmiBatterySnapshot Wmi(int pct, int status, int? discharge = null, int? charge = null) => new()
+    private static BatterySnapshot Wmi(int pct, int status, int? discharge = null, int? charge = null) => new()
     {
         EstimatedChargeRemaining = (ushort)pct,
         BatteryStatus = (ushort)status,

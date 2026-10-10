@@ -55,7 +55,7 @@ public class AdversarialTests
 
     // ---- the battery reading ----
 
-    private static WmiBatterySnapshot Battery(object? pct = null, object? status = null, object? design = null, object? full = null,
+    private static BatterySnapshot Battery(object? pct = null, object? status = null, object? design = null, object? full = null,
         object? discharge = null, object? charge = null, object? runTime = null, object? toFull = null) => new()
     {
         EstimatedChargeRemaining = pct ?? 60,
@@ -71,7 +71,7 @@ public class AdversarialTests
     private static readonly object Null = new NullMarker();
     private sealed class NullMarker { }
 
-    private static WmiBatterySnapshot WithNulls(WmiBatterySnapshot b) => b with
+    private static BatterySnapshot WithNulls(BatterySnapshot b) => b with
     {
         EstimatedChargeRemaining = b.EstimatedChargeRemaining is NullMarker ? null : b.EstimatedChargeRemaining,
         BatteryStatus = b.BatteryStatus is NullMarker ? null : b.BatteryStatus,
@@ -87,7 +87,7 @@ public class AdversarialTests
     private static SystemPowerSnapshot Power(object? flags = null, object? pct = null, object? seconds = null, bool online = false) =>
         new() { AcLineStatus = online ? 1 : 0, BatteryFlag = flags, BatteryLifePercent = pct, BatteryLifeTime = seconds };
 
-    private static BatteryInfo Read(WmiBatterySnapshot? wmi, SystemPowerSnapshot? power = null) =>
+    private static BatteryInfo Read(BatterySnapshot? wmi, SystemPowerSnapshot? power = null) =>
         new BatteryInterpreter().Interpret(wmi is null ? null : WithNulls(wmi), power ?? Power(), -1, T0);
 
     [Fact]
@@ -237,7 +237,7 @@ public class AdversarialTests
     [Fact]
     public void AReadingWithNoPropertiesAtAllDoesNotCrash()
     {
-        var i = new BatteryInterpreter().Interpret(new WmiBatterySnapshot(), Power(), -1, T0);
+        var i = new BatteryInterpreter().Interpret(new BatterySnapshot(), Power(), -1, T0);
         Assert.Equal(-1, i.Percent);
         Assert.Equal(-1, i.TimeMinutes);
     }

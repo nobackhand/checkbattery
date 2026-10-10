@@ -1,4 +1,3 @@
-using System.Management;
 using System.Runtime.InteropServices;
 
 namespace BatteryPill.Core;
@@ -42,24 +41,21 @@ public sealed class BatteryQuery
 {
     private static readonly TimeSpan AbandonAfter = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan CapacityCacheFor = TimeSpan.FromMinutes(10);
 
     private readonly object _lock = new();
-    private Task<WmiBatterySnapshot?>? _task;
+    private Task<BatterySnapshot?>? _task;
     private DateTime _taskStarted;
-    private WmiBatterySnapshot? _last;
+    private BatterySnapshot? _last;
     private bool _hasReading;
     private DateTime _lastAt;
     private bool _waited;
-    private (object? Full, object? Design, bool Relative)? _caps;
-    private DateTime _capsAt;
 
     /// <summary>
     /// The latest finished reading. Null result + <paramref name="fresh"/> false means
-    /// there is none fresh enough to trust (a WMI call can hang; past a minute the
+    /// there is none fresh enough to trust (a read can stall; past a minute the
     /// app answers from the OS power status alone).
     /// </summary>
-    public WmiBatterySnapshot? Poll(out bool fresh)
+    public BatterySnapshot? Poll(out bool fresh)
     {
         lock (_lock)
         {
@@ -81,9 +77,9 @@ public sealed class BatteryQuery
     }
 
     /// <summary>Launch: wait (once, bounded) for the first reading rather than flip a tick later.</summary>
-    public WmiBatterySnapshot? WaitFirst(TimeSpan timeout, out bool fresh)
+    public BatterySnapshot? WaitFirst(TimeSpan timeout, out bool fresh)
     {
-        Task<WmiBatterySnapshot?>? t;
+        Task<BatterySnapshot?>? t;
         lock (_lock)
         {
             Poll(out _);
@@ -95,7 +91,7 @@ public sealed class BatteryQuery
     }
 
     /// <summary>The tray's Refresh: a fresh reading now, but never more than 5 s of waiting.</summary>
-    public WmiBatterySnapshot? ReadNow(out bool fresh)
+    public BatterySnapshot? ReadNow(out bool fresh)
     {
         var t = Task.Run(Read);
         try
@@ -107,88 +103,6 @@ public sealed class BatteryQuery
         return Poll(out fresh);
     }
 
-    private static System.Management.EnumerationOptions Opts() => new() { Timeout = TimeSpan.FromSeconds(20) };
-
     /// <summary>One complete reading (synchronous). Null when this machine has no battery.</summary>
-    public WmiBatterySnapshot? Read()
-    {
-        WmiBatterySnapshot? snap = null;
-        try
-        {
-            using var searcher = new ManagementObjectSearcher("root\\CIMV2", "SELECT * FROM Win32_Battery", Opts());
-            using var all = searcher.Get();
-            foreach (ManagementBaseObject o in all)
-            {
-                // First pack (dual-battery laptops), as the PowerShell app does
-                snap = new WmiBatterySnapshot
-                {
-                    EstimatedChargeRemaining = o["EstimatedChargeRemaining"],
-                    BatteryStatus = o["BatteryStatus"],
-                    DesignCapacity = o["DesignCapacity"],
-                    FullChargeCapacity = o["FullChargeCapacity"],
-                    EstimatedRunTime = o["EstimatedRunTime"],
-                    TimeToFullCharge = o["TimeToFullCharge"],
-                };
-                break;
-            }
-        }
-        catch (Exception e) when (e is ManagementException or COMException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-        if (snap is null) return null;
-
-        // Win32_Battery has NO rate properties and often no capacities: the battery
-        // class driver publishes the real numbers in root\WMI. Each class is read on
-        // its own, so a missing one costs nothing.
-        var caps = Capacities();
-        // A battery reporting RELATIVE units has no mW/mWh to offer
-        if (caps.Relative) return snap;
-        var rates = FirstInstance("BatteryStatus", "DischargeRate", "ChargeRate");
-        return snap with
-        {
-            DischargeRate = rates.GetValueOrDefault("DischargeRate"),
-            ChargeRate = rates.GetValueOrDefault("ChargeRate"),
-            FullChargeCapacity = IsEmpty(snap.FullChargeCapacity) ? caps.Full : snap.FullChargeCapacity,
-            DesignCapacity = IsEmpty(snap.DesignCapacity) ? caps.Design : snap.DesignCapacity,
-        };
-    }
-
-    private (object? Full, object? Design, bool Relative) Capacities()
-    {
-        lock (_lock)
-        {
-            if (_caps is { } c && DateTime.UtcNow - _capsAt < CapacityCacheFor) return c;
-        }
-        var full = FirstInstance("BatteryFullChargedCapacity", "FullChargedCapacity");
-        var st = FirstInstance("BatteryStaticData", "DesignedCapacity", "Capabilities");
-        bool relative = false;
-        try
-        {
-            relative = st.GetValueOrDefault("Capabilities") is object cap && (Convert.ToUInt32(cap) & 0x40000000u) != 0;
-        }
-        catch (Exception e) when (e is FormatException or InvalidCastException or OverflowException) { }
-        var result = (full.GetValueOrDefault("FullChargedCapacity"), st.GetValueOrDefault("DesignedCapacity"), relative);
-        lock (_lock) { _caps = result; _capsAt = DateTime.UtcNow; }
-        return result;
-    }
-
-    private static bool IsEmpty(object? v) => DeviceNumber.Read(v) is not double d || d <= 0;
-
-    private static Dictionary<string, object?> FirstInstance(string cls, params string[] props)
-    {
-        var r = new Dictionary<string, object?>();
-        try
-        {
-            using var s = new ManagementObjectSearcher("root\\WMI", $"SELECT {string.Join(", ", props)} FROM {cls}", Opts());
-            using var all = s.Get();
-            foreach (ManagementBaseObject o in all)
-            {
-                foreach (var p in props) r[p] = o[p];
-                break;
-            }
-        }
-        catch (Exception e) when (e is ManagementException or COMException or UnauthorizedAccessException) { }
-        return r;
-    }
+    public BatterySnapshot? Read() => BatteryDevice.Read() is { } r ? BatteryDevice.ToSnapshot(r) : null;
 }

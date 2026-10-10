@@ -42,7 +42,9 @@ native/
 Each milestone is a PR, CI-green and checked by a fresh reviewer, with measured proof.
 - **M0 Spike** ✅ transparent pill, compositor animation, startup and size measured.
 - **M1 Core + tests** ✅ `BatteryPill.Core`, a C# port of the PowerShell battery logic:
-  - live WMI reader, off the UI thread, filling rates and capacities from root\WMI; OS power status
+  - live battery reader, off the UI thread, straight from the battery class driver (the source
+    Win32_Battery and root\WMI sit on; System.Management broke in the trimmed single-file exe,
+    and a driver read takes ~1 ms where WMI took 20-900); OS power status
   - battery interpretation, including the status-2/255 and charge-cap rules
   - EMA estimator with capacity cross-check and charge-flip reset; power-draw ladder
   - history, draw stats and session summary
@@ -80,8 +82,8 @@ Each milestone is a PR, CI-green and checked by a fresh reviewer, with measured 
 
 **Verification:** `native/tools/ui-smoke.ps1` drives the published exe on the GitHub
 runner with real mouse input. It covers frames, focus, click-through, click,
-drag/fling/save, hover show/hide, both menus, tray, settings in both themes, WMI in
-the trimmed build, and every battery state rendered from `BATTERYPILL_FAKE`.
+drag/fling/save, hover show/hide, both menus, tray, settings in both themes, the battery
+reader in the trimmed build, cold and warm launch time, and every battery state rendered from `BATTERYPILL_FAKE`.
 
 ## Acceptance bar (every UI milestone)
 - No motion on UI-thread timers: compositor animations only.
@@ -104,3 +106,8 @@ the trimmed build, and every battery state rendered from `BATTERYPILL_FAKE`.
    runs on the GitHub Windows runner, which has no SAC (`native/tools/ui-smoke.ps1`
    in `native.yml`; screenshots are uploaded as artifacts). Until the build is signed,
    neither CUBE04 nor any SAC-enabled PC can run the native app.
+5. **The battery reader has not met a real battery yet.** Its mapping into the
+   Win32_Battery shape is unit-tested (draining, charging, charge-cap hold, unknown
+   sentinels, relative units), and it reads "no battery" correctly on CUBE04 and the
+   CI runner, but no Windows laptop was online on 2026-10-10. First laptop check:
+   `dotnet test` in `native/` on battery, then the measured run's `battery=ok-battery`.
