@@ -31,12 +31,13 @@ internal sealed class AppState
         var result = ConfigStore.Load(ConfigPath, DateTime.Now);
         Config = result.Config;
         LastIoError = result.Error;
-        History.Load(Config.BatteryHistory);
+        History.Load(FakeBattery.Active ? FakeBattery.History(DateTime.Now) : Config.BatteryHistory);
         Interpreter.Estimator.Restore(Config.EmaRate, Config.LastValidRate, Config.EmaWasPluggedIn, DateTime.Now);
     }
 
     public void Save()
     {
+        if (FakeBattery.Active) return;   // a rendering run must not overwrite real settings
         try
         {
             ConfigStore.Save(ConfigPath, Config, History.Samples, Interpreter.Estimator, DateTime.Now);
@@ -52,6 +53,15 @@ internal sealed class AppState
     public BatteryInfo Tick()
     {
         WmiBatterySnapshot? snap;
+        if (FakeBattery.Active)
+        {
+            var (fakeWmi, fakePower) = FakeBattery.Reading();
+            var at = DateTime.Now;
+            Latest = Interpreter.Interpret(fakeWmi, fakePower, -1, at);
+            History.Add(Latest, at);
+            Updated?.Invoke(Latest);
+            return Latest;
+        }
         if (_firstTick)
         {
             // Launch: wait briefly (once) for the first full reading rather than

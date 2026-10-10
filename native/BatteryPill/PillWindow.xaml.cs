@@ -101,8 +101,8 @@ public sealed partial class PillWindow : Window
         Pill.PointerPressed += OnPillPressed;
         Pill.PointerMoved += OnPillMoved;
         Pill.PointerReleased += OnPillReleased;
-        Pill.PointerEntered += (_, _) => { AnimateScale(1.04f); _hoverSince = _clock.Elapsed.TotalMilliseconds; };
-        Pill.PointerExited += (_, _) => { AnimateScale(1.0f); _hoverSince = -1; };
+        Pill.PointerEntered += (_, _) => AnimateScale(1.04f);
+        Pill.PointerExited += (_, _) => AnimateScale(1.0f);
         Pill.PointerCaptureLost += (_, _) => { Trace.Log($"capture lost dragging={_dragging}"); if (_dragging) EndDrag(); _pressed = false; };
         Pill.ContextRequested += (_, _) => _flyout?.HideCard();
         Pill.ContextFlyout = BuildMenu();
@@ -602,7 +602,11 @@ public sealed partial class PillWindow : Window
         var pillRect = PxRect.FromSize(PillPosition.X, PillPosition.Y, PillPxW, PillPxH);
         double now = _clock.Elapsed.TotalMilliseconds;
 
-        // Hover: the details card after a 350 ms rest on the pill
+        // Hover, from where the cursor actually is (pointer enter/exit can be
+        // missed, and a missed exit re-showed the card the moment it hid):
+        // the details card after a 350 ms rest on the pill
+        if (!InCapsule(cursor.X - pillRect.Left, cursor.Y - pillRect.Top, PillPxW, PillPxH)) _hoverSince = -1;
+        else if (_hoverSince < 0) _hoverSince = now;
         if (_hoverSince >= 0 && !_pressed && now - _hoverSince >= 350 && _flyout?.IsShowing != true && !_hiddenForFullscreen)
         {
             _flyout ??= new FlyoutWindow(_app);
