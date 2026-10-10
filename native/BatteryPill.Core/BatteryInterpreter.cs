@@ -164,5 +164,5 @@ public sealed class BatteryInterpreter
     }
 
     /// <summary>PowerShell's [int] cast: banker's rounding.</summary>
-    internal static int RoundInt(double v) => (int)Math.Round(v, MidpointRounding.ToEven);
+    public static int RoundInt(double v) => (int)Math.Round(v, MidpointRounding.ToEven);
 }

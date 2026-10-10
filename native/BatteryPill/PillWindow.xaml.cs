@@ -52,10 +52,13 @@ public sealed partial class PillWindow : Window
 
     private PxPoint _dragStart;
     private double _dragStartMs;
-    private bool _inMoveLoop;
     private bool _pressed;
+    private bool _dragging;
     private PxPoint _pressAt;
     private bool _built;
+    private FlyoutWindow? _flyout;
+    private double _hoverSince = -1;
+    private double _outsideSince = -1;
     private Glide? _glide;
     private (PxPoint From, PxPoint To, double StartMs)? _settle;
     private double _lastFrameMs;
@@ -98,16 +101,22 @@ public sealed partial class PillWindow : Window
         Pill.PointerPressed += OnPillPressed;
         Pill.PointerMoved += OnPillMoved;
         Pill.PointerReleased += OnPillReleased;
-        Pill.PointerCaptureLost += (_, _) => _pressed = false;
-        Pill.PointerEntered += (_, _) => AnimateScale(1.04f);
-        Pill.PointerExited += (_, _) => AnimateScale(1.0f);
+        Pill.PointerEntered += (_, _) => { AnimateScale(1.04f); _hoverSince = _clock.Elapsed.TotalMilliseconds; };
+        Pill.PointerExited += (_, _) => { AnimateScale(1.0f); _hoverSince = -1; };
+        Pill.PointerCaptureLost += (_, _) => { if (_dragging) EndDrag(); _pressed = false; };
+        Pill.ContextRequested += (_, _) => _flyout?.HideCard();
         Pill.ContextFlyout = BuildMenu();
 
         _app.SettingsChanged += OnSettingsChanged;
 
         _tick = DispatcherQueue.CreateTimer();
         _tick.Interval = TimeSpan.FromMilliseconds(_app.Config.RefreshInterval);
-        _tick.Tick += (_, _) => ApplyInfo(_app.Tick(), animate: true);
+        _tick.Tick += (_, _) =>
+        {
+            var info = _app.Tick();
+            ApplyInfo(info, animate: true);
+            if (_flyout?.IsShowing == true) _flyout.Update(info);
+        };
         _tick.Start();
 
         // Cheap housekeeping: click-through of the shadow margin, fullscreen hide
@@ -121,6 +130,7 @@ public sealed partial class PillWindow : Window
             _tick.Stop();
             _watch.Stop();
             UnhookFrames();
+            _flyout?.Close();
             Native.RemoveWindowSubclass(_hwnd, _subclass, (UIntPtr)1);
             _app.Save();
         };
@@ -395,18 +405,19 @@ public sealed partial class PillWindow : Window
 
     // ---------------------------------------------------------------- drag, glide, settle
 
-    // A press is a click until the pointer moves 4 px; then the drag is handed
-    // to Windows' own move loop, which tracks the cursor at full rate. (Handing
-    // over on press would swallow the release, and a click could never be
-    // told from a drag.)
+    // A press is a click until the pointer moves 4 px; past that it is a drag,
+    // driven here from pointer capture: every pointer move positions the pill
+    // directly, and the same samples give the release velocity for the fling.
     private void OnPillPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint(Pill).Properties.IsLeftButtonPressed) return;
         StopMotion();
         _pressed = true;
+        _dragging = false;
         _pressAt = Native.CursorPos();
         _dragStart = PillPosition;
         _dragStartMs = _clock.Elapsed.TotalMilliseconds;
+        _velocity.Reset();
         Pill.CapturePointer(e.Pointer);
         e.Handled = true;
     }
@@ -415,40 +426,40 @@ public sealed partial class PillWindow : Window
     {
         if (!_pressed) return;
         var c = Native.CursorPos();
-        double dist = Math.Sqrt(Math.Pow(c.X - _pressAt.X, 2) + Math.Pow(c.Y - _pressAt.Y, 2));
-        if (dist < 4 * _scale) return;
-        _pressed = false;
-        Pill.ReleasePointerCaptures();
-        if (_app.Config.PositionLocked) return;
-        Native.ReleaseCapture();
-        Native.SendMessage(_hwnd, Native.WM_NCLBUTTONDOWN, (IntPtr)Native.HTCAPTION, IntPtr.Zero);
+        if (!_dragging)
+        {
+            double dist = Math.Sqrt(Math.Pow(c.X - _pressAt.X, 2) + Math.Pow(c.Y - _pressAt.Y, 2));
+            if (dist < 4 * _scale || _app.Config.PositionLocked) return;
+            _dragging = true;
+            _flyout?.HideCard();
+            SetClickThrough(false);
+        }
+        var to = new PxPoint(_dragStart.X + c.X - _pressAt.X, _dragStart.Y + c.Y - _pressAt.Y);
+        MovePill(to);
+        _velocity.Add(_clock.Elapsed.TotalMilliseconds, to.X, to.Y);
     }
 
     private void OnPillReleased(object sender, PointerRoutedEventArgs e)
     {
         if (!_pressed) return;
         _pressed = false;
+        bool wasDragging = _dragging;
         Pill.ReleasePointerCaptures();
-        if (_clock.Elapsed.TotalMilliseconds - _dragStartMs < 500) CycleDisplayMode();
+        if (wasDragging) EndDrag();
+        else if (_clock.Elapsed.TotalMilliseconds - _dragStartMs < 500) CycleDisplayMode();
+    }
+
+    private void EndDrag()
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        OnDragEnded();
     }
 
     private IntPtr WindowProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr refData)
     {
         switch ((int)msg)
         {
-            case Native.WM_ENTERSIZEMOVE:
-                _inMoveLoop = true;
-                _velocity.Reset();
-                SetClickThrough(false);
-                break;
-            case Native.WM_MOVING:
-                var r = Marshal.PtrToStructure<Native.RECT>(lParam);
-                _velocity.Add(_clock.Elapsed.TotalMilliseconds, r.Left + Margin, r.Top + Margin);
-                break;
-            case Native.WM_EXITSIZEMOVE:
-                _inMoveLoop = false;
-                DispatcherQueue.TryEnqueue(OnDragEnded);
-                break;
             case Native.WM_DPICHANGED:
                 double newScale = ((int)wParam & 0xFFFF) / 96.0;
                 var suggested = Marshal.PtrToStructure<Native.RECT>(lParam);
@@ -582,12 +593,32 @@ public sealed partial class PillWindow : Window
 
     private void Watch()
     {
-        if (_inMoveLoop || _glide != null || _settle != null) return;
+        if (_dragging || _glide != null || _settle != null) return;
+
+        var cursor = Native.CursorPos();
+        var pillRect = PxRect.FromSize(PillPosition.X, PillPosition.Y, PillPxW, PillPxH);
+        double now = _clock.Elapsed.TotalMilliseconds;
+
+        // Hover: the details card after a 350 ms rest on the pill
+        if (_hoverSince >= 0 && !_pressed && now - _hoverSince >= 350 && _flyout?.IsShowing != true && !_hiddenForFullscreen)
+        {
+            _flyout ??= new FlyoutWindow(_app);
+            _flyout.Update(_app.Latest);
+            _flyout.ShowNear(pillRect);
+        }
+        // ...which stays while the cursor is on the pill or the card, and goes
+        // 150 ms after it has left both
+        if (_flyout?.IsShowing == true)
+        {
+            bool inside = pillRect.Contains(cursor.X, cursor.Y) || _flyout.ScreenBounds.Contains(cursor.X, cursor.Y);
+            if (inside) _outsideSince = -1;
+            else if (_outsideSince < 0) _outsideSince = now;
+            else if (now - _outsideSince >= 150) { _flyout.HideCard(); _outsideSince = -1; }
+        }
 
         // The transparent shadow margin must not eat clicks meant for what is underneath
-        var c = Native.CursorPos();
         var p = PillPosition;
-        bool overCapsule = InCapsule(c.X - p.X, c.Y - p.Y, PillPxW, PillPxH);
+        bool overCapsule = InCapsule(cursor.X - p.X, cursor.Y - p.Y, PillPxW, PillPxH);
         SetClickThrough(!overCapsule);
 
         // Fullscreen apps (a game, a video) hide the pill
@@ -595,7 +626,7 @@ public sealed partial class PillWindow : Window
         if (hide != _hiddenForFullscreen)
         {
             _hiddenForFullscreen = hide;
-            if (hide) AppWindow.Hide();
+            if (hide) { AppWindow.Hide(); _flyout?.HideCard(); }
             else AppWindow.Show(false);
         }
     }
