@@ -12,6 +12,9 @@ on:
       - 'native/**'
       - '.github/workflows/native.yml'
 
+permissions:
+  contents: read
+
 jobs:
   native:
     runs-on: windows-latest
@@ -31,3 +34,20 @@ jobs:
       # The app must keep compiling (XAML, WinUI, self-contained x64)
       - name: Build app
         run: dotnet build native/BatteryPill -c Release -r win-x64 -p:Platform=x64 -nologo
+
+      # The real app on a real (SAC-free) Windows desktop, driven with real
+      # mouse input: frames, focus, click-through, click, fling, menu.
+      # Screenshots land in the run's artifacts.
+      - name: UI smoke test
+        shell: powershell
+        run: >
+          powershell -NoProfile -ExecutionPolicy Bypass -File native/tools/ui-smoke.ps1
+          -Exe native/BatteryPill/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/BatteryPill.exe
+          -OutDir ui-smoke
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke
+          path: ui-smoke

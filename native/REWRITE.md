@@ -91,5 +91,8 @@ Each milestone is a PR, CI-green and checked by a fresh reviewer, with measured 
    in M2: toggle `WS_EX_TRANSPARENT` outside the capsule, or a tighter margin.
 4. **Smart App Control** blocks an unsigned exe exactly as it does today. Only a
    signed build fixes it (M6). Since 2026-10-10 it also blocks fresh dev builds on
-   the dev PC (Code Integrity 3077), so on-screen checks there need signing, or the CI
-   runner, which has no SAC.
+   the dev PC (Code Integrity 3077).
+   **Decision 2026-10-10 (the owner): stay unsigned for now.** On-screen verification
+   runs on the GitHub Windows runner, which has no SAC (`native/tools/ui-smoke.ps1`
+   in `native.yml`; screenshots are uploaded as artifacts). Until the build is signed,
+   neither the dev PC nor any SAC-enabled PC can run the native app.
