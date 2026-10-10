@@ -168,7 +168,9 @@ internal sealed class TrayIcon : IDisposable
             else if (ev is NIN_SELECT or NIN_KEYSELECT)
             {
                 long now = Environment.TickCount64;
-                if (now - _lastSelectTicks >= GetDoubleClickTime()) LeftClick?.Invoke(IconRect());
+                bool act = now - _lastSelectTicks >= GetDoubleClickTime();
+                Trace.Log($"tray select ev=0x{ev:X} act={act}");
+                if (act) LeftClick?.Invoke(IconRect());
                 _lastSelectTicks = now;
             }
             return IntPtr.Zero;
