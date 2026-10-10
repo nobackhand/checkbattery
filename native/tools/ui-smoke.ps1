@@ -49,7 +49,7 @@ function Get-ProcessWindow {
                 $sb = New-Object Text.StringBuilder 128; [void][U]::GetClassName($h, $sb, 128)
                 [void]$list.Add([pscustomobject]@{ H = $h; Class = $sb.ToString(); L = $r.L; T = $r.T; W = $r.R - $r.L; Hgt = $r.B - $r.T })
             }; $true }, [IntPtr]::Zero)
-    return , $list
+    return $list.ToArray()
 }
 function Get-Pill {
     [OutputType([pscustomobject])]
@@ -135,6 +135,16 @@ $cfg = Get-Cfg
 Add-Check -Name 'landing position is saved' -Ok ($cfg.X -eq ($landed.L + $margin) -and $cfg.Y -eq ($landed.T + $margin)) -Detail "saved $($cfg.X),$($cfg.Y); window+margin $($landed.L + $margin),$($landed.T + $margin)"
 
 $cx = $landed.L + [int]($landed.W / 2); $cy = $landed.T + [int]($landed.Hgt / 2)
+# Hover: rest on the pill, the details card appears beside it; leave, it goes
+[void][U]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 900
+$card = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -eq 'WinUIDesktopWin32WindowClass' -and $_.H -ne $landed.H } | Select-Object -First 1
+Add-Check -Name 'hover shows the details card' -Ok ($null -ne $card) -Detail $(if ($card) { "card $($card.W)x$($card.Hgt) at $($card.L),$($card.T)" } else { 'no card window' })
+if ($card) { Save-Shot -X ($card.L - 12) -Y ($card.T - 12) -W ($card.W + 24) -H ($card.Hgt + 24) -Name 'flyout.png' -Zoom 2 }
+[void][U]::SetCursorPos(5, 5); Start-Sleep -Milliseconds 700
+$cardAfter = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -eq 'WinUIDesktopWin32WindowClass' -and $_.H -ne $landed.H } | Select-Object -First 1
+Add-Check -Name 'the card goes when the cursor leaves' -Ok ($null -eq $cardAfter) -Detail ''
+[void][U]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 200
+
 [void][U]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 250
 Send-Click -Down $RIGHTDOWN -Up $RIGHTUP; Start-Sleep -Milliseconds 900
 $popup = Get-ProcessWindow -ProcessId $p.Id | Where-Object { $_.Class -ne 'WinUIDesktopWin32WindowClass' } | Select-Object -First 1
