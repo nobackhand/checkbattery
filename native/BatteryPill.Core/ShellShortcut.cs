@@ -55,8 +55,10 @@ public static partial class ShellShortcut
         object wrapper;
         try { wrapper = Wrappers.GetOrCreateObjectForComInstance(unknown, CreateObjectFlags.UniqueInstance); }
         finally { Marshal.Release(unknown); }
-        try { return work((IShellLinkW)wrapper); }
-        finally { if (wrapper is ComObject c) c.FinalRelease(); }
+        // No FinalRelease(): on .NET 8 the wrapper's finalizer then releases a
+        // second time and throws on the GC thread, which kills the process.
+        // The finalizer's own single release is the one that frees it.
+        return work((IShellLinkW)wrapper);
     }
 
     [DllImport("ole32.dll")]
