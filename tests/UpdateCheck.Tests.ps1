@@ -63,7 +63,7 @@ Test-Case 'version: a tag that is not a version is never an update' {
 Test-Case 'release: a normal latest-release response yields version and page' {
     $r = ConvertFrom-ReleaseJson -Json (New-ReleaseJson)
     Assert-Equal '1.5.0' $r.Version
-    Assert-Equal 'https://github.com/nobackhand/checkbattery/releases/tag/v1.5.0' $r.Url
+    Assert-Equal 'https://github.com/nobackhand/checkbattery/releases/latest' $r.Url
 }
 
 Test-Case 'release: drafts and prereleases are not offered' {
@@ -78,12 +78,17 @@ Test-Case 'release: malformed or unexpected responses mean no answer, not a cras
     }
 }
 
-Test-Case 'release: a link outside this repo''s releases falls back to the website' {
+Test-Case 'release: the link never comes from the response' {
     # The card opens whatever Url says on a click - it must only ever be ours.
-    $r = ConvertFrom-ReleaseJson -Json (New-ReleaseJson -Url 'https://example.com/totally-batterypill.exe')
-    Assert-Equal 'https://batterypill.com' $r.Url
-    $r2 = ConvertFrom-ReleaseJson -Json (New-ReleaseJson -Url 'http://github.com/nobackhand/checkbattery/releases/tag/v1.5.0')
-    Assert-Equal 'https://batterypill.com' $r2.Url
+    # A prefix check on html_url let "releases/../" walk out of this repo.
+    foreach ($link in @('https://example.com/totally-batterypill.exe',
+            'http://github.com/nobackhand/checkbattery/releases/tag/v1.5.0',
+            'https://github.com/nobackhand/checkbattery/releases/../../../attacker/evil/releases',
+            'https://github.com/nobackhand/checkbattery/releases/tag/v1.5.0/../../../../evil',
+            '')) {
+        $r = ConvertFrom-ReleaseJson -Json (New-ReleaseJson -Url $link)
+        Assert-Equal 'https://github.com/nobackhand/checkbattery/releases/latest' $r.Url
+    }
 }
 
 # ---- when to check ----
