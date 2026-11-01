@@ -54,17 +54,16 @@ function ConvertFrom-ReleaseJson {
     # The latest-release response reduced to what the app acts on:
     # @{ Version = '1.4.1'; Url = <release page> }, or $null when it is not a
     # usable stable release (malformed, a draft or prerelease, or a tag that
-    # is not a version). Url is only ever this repo's own release page or the
-    # website - never an arbitrary link taken from the response.
+    # is not a version). Url is a constant: a click opens it, so no part of it
+    # comes from the response. (A prefix check on html_url could be walked out
+    # of this repo with "releases/../../../".)
     if (-not $Json) { return $null }
     try { $r = $Json | ConvertFrom-Json -ErrorAction Stop } catch { return $null }
     if ($null -eq $r -or $r -is [array]) { return $null }
     if ($r.draft -eq $true -or $r.prerelease -eq $true) { return $null }
     $v = ConvertTo-AppVersion -Text ([string]$r.tag_name)
     if ($null -eq $v) { return $null }
-    $url = [string]$r.html_url
-    if ($url -notmatch '^https://github\.com/nobackhand/checkbattery/releases/') { $url = 'https://batterypill.com' }
-    return @{ Version = $v.ToString(3); Url = $url }
+    return @{ Version = $v.ToString(3); Url = 'https://github.com/nobackhand/checkbattery/releases/latest' }
 }
 
 function Test-UpdateCheckDue {
