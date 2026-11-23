@@ -60,7 +60,7 @@ Test-Case 'flow: a newer release shows ONE card, offers it, and is recorded as a
     Complete-UpdateCheck
     Assert-Equal 'available' $script:updateCheckState
     Assert-Equal 1 $script:cards.Count
-    Assert-Equal 'https://github.com/nobackhand/checkbattery/releases/tag/v1.5.0' $script:cards[0].ClickUrl
+    Assert-Equal 'https://github.com/nobackhand/checkbattery/releases/latest' $script:cards[0].ClickUrl
     Assert-Equal '1.5.0' $script:updateAvailable.Version
     Assert-Equal '1.5.0' $script:config.AnnouncedVersion
     Assert-True ($script:config.LastUpdateCheck -gt $earlier) 'today''s check was not stamped'
